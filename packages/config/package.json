@@ -1,0 +1,7 @@
+{
+  "name": "@dala/config",
+  "version": "0.0.0",
+  "private": true,
+  "main": "./tailwind-preset.js",
+  "files": ["tailwind-preset.js"]
+}

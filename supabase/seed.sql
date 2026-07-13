@@ -1,0 +1,21 @@
+-- =============================================================================
+-- seed.sql — local development only. Runs automatically on `supabase db reset`.
+-- Never run this against staging or production.
+-- =============================================================================
+
+-- NOTE: auth.users rows can't be seeded with a plain INSERT (Supabase Auth
+-- manages that table). To get a working local test account:
+--   1. `supabase start`
+--   2. Sign up through the app (or `supabase auth admin` via the Studio UI
+--      at http://localhost:54323) with e.g. dev@dala.tn / a password 10+ chars.
+--   3. The `handle_new_auth_user` trigger (migration 0002) creates the
+--      matching `profiles` row automatically.
+--   4. Then run the inserts below, swapping in the real profile id from
+--      `select id from profiles;`.
+
+-- Example (uncomment and fill in a real id after step 3):
+-- insert into organizations (id, name, trade_type, created_by)
+-- values ('00000000-0000-0000-0000-000000000001', 'Plomberie Test', 'plomberie', '<profile-id>');
+--
+-- insert into organization_members (org_id, user_id, role)
+-- values ('00000000-0000-0000-0000-000000000001', '<profile-id>', 'owner');

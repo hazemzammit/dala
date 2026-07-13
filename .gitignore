@@ -1,0 +1,58 @@
+# --- Dependencies ---
+node_modules/
+.pnpm-store/
+
+# --- Env files (NEVER commit real secrets) ---
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# --- Build outputs ---
+dist/
+build/
+.next/
+out/
+.turbo/
+*.tsbuildinfo
+
+# --- Expo / React Native ---
+.expo/
+.expo-shared/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
+ios/
+android/
+
+# --- Supabase ---
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# --- Testing / coverage ---
+coverage/
+playwright-report/
+test-results/
+
+# --- Logs ---
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+
+# --- Misc ---
+*.pem
+.vercel

@@ -1,0 +1,7 @@
+# Require review from either of you on the highest-risk paths.
+# Replace @hazem-github-username and @collaborator-github-username with real handles.
+
+/supabase/                    @hazem-github-username @collaborator-github-username
+/packages/validation/         @hazem-github-username @collaborator-github-username
+/packages/shared-types/       @hazem-github-username @collaborator-github-username
+/.github/                     @hazem-github-username

@@ -1,0 +1,62 @@
+/**
+ * StatCard — Doc 05 §4 component inventory: "the single most-reused
+ * component across both apps." Hero number + label + delta chip + optional
+ * sparkline. States: default, loading (skeleton), empty.
+ *
+ * Mobile has its own Tamagui implementation with identical props/behavior
+ * (apps/mobile/src/components/ui/StatCard.tsx) — keep the two in sync when
+ * changing either one; they should never visually diverge.
+ */
+interface StatCardProps {
+  label: string;
+  value: string | number;
+  delta?: { value: string; direction: 'up' | 'down' | 'neutral' };
+  loading?: boolean;
+  empty?: boolean;
+  emptyMessage?: string;
+}
+
+export function StatCard({ label, value, delta, loading, empty, emptyMessage }: StatCardProps) {
+  if (loading) {
+    return (
+      <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+        <div className="h-3 w-24 animate-pulse rounded bg-neutral-100" />
+        <div className="mt-3 h-9 w-32 animate-pulse rounded bg-neutral-100" />
+      </div>
+    );
+  }
+
+  if (empty) {
+    return (
+      <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6">
+        <p className="text-sm text-neutral-500">{emptyMessage ?? 'Aucune donnée pour le moment.'}</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-neutral-500">
+        {label}
+      </p>
+      <div className="mt-1 flex items-baseline gap-2">
+        <span className="font-display text-[36px] font-semibold leading-[1.15] tabular-nums text-neutral-900">
+          {value}
+        </span>
+        {delta && (
+          <span
+            className={
+              delta.direction === 'up'
+                ? 'text-sm font-medium text-success'
+                : delta.direction === 'down'
+                  ? 'text-sm font-medium text-danger'
+                  : 'text-sm font-medium text-neutral-500'
+            }
+          >
+            {delta.value}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
