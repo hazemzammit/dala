@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Dala",
-    "slug": "dala",
+    "slug": "hazemzammit",
     "scheme": "dala",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,11 +24,15 @@
       },
       "package": "tn.dala.app"
     },
-    "plugins": ["expo-router", "expo-secure-store"],
+    "plugins": ["expo-router", "expo-secure-store", "@sentry/react-native"],
     "extra": {
       "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID"
+        "projectId": "97011893-3003-4c19-89df-699323ebea9b"
+      },
+      "router": {
+        "origin": false
       }
-    }
+    },
+    "owner": "hazemzammits-team"
   }
 }

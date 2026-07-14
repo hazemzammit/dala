@@ -13,7 +13,7 @@ returns table (
   label text,
   rank real
 ) language sql stable security invoker as $$
-  select 'project', p.id, p.name, ts_rank(p.search_vector, websearch_to_tsquery('french', p_query))
+  select 'project', p.id, p.name, ts_rank(p.search_vector, websearch_to_tsquery('french', p_query)) as rank
   from projects p
   where p.lead_org_id = p_org_id
     and p.search_vector @@ websearch_to_tsquery('french', p_query)

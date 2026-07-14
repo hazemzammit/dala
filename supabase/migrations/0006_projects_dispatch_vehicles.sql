@@ -46,6 +46,21 @@ create table project_memberships (
 
 create index project_memberships_project_id_org_id_idx on project_memberships (project_id, org_id);
 
+-- Moved here from 0005_rls_helper_functions.sql: `language sql` functions are
+-- validated against the catalog at CREATE FUNCTION time, so this can only be
+-- defined once project_memberships exists.
+create or replace function is_project_member(target_project uuid)
+returns boolean language sql stable as $$
+  select exists (
+    select 1 from project_memberships pm
+    join organization_members om on om.org_id = pm.org_id
+    where pm.project_id = target_project and om.user_id = auth.uid()
+  );
+$$;
+
+comment on function is_project_member(uuid) is
+  'RLS predicate: does the current user''s org have a membership on this project (lead or trade)?';
+
 create table vehicles (
   id          uuid primary key default gen_random_uuid(),
   org_id      uuid not null references organizations(id) on delete cascade,

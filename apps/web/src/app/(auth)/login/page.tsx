@@ -1,8 +1,8 @@
 'use client';
 
+import { loginSchema } from '@dala/validation';
 import { useState } from 'react';
 
-import { loginSchema } from '@dala/validation';
 
 import { createClient } from '@/lib/supabase/client';
 
@@ -42,10 +42,10 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-neutral-25 px-6">
+    <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-sm rounded-card border border-neutral-100 bg-neutral-0 p-8 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]"
+        className="rounded-card bg-neutral-0 w-full max-w-sm border border-neutral-100 p-8 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]"
       >
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">Se connecter</h1>
 
@@ -55,7 +55,7 @@ export default function LoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded-control border border-neutral-300 px-3 py-2"
+            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
         </label>
@@ -66,20 +66,29 @@ export default function LoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 w-full rounded-control border border-neutral-300 px-3 py-2"
+            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
         </label>
 
-        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+        {error && <p className="text-danger mt-3 text-sm">{error}</p>}
 
         <button
           type="submit"
           disabled={loading}
-          className="mt-6 w-full rounded-control bg-accent-600 py-2.5 font-medium text-white disabled:opacity-60"
+          className="rounded-control bg-accent-600 mt-6 w-full py-2.5 font-medium text-white disabled:opacity-60"
         >
           {loading ? 'Connexion…' : 'Se connecter'}
         </button>
+
+        <div className="mt-4 flex items-center justify-between text-sm">
+          <a href="/forgot-password" className="text-accent-600 underline">
+            Mot de passe oublié ?
+          </a>
+          <a href="/sign-up" className="text-accent-600 underline">
+            Créer un compte
+          </a>
+        </div>
       </form>
     </main>
   );

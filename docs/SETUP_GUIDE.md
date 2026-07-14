@@ -129,6 +129,7 @@ git push -u origin main
 ### 2.2 Branch protection (do this before inviting your collaborator)
 
 GitHub repo → **Settings → Branches → Add branch protection rule**:
+
 - Branch name pattern: `main`
 - ✅ Require a pull request before merging
 - ✅ Require approvals (1)
@@ -185,6 +186,7 @@ supabase start
 
 First run pulls several Docker images — takes a few minutes. When it
 finishes, it prints local URLs and keys, including:
+
 - API URL: `http://localhost:54321`
 - anon key
 - service_role key
@@ -301,6 +303,40 @@ If all three come up without errors, commit this as your first real PR
 (even though nothing changed) — this confirms the CI workflow in
 `.github/workflows/ci.yml` actually runs and passes, which is what lets you
 tick the "require status checks" box from step 2.2.
+
+### 6.1 Serving Edge Functions locally (needed for sign-up / forgot-password)
+
+The sign-up and forgot-password flows call Supabase Edge Functions
+(`supabase/functions/sign-up`, `supabase/functions/forgot-password`) — they
+won't work until you serve those functions locally too:
+
+```powershell
+supabase functions serve --env-file supabase/functions/.env.local
+```
+
+Create `supabase/functions/.env.local` (git-ignored — never commit it) with
+at minimum:
+
+```
+APP_URL=http://localhost:3000
+RESEND_API_KEY=
+```
+
+Leave `RESEND_API_KEY` empty for local dev — the shared `resend.ts` helper
+logs the email to the terminal instead of sending it when the key is unset,
+so you can copy the confirmation/reset link straight out of the
+`supabase functions serve` terminal output while testing. `SUPABASE_URL`
+and `SUPABASE_SERVICE_ROLE_KEY` are injected automatically by the CLI when
+serving locally — don't set those two yourself.
+
+### 6.2 Deploying Edge Functions to the real project (once step 5 is done)
+
+```powershell
+supabase functions deploy sign-up
+supabase functions deploy forgot-password
+supabase secrets set APP_URL=https://your-real-domain.tn
+supabase secrets set RESEND_API_KEY=re_xxxxxxxx
+```
 
 ---
 

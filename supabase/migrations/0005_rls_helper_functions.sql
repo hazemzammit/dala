@@ -26,26 +26,18 @@ returns text language sql stable as $$
   where org_id = target_org and user_id = auth.uid();
 $$;
 
--- project_memberships is created in 0006 (projects). This function is defined
--- here for discoverability (all three predicates live together) but only
--- becomes callable once 0006 runs — that's fine, Postgres resolves function
--- bodies lazily at call time, not at CREATE FUNCTION time, as long as the
--- referenced table exists by the time it's actually invoked.
-create or replace function is_project_member(target_project uuid)
-returns boolean language sql stable as $$
-  select exists (
-    select 1 from project_memberships pm
-    join organization_members om on om.org_id = pm.org_id
-    where pm.project_id = target_project and om.user_id = auth.uid()
-  );
-$$;
+-- NOTE: is_project_member() is NOT defined here. It references
+-- project_memberships, which doesn't exist until 0006_projects_dispatch_vehicles.sql.
+-- `language sql` functions are parsed and validated against the catalog at
+-- CREATE FUNCTION time (unlike plpgsql, whose body is opaque text checked only
+-- at first call) — so defining it here, before the table exists, fails
+-- immediately with "relation does not exist". It's defined in 0006 instead,
+-- right after project_memberships is created.
 
 comment on function is_org_member(uuid) is
   'RLS predicate: does the current user belong to this org, in any role? Table-lookup, never JWT claims.';
 comment on function org_role_of(uuid) is
   'RLS predicate: current user''s role (owner/manager/viewer) in this org, or NULL if not a member.';
-comment on function is_project_member(uuid) is
-  'RLS predicate: does the current user''s org have a membership on this project (lead or trade)?';
 
 -- Enable RLS + the standard "members of the org can read" policy on the
 -- tables already created. Every later migration follows this exact shape:

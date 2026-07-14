@@ -33,6 +33,7 @@ android/
 supabase/.branches
 supabase/.temp
 supabase/.env
+supabase/functions/.env.local
 
 # --- Testing / coverage ---
 coverage/
