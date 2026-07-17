@@ -1,8 +1,12 @@
 import { signUpSchema } from '@dala/validation';
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { Button, Input, ScrollView, Text, YStack } from 'tamagui';
+import { ScrollView, Text, YStack } from 'tamagui';
 
+
+import { Button } from '@/components/ui/Button';
+import { FormField } from '@/components/ui/FormField';
+import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -52,55 +56,55 @@ export default function SignUpScreen() {
 
   return (
     <ScrollView backgroundColor="$neutral25">
-      <YStack padding="$4" gap="$3">
+      <YStack padding="$4" gap="$4">
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Créer votre compte
         </Text>
 
-        <Input
-          placeholder="Nom complet"
+        <FormField
+          label="Nom complet"
           value={form.full_name}
           onChangeText={(v) => update('full_name', v)}
         />
-        <Input
-          placeholder="E-mail"
+        <FormField
+          label="E-mail"
           value={form.email}
           onChangeText={(v) => update('email', v)}
           autoCapitalize="none"
           keyboardType="email-address"
         />
-        <Input
-          placeholder="Téléphone"
+        <FormField
+          label="Téléphone"
           value={form.phone}
           onChangeText={(v) => update('phone', v)}
           keyboardType="phone-pad"
         />
-        <Input
-          placeholder="Mot de passe (10 caractères min.)"
-          value={form.password}
-          onChangeText={(v) => update('password', v)}
-          secureTextEntry
-        />
-        <Input
-          placeholder="Nom de l'entreprise"
+
+        <YStack>
+          <FormField
+            label="Mot de passe"
+            value={form.password}
+            onChangeText={(v) => update('password', v)}
+            secureTextEntry
+          />
+          <PasswordStrengthMeter password={form.password} />
+        </YStack>
+
+        <FormField
+          label="Nom de l'entreprise"
           value={form.organization_name}
           onChangeText={(v) => update('organization_name', v)}
         />
-        <Input
-          placeholder="Type d'activité (optionnel)"
+        <FormField
+          label="Type d'activité (optionnel)"
           value={form.trade_type}
           onChangeText={(v) => update('trade_type', v)}
         />
 
         {error && <Text color="$danger">{error}</Text>}
 
-        <Button
-          onPress={handleSubmit}
-          disabled={loading}
-          backgroundColor="$accent600"
-          color="white"
-        >
-          {loading ? 'Création…' : 'Créer mon compte'}
+        <Button onPress={handleSubmit} loading={loading}>
+          Créer mon compte
         </Button>
       </YStack>
     </ScrollView>

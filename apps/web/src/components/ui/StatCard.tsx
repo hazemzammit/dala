@@ -7,6 +7,8 @@
  * (apps/mobile/src/components/ui/StatCard.tsx) — keep the two in sync when
  * changing either one; they should never visually diverge.
  */
+import { Card } from './Card';
+
 interface StatCardProps {
   label: string;
   value: string | number;
@@ -19,37 +21,39 @@ interface StatCardProps {
 export function StatCard({ label, value, delta, loading, empty, emptyMessage }: StatCardProps) {
   if (loading) {
     return (
-      <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+      <Card className="p-6">
         <div className="h-3 w-24 animate-pulse rounded bg-neutral-100" />
         <div className="mt-3 h-9 w-32 animate-pulse rounded bg-neutral-100" />
-      </div>
+      </Card>
     );
   }
 
   if (empty) {
     return (
-      <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6">
-        <p className="text-sm text-neutral-500">{emptyMessage ?? 'Aucune donnée pour le moment.'}</p>
-      </div>
+      <Card className="p-6">
+        <p className="text-sm text-neutral-500">
+          {emptyMessage ?? 'Aucune donnée pour le moment.'}
+        </p>
+      </Card>
     );
   }
 
   return (
-    <div className="rounded-card border border-neutral-100 bg-neutral-0 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+    <Card className="p-6">
       <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-neutral-500">
         {label}
       </p>
       <div className="mt-1 flex items-baseline gap-2">
-        <span className="font-display text-[36px] font-semibold leading-[1.15] tabular-nums text-neutral-900">
+        <span className="font-display text-[36px] font-semibold tabular-nums leading-[1.15] text-neutral-900">
           {value}
         </span>
         {delta && (
           <span
             className={
               delta.direction === 'up'
-                ? 'text-sm font-medium text-success'
+                ? 'text-success text-sm font-medium'
                 : delta.direction === 'down'
-                  ? 'text-sm font-medium text-danger'
+                  ? 'text-danger text-sm font-medium'
                   : 'text-sm font-medium text-neutral-500'
             }
           >
@@ -57,6 +61,6 @@ export function StatCard({ label, value, delta, loading, empty, emptyMessage }: 
           </span>
         )}
       </div>
-    </div>
+    </Card>
   );
 }

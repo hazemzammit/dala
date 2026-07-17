@@ -6,10 +6,10 @@
  * apps/web/src/lib/theme.ts — both wrap @dala/design-tokens, the single
  * source of truth for every color/spacing/radius value in the product.)
  */
-import { createTamagui } from 'tamagui';
-import { config as tamaguiDefaultConfig } from '@tamagui/config';
-
 import { color, radius } from '@dala/design-tokens';
+import { config as tamaguiDefaultConfig } from '@tamagui/config';
+import { createTamagui } from 'tamagui';
+
 
 const dalaConfig = createTamagui({
   ...tamaguiDefaultConfig,
@@ -18,7 +18,13 @@ const dalaConfig = createTamagui({
     color: {
       ...tamaguiDefaultConfig.tokens.color,
       accent600: color.accent[600],
+      accent700: color.accent[700],
+      accent50: color.accent[50],
+      accent100: color.accent[100],
       neutral25: color.neutral[25],
+      neutral100: color.neutral[100],
+      neutral300: color.neutral[300],
+      neutral500: color.neutral[500],
       neutral0: color.neutral[0],
       neutral900: color.neutral[900],
       success: color.status.success,

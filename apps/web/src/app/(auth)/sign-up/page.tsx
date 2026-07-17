@@ -4,7 +4,10 @@ import { signUpSchema } from '@dala/validation';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { FormField } from '@/components/ui/FormField';
+import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -13,6 +16,10 @@ import { createClient } from '@/lib/supabase/client';
  * directly, because the org + owner-membership creation can't happen
  * client-side under RLS before email confirmation (see the function's own
  * header comment, and migration 0014's header comment, for why).
+ *
+ * Doc 05 §2.5 — single-column form, 16px vertical rhythm, label-above
+ * fields, full-width bottom-anchored primary CTA, secondary actions below
+ * it in neutral-500.
  */
 export default function SignUpPage() {
   const router = useRouter();
@@ -58,99 +65,71 @@ export default function SignUpPage() {
 
   return (
     <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6 py-12">
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-card bg-neutral-0 w-full max-w-sm border border-neutral-100 p-8 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]"
-      >
+      <Card className="w-full max-w-sm p-8">
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Créer votre compte
         </h1>
         <p className="mt-1 text-sm text-neutral-500">
-          Pour votre entreprise — chaque membre de l'équipe rejoint ensuite par invitation.
+          Pour votre entreprise — chaque membre de l&apos;équipe rejoint ensuite par invitation.
         </p>
 
-        <Field label="Nom complet">
-          <input
-            type="text"
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <FormField
+            label="Nom complet"
             value={form.full_name}
             onChange={(e) => update('full_name', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
-        </Field>
 
-        <Field label="E-mail">
-          <input
+          <FormField
+            label="E-mail"
             type="email"
             value={form.email}
             onChange={(e) => update('email', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
-        </Field>
 
-        <Field label="Téléphone">
-          <input
+          <FormField
+            label="Téléphone"
             type="tel"
             value={form.phone}
             onChange={(e) => update('phone', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
-        </Field>
 
-        <Field label="Mot de passe">
-          <input
-            type="password"
-            value={form.password}
-            onChange={(e) => update('password', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
-            required
-            minLength={10}
-          />
-          {/* Doc 01 §1.3.6: strength meter (zxcvbn) goes here — plain-language
-              feedback, not a pass/fail wall. Not wired up in this scaffold yet. */}
-        </Field>
+          <div>
+            <FormField
+              label="Mot de passe"
+              type="password"
+              value={form.password}
+              onChange={(e) => update('password', e.target.value)}
+              required
+              minLength={10}
+            />
+            <PasswordStrengthMeter password={form.password} />
+          </div>
 
-        <Field label="Nom de l'entreprise">
-          <input
-            type="text"
+          <FormField
+            label="Nom de l'entreprise"
             value={form.organization_name}
             onChange={(e) => update('organization_name', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             required
           />
-        </Field>
 
-        <Field label="Type d'activité (optionnel)">
-          <input
-            type="text"
+          <FormField
+            label="Type d'activité (optionnel)"
             value={form.trade_type}
             onChange={(e) => update('trade_type', e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
             placeholder="Plomberie, électricité…"
           />
-        </Field>
 
-        {error && <p className="text-danger mt-3 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-control bg-accent-600 mt-6 w-full py-2.5 font-medium text-white disabled:opacity-60"
-        >
-          {loading ? 'Création…' : 'Créer mon compte'}
-        </button>
-      </form>
+          <Button type="submit" fullWidth loading={loading} className="mt-2">
+            Créer mon compte
+          </Button>
+        </form>
+      </Card>
     </main>
-  );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <label className="mt-4 block text-sm font-medium text-neutral-900">
-      {label}
-      {children}
-    </label>
   );
 }

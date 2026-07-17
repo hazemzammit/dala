@@ -5,6 +5,10 @@ import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { z } from 'zod';
 
+import { Button } from '@/components/ui/Button';
+import { Card } from '@/components/ui/Card';
+import { FormField } from '@/components/ui/FormField';
+import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -12,11 +16,6 @@ import { createClient } from '@/lib/supabase/client';
  * has already exchanged the emailed token_hash for a real recovery session
  * (cookies set server-side). This page only needs to call
  * `updateUser({ password })` — no token handling here, that already happened.
- *
- * Step 5's "all existing sessions revoked" is handled by Supabase Auth
- * itself on password change, not by app code. This page's own remaining job
- * is marking password_reset_audit.completed_at via the
- * mark_latest_password_reset_completed() RPC (migration 0014).
  */
 const newPasswordSchema = z.object({ new_password: passwordSchema });
 
@@ -49,8 +48,6 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    // Best-effort — a failure here shouldn't block the user from continuing
-    // now that their password is actually changed.
     await supabase.rpc('mark_latest_password_reset_completed');
 
     setLoading(false);
@@ -59,36 +56,31 @@ export default function ResetPasswordPage() {
 
   return (
     <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
-      <form
-        onSubmit={handleSubmit}
-        className="rounded-card bg-neutral-0 w-full max-w-sm border border-neutral-100 p-8 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]"
-      >
+      <Card className="w-full max-w-sm p-8">
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Choisir un nouveau mot de passe
         </h1>
 
-        <label className="mt-6 block text-sm font-medium text-neutral-900">
-          Nouveau mot de passe
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="rounded-control mt-1 w-full border border-neutral-300 px-3 py-2"
-            required
-            minLength={10}
-          />
-        </label>
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <div>
+            <FormField
+              label="Nouveau mot de passe"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={10}
+            />
+            <PasswordStrengthMeter password={password} />
+          </div>
 
-        {error && <p className="text-danger mt-3 text-sm">{error}</p>}
+          {error && <p className="text-danger text-sm">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-control bg-accent-600 mt-6 w-full py-2.5 font-medium text-white disabled:opacity-60"
-        >
-          {loading ? 'Enregistrement…' : 'Enregistrer'}
-        </button>
-      </form>
+          <Button type="submit" fullWidth loading={loading} className="mt-2">
+            Enregistrer
+          </Button>
+        </form>
+      </Card>
     </main>
   );
 }

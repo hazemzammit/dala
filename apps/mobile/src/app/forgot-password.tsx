@@ -1,8 +1,10 @@
 import { forgotPasswordSchema } from '@dala/validation';
 import { useState } from 'react';
-import { Button, Input, Text, YStack } from 'tamagui';
+import { Text, YStack } from 'tamagui';
 
 
+import { Button } from '@/components/ui/Button';
+import { FormField } from '@/components/ui/FormField';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -39,7 +41,7 @@ export default function ForgotPasswordScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$3">
+    <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Mot de passe oublié
       </Text>
@@ -47,8 +49,8 @@ export default function ForgotPasswordScreen() {
         Entrez votre e-mail, nous vous enverrons un lien de réinitialisation.
       </Text>
 
-      <Input
-        placeholder="E-mail"
+      <FormField
+        label="E-mail"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
@@ -58,8 +60,8 @@ export default function ForgotPasswordScreen() {
       {error && <Text color="$danger">{error}</Text>}
       {message && <Text color="$success">{message}</Text>}
 
-      <Button onPress={handleSubmit} disabled={loading} backgroundColor="$accent600" color="white">
-        {loading ? 'Envoi…' : 'Envoyer le lien'}
+      <Button onPress={handleSubmit} loading={loading}>
+        Envoyer le lien
       </Button>
     </YStack>
   );

@@ -5,7 +5,8 @@
   "plugins": ["@typescript-eslint", "import"],
   "env": {
     "es2022": true,
-    "node": true
+    "node": true,
+    "browser": true
   },
   "parserOptions": {
     "ecmaVersion": "latest",
@@ -26,12 +27,26 @@
       }
     ]
   },
-  "ignorePatterns": [
-    "node_modules",
-    "dist",
-    "build",
-    ".next",
-    ".expo",
-    "*.config.js"
-  ]
+  "overrides": [
+    {
+      // TypeScript's own compiler already catches genuine undefined-variable
+      // errors, more reliably than base ESLint can — base no-undef doesn't
+      // understand type-only references (e.g. `e: React.FormEvent` without
+      // a value-level import of React) and produces false positives on them.
+      // This is typescript-eslint's own documented recommendation, not a
+      // one-off workaround: https://typescript-eslint.io/rules/no-undef/
+      "files": ["*.ts", "*.tsx"],
+      "rules": {
+        "no-undef": "off"
+      }
+    },
+    {
+      // Edge Functions run on Deno, not Node/browser — `Deno` is a real
+      // global there, just not one base ESLint knows about.
+      "files": ["supabase/functions/**/*.ts"],
+      "env": { "node": false, "browser": false },
+      "globals": { "Deno": "readonly" }
+    }
+  ],
+  "ignorePatterns": ["node_modules", "dist", "build", ".next", ".expo", "*.config.js"]
 }

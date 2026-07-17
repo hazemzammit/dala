@@ -12,6 +12,7 @@ node_modules/
 dist/
 build/
 .next/
+next-env.d.ts
 out/
 .turbo/
 *.tsbuildinfo
@@ -19,6 +20,7 @@ out/
 # --- Expo / React Native ---
 .expo/
 .expo-shared/
+.tamagui/
 *.jks
 *.p8
 *.p12

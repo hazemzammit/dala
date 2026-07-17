@@ -2,13 +2,15 @@
 
 import { useSearchParams } from 'next/navigation';
 
+import { Card } from '@/components/ui/Card';
+
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();
   const message = searchParams.get('message');
 
   return (
     <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
-      <div className="rounded-card bg-neutral-0 w-full max-w-sm border border-neutral-100 p-8 text-center">
+      <Card className="w-full max-w-sm p-8 text-center">
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Lien invalide ou expiré
         </h1>
@@ -21,7 +23,7 @@ export default function AuthErrorPage() {
         >
           Demander un nouveau lien
         </a>
-      </div>
+      </Card>
     </main>
   );
 }
