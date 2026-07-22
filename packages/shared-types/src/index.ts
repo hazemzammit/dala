@@ -82,6 +82,7 @@ export interface Worker {
   id: string;
   org_id: string;
   full_name: string;
+  email: string | null; // migration 0017 — required by the app for new invites (Doc 00 §0.5 item 10), nullable at the DB layer only
   phone: string | null;
   trade: string | null;
   daily_rate: number | null;

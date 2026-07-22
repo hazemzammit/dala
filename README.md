@@ -1,4 +1,4 @@
-# Dala — *"La base de tout chantier."*
+# Dala — _"La base de tout chantier."_
 
 Multi-tenant construction-site management SaaS for Tunisia's BTP sector.
 Mobile (Expo/React Native) + Web (Next.js, full contractor parity) + Admin
@@ -10,7 +10,7 @@ If you're new to this repo, read in this order:
 
 1. **`docs/spec/`** — the full product specification (six documents). Read
    `00` → `01` → `02`, then whichever of `03`/`04` matches what you're
-   building. This is the source of truth for *what* to build.
+   building. This is the source of truth for _what_ to build.
 2. **`docs/SETUP_GUIDE.md`** — one-time environment setup, from zero to your
    first `pnpm dev` running locally. Do this before writing any code.
 3. **`docs/ARCHITECTURE.md`** — how the pieces fit together (monorepo layout,

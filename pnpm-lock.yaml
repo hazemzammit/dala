@@ -193,6 +193,9 @@ importers:
       '@tamagui/babel-plugin':
         specifier: ^1.117.1
         version: 1.144.4(react-dom@19.1.0(react@19.1.0))(react-native@0.81.5(@babel/core@7.29.7)(@react-native-community/cli@13.6.9)(@react-native/metro-config@0.86.0(@babel/core@7.29.7))(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+      '@types/node':
+        specifier: ^22.7.5
+        version: 22.20.1
       '@types/react':
         specifier: ^19.1.17
         version: 19.1.17

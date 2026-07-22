@@ -3,7 +3,6 @@ import { router } from 'expo-router';
 import { useState } from 'react';
 import { ScrollView, Text, YStack } from 'tamagui';
 
-
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
@@ -106,6 +105,10 @@ export default function SignUpScreen() {
         <Button onPress={handleSubmit} loading={loading}>
           Créer mon compte
         </Button>
+
+        <Text color="$neutral500" textAlign="center" onPress={() => router.replace('/login')}>
+          Déjà un compte ? Se connecter
+        </Text>
       </YStack>
     </ScrollView>
   );

@@ -2,7 +2,6 @@ import { color } from '@dala/design-tokens';
 import type { Icon } from 'phosphor-react-native';
 import { View } from 'tamagui';
 
-
 /**
  * apps/mobile/src/components/shell/FAB.tsx
  *
@@ -35,6 +34,9 @@ export function FAB({ icon: IconComponent, onPress, accessibilityLabel }: FABPro
       shadowOpacity={0.15}
       shadowRadius={10}
       shadowOffset={{ width: 0, height: 4 }}
+      // @ts-expect-error — `elevation` is RN's Android shadow prop; Tamagui's View
+      // style types don't declare it, but it's still forwarded to the native View
+      // at runtime, so this keeps the Android shadow rather than dropping it.
       elevation={4}
     >
       <IconComponent size={24} color={color.neutral[0]} weight="bold" />

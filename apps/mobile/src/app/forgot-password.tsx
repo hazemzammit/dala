@@ -1,7 +1,7 @@
 import { forgotPasswordSchema } from '@dala/validation';
+import { router } from 'expo-router';
 import { useState } from 'react';
 import { Text, YStack } from 'tamagui';
-
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
@@ -63,6 +63,10 @@ export default function ForgotPasswordScreen() {
       <Button onPress={handleSubmit} loading={loading}>
         Envoyer le lien
       </Button>
+
+      <Text color="$neutral500" textAlign="center" onPress={() => router.replace('/login')}>
+        Retour à la connexion
+      </Text>
     </YStack>
   );
 }

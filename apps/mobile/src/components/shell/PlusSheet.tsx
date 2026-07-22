@@ -3,6 +3,7 @@ import { router } from 'expo-router';
 import {
   CarIcon,
   ChartBarIcon,
+  ClipboardTextIcon,
   GearIcon,
   HandshakeIcon,
   ImageIcon,
@@ -14,7 +15,7 @@ import {
   type Icon,
 } from 'phosphor-react-native';
 import { Modal, Pressable } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, View, XStack, YStack } from 'tamagui';
 
 /**
  * apps/mobile/src/components/shell/PlusSheet.tsx
@@ -26,6 +27,7 @@ import { Text, XStack, YStack } from 'tamagui';
  */
 const ITEMS: { href: string; label: string; icon: Icon }[] = [
   { href: '/vehicles', label: 'Véhicules', icon: CarIcon },
+  { href: '/pointage', label: 'Pointage', icon: ClipboardTextIcon },
   { href: '/materials', label: 'Matériaux', icon: PackageIcon },
   { href: '/journal', label: 'Journal', icon: ImageIcon },
   { href: '/safety', label: 'Sécurité', icon: ShieldWarningIcon },
@@ -62,7 +64,9 @@ export function PlusSheet({ visible, onClose }: PlusSheetProps) {
           <Text fontFamily="$display" fontSize={18} fontWeight="600">
             Plus
           </Text>
-          <XIcon size={20} color={color.neutral[500]} onPress={onClose} />
+          <View onPress={onClose} accessibilityRole="button" accessibilityLabel="Fermer">
+            <XIcon size={20} color={color.neutral[500]} />
+          </View>
         </XStack>
 
         <YStack gap="$1">

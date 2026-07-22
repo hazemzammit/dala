@@ -29,10 +29,19 @@ export const createVehicleSchema = z.object({
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
-/** Doc 03 §3.13.2 — add/invite worker. */
+/**
+ * Doc 03 §3.13.2 — add/invite worker.
+ *
+ * `email` was missing from this schema (and from the `workers` table itself
+ * until migration 0017) even though Doc 00 §0.5 item 10 and Doc 03 §3.13.2
+ * both require it — it's the account identity and primary invite channel,
+ * not optional contact info. Fixed here alongside the migration; don't
+ * reintroduce a worker-creation path that skips it.
+ */
 export const inviteWorkerSchema = z.object({
-  full_name: z.string().min(2),
-  phone: z.string().min(8),
+  full_name: z.string().min(2, "Merci d'indiquer le nom du travailleur."),
+  email: z.string().email("Merci d'indiquer une adresse e-mail valide."),
+  phone: z.string().min(8, 'Numéro de téléphone requis.'),
   trade: z.string().optional(),
   daily_rate: z.number().positive().optional(),
   channel: z.enum(['app', 'whatsapp', 'sms']),
@@ -47,3 +56,10 @@ export const markAttendanceSchema = z.object({
   project_id: z.string().uuid().optional(),
 });
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
+
+/** Doc 02 §2.2a — "Marquer tous présents" bulk action; one round-trip
+ *  instead of one insert per worker on the roster. */
+export const markAttendanceBulkSchema = z.object({
+  entries: z.array(markAttendanceSchema).min(1),
+});
+export type MarkAttendanceBulkInput = z.infer<typeof markAttendanceBulkSchema>;
