@@ -13,7 +13,7 @@
 -- =============================================================================
 
 create or replace function is_org_member(target_org uuid)
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from organization_members
     where org_id = target_org and user_id = auth.uid()
@@ -21,7 +21,7 @@ returns boolean language sql stable as $$
 $$;
 
 create or replace function org_role_of(target_org uuid)
-returns text language sql stable as $$
+returns text language sql stable security definer set search_path = public as $$
   select role from organization_members
   where org_id = target_org and user_id = auth.uid();
 $$;

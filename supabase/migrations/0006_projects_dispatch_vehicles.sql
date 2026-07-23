@@ -50,7 +50,7 @@ create index project_memberships_project_id_org_id_idx on project_memberships (p
 -- validated against the catalog at CREATE FUNCTION time, so this can only be
 -- defined once project_memberships exists.
 create or replace function is_project_member(target_project uuid)
-returns boolean language sql stable as $$
+returns boolean language sql stable security definer set search_path = public as $$
   select exists (
     select 1 from project_memberships pm
     join organization_members om on om.org_id = pm.org_id

@@ -48,15 +48,21 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     .single();
 
   return (
-    <div className="bg-neutral-25 flex h-screen">
+    <div className="bg-neutral-25 flex min-h-screen text-neutral-900">
       <Sidebar
         organizationName={organization?.name ?? '—'}
         userName={profile.full_name}
         userAvatarUrl={profile.avatar_url ?? undefined}
       />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar userName={profile.full_name} userAvatarUrl={profile.avatar_url ?? undefined} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+      <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <TopBar
+          organizationName={organization?.name ?? '—'}
+          userName={profile.full_name}
+          userAvatarUrl={profile.avatar_url ?? undefined}
+        />
+        <main className="flex-1 overflow-y-auto bg-[radial-gradient(circle_at_top,rgba(15,118,110,0.05),transparent_28%),linear-gradient(180deg,#FAFAFA_0%,#F8FAFB_100%)]">
+          {children}
+        </main>
       </div>
     </div>
   );

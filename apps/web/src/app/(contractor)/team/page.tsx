@@ -1,22 +1,54 @@
-import { HardHatIcon } from '@phosphor-icons/react/ssr';
+import { redirect } from 'next/navigation';
 
-import { EmptyState } from '@/components/ui/EmptyState';
+import { TeamView } from './TeamView';
+
+import { createClient } from '@/lib/supabase/server';
+
 
 /**
- * Placeholder — full screen spec in
- * docs/spec/04-screens-web-contractor-and-admin.md. Icon imported from the
- * /ssr submodule since this is a Server Component (Doc: phosphor-icons
- * README "React Server Components and SSR" — the default export relies on
- * React Context, which RSC does not support).
+ * Doc 04 §4.2.5 — Team roster. Fetches workers + their latest invitation
+ * status (pending/accepted/expired) in one page load; TeamView (client)
+ * owns the invite modal.
  */
-export default function Page() {
+export default async function Page() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) redirect('/create-organization');
+
+  const { data: workers } = await supabase
+    .from('workers')
+    .select('id, org_id, full_name, phone, trade, daily_rate, user_id, created_at')
+    .eq('org_id', profile.active_org_id)
+    .order('created_at', { ascending: false });
+
+  const workerIds = (workers ?? []).map((w) => w.id);
+  const { data: invitations } = workerIds.length
+    ? await supabase
+        .from('worker_invitations')
+        .select('worker_id, status, sent_at, expires_at')
+        .in('worker_id', workerIds)
+        .order('sent_at', { ascending: false })
+    : { data: [] };
+
   return (
     <div className="p-8">
-      <EmptyState
-        icon={HardHatIcon}
-        title="Aucun ouvrier dans votre équipe"
-        description="Invitez vos ouvriers pour suivre présence, avances et affectations."
-      />
+      <div className="mb-6">
+        <h1 className="font-display text-xl font-semibold text-neutral-900">Équipe</h1>
+        <p className="mt-1 text-sm text-neutral-500">
+          Invitez vos ouvriers pour suivre présence, avances et affectations.
+        </p>
+      </div>
+
+      <TeamView workers={workers ?? []} invitations={invitations ?? []} />
     </div>
   );
 }

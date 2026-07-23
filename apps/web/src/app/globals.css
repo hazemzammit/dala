@@ -4,6 +4,16 @@
 
 :root {
   --font-display: 'Sora', sans-serif;
+  color-scheme: light;
+}
+
+html {
+  background: #fafafa;
+}
+
+body {
+  min-height: 100vh;
+  font-family: var(--font-display), system-ui, sans-serif;
 }
 
 /* Tabular figures anywhere numbers stack in a column (Doc 05 §1.2). */

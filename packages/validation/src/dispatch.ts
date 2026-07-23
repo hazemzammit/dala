@@ -22,13 +22,20 @@ export const updateDispatchAssignmentSchema = z.object({
 export type UpdateDispatchAssignmentInput = z.infer<typeof updateDispatchAssignmentSchema>;
 
 /** Doc 02 §2.2 — vehicle CRUD. */
+export const vehicleStatusEnum = z.enum(['available', 'in_use', 'maintenance']);
+
 export const createVehicleSchema = z.object({
   name: z.string().min(1),
   plate: z.string().optional(),
   capacity: z.number().int().positive().default(1),
+  status: vehicleStatusEnum.default('available'),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
+export const updateVehicleSchema = createVehicleSchema.partial().extend({
+  id: z.string().uuid(),
+});
+export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;
 /** Doc 03 §3.13.2 — add/invite worker. */
 export const inviteWorkerSchema = z.object({
   full_name: z.string().min(2),

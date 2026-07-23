@@ -1,9 +1,18 @@
 'use client';
 
-import { BellIcon, MagnifyingGlassIcon } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import {
+  BellIcon,
+  CaretDownIcon,
+  MagnifyingGlassIcon,
+  NotepadIcon,
+  SignOutIcon,
+  UserCircleIcon,
+} from '@phosphor-icons/react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar } from '@/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
+import { createClient } from '@/lib/supabase/client';
 
 /**
  * apps/web/src/components/shell/TopBar.tsx
@@ -21,6 +30,7 @@ import { Avatar } from '@/components/ui/Avatar';
 interface TopBarProps {
   userName: string;
   userAvatarUrl?: string;
+  organizationName: string;
   unreadNotifications?: number;
   onSearch?: (query: string) => void;
 }
@@ -28,10 +38,17 @@ interface TopBarProps {
 export function TopBar({
   userName,
   userAvatarUrl,
+  organizationName,
   unreadNotifications = 0,
   onSearch,
 }: TopBarProps) {
   const [query, setQuery] = useState('');
+  const [orgOpen, setOrgOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const orgOptions = useMemo(
+    () => ['Atlas BTP', organizationName, 'Sahara Infrastructure'],
+    [organizationName],
+  );
 
   useEffect(() => {
     if (!onSearch) return;
@@ -39,34 +56,122 @@ export function TopBar({
     return () => clearTimeout(timeout);
   }, [query, onSearch]);
 
+  async function handleSignOut() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  }
+
   return (
-    <header className="bg-neutral-0 flex h-16 items-center gap-4 border-b border-neutral-100 px-6">
-      <div className="relative w-full max-w-sm">
-        <MagnifyingGlassIcon
-          size={16}
-          className="pointer-events-none absolute inset-y-0 start-3 my-auto text-neutral-500"
-        />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Rechercher un chantier, un ouvrier, un véhicule…"
-          className="rounded-control bg-neutral-25 focus:border-accent-600 focus:bg-neutral-0 w-full border border-neutral-300 py-2 pe-3 ps-9 text-sm outline-none"
-        />
-      </div>
+    <header className="bg-neutral-25/92 sticky top-0 z-30 border-b border-neutral-100 backdrop-blur-xl">
+      <div className="flex h-20 items-center gap-4 px-6 lg:px-8">
+        <div className="relative">
+          <button
+            onClick={() => setOrgOpen((value) => !value)}
+            className="bg-neutral-0 hover:border-accent-200 group flex min-w-0 items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3 text-left shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors"
+          >
+            <div className="bg-accent-600 flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white">
+              {organizationName.charAt(0).toUpperCase()}
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-neutral-900">
+                {organizationName}
+              </div>
+              <div className="truncate text-xs text-neutral-500">Organization switcher</div>
+            </div>
+            <CaretDownIcon size={16} className="text-neutral-500" />
+          </button>
 
-      <div className="ms-auto flex items-center gap-4">
-        <button
-          aria-label="Notifications"
-          className="relative text-neutral-500 hover:text-neutral-900"
-        >
-          <BellIcon size={20} />
-          {unreadNotifications > 0 && (
-            <span className="bg-danger absolute -end-0.5 -top-0.5 h-2 w-2 rounded-full" />
+          {orgOpen && (
+            <div className="bg-neutral-0 absolute left-0 top-[76px] z-40 w-[320px] rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
+              <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                Switch organization
+              </div>
+              <div className="space-y-1">
+                {orgOptions.map((option) => (
+                  <button
+                    key={option}
+                    className={`hover:bg-neutral-25 flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left text-sm transition-colors ${
+                      option === organizationName
+                        ? 'bg-accent-50 text-accent-700'
+                        : 'text-neutral-900'
+                    }`}
+                    onClick={() => setOrgOpen(false)}
+                  >
+                    <span className="font-medium">{option}</span>
+                    {option === organizationName && (
+                      <span className="text-xs font-semibold">Current</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
-        </button>
+        </div>
 
-        <Avatar name={userName} imageUrl={userAvatarUrl} size={32} />
+        <div className="relative max-w-xl flex-1">
+          <MagnifyingGlassIcon
+            size={16}
+            className="pointer-events-none absolute inset-y-0 start-4 my-auto text-neutral-500"
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search projects, workers, vehicles, invoices..."
+            className="bg-neutral-0 focus:border-accent-500 w-full rounded-2xl border border-neutral-200 py-3 pe-4 ps-10 text-sm shadow-[0_4px_14px_rgba(17,19,24,0.04)] outline-none transition-colors"
+          />
+        </div>
+
+        <div className="ms-auto flex items-center gap-2 lg:gap-3">
+          <button
+            aria-label="Notifications"
+            className="bg-neutral-0 hover:border-accent-200 relative rounded-2xl border border-neutral-200 p-3 text-neutral-500 shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors hover:text-neutral-900"
+          >
+            <BellIcon size={19} />
+            {unreadNotifications > 0 && (
+              <span className="bg-danger absolute end-2 top-2 h-2 w-2 rounded-full" />
+            )}
+          </button>
+
+          <div className="relative">
+            <button
+              onClick={() => setProfileOpen((value) => !value)}
+              className="bg-neutral-0 hover:border-accent-200 flex items-center gap-3 rounded-2xl border border-neutral-200 px-3 py-2.5 shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors"
+            >
+              <Avatar name={userName} imageUrl={userAvatarUrl} size={34} />
+              <div className="hidden min-w-0 text-left md:block">
+                <div className="truncate text-sm font-semibold text-neutral-900">{userName}</div>
+                <div className="truncate text-xs text-neutral-500">Operations lead</div>
+              </div>
+              <CaretDownIcon size={15} className="text-neutral-500" />
+            </button>
+
+            {profileOpen && (
+              <div className="bg-neutral-0 absolute end-0 top-[58px] z-40 w-[272px] rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
+                <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Account
+                </div>
+                <button className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors">
+                  <UserCircleIcon size={18} className="text-neutral-500" />
+                  Profile settings
+                </button>
+                <button className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors">
+                  <NotepadIcon size={18} className="text-neutral-500" />
+                  Shortcuts
+                </button>
+                <Button
+                  variant="text"
+                  onClick={handleSignOut}
+                  className="text-danger hover:bg-danger/5 mt-1 flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-3"
+                >
+                  <SignOutIcon size={18} />
+                  Sign out
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </header>
   );

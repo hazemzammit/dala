@@ -15,6 +15,7 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
  * the row first (409, not a silent overwrite).
  */
 export const updateProjectSchema = createProjectSchema.partial().extend({
+  id: z.string().uuid(),
   version: z.number().int().positive(),
 });
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
