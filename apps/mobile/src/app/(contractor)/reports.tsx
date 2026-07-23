@@ -9,6 +9,7 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={ChartBarIcon}
+        illustration="mobile-analytics"
         title="Aucun rapport disponible"
         description="Vos rapports de performance apparaîtront ici."
       />

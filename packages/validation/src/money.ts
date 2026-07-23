@@ -44,8 +44,18 @@ export const requestMaterialSchema = z.object({
 });
 export type RequestMaterialInput = z.infer<typeof requestMaterialSchema>;
 
-export const requestAdvanceSchema = z.object({
-  amount: z.number().positive(),
-  reason: z.string().optional(),
-});
+/**
+ * Doc 01 §1.11.3 lists "advance creation" as mandatory for idempotency
+ * without distinguishing contractor-initiated vs. worker-initiated — this
+ * was missing `idempotencyKeySchema` even though createAdvanceSchema (the
+ * contractor-side twin of the same action) has it. A worker's request
+ * screen has the exact same double-tap/timeout-retry risk as the
+ * contractor's, so it needs the same key.
+ */
+export const requestAdvanceSchema = z
+  .object({
+    amount: z.number().positive(),
+    reason: z.string().optional(),
+  })
+  .merge(idempotencyKeySchema);
 export type RequestAdvanceInput = z.infer<typeof requestAdvanceSchema>;

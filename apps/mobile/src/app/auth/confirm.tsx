@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, YStack } from 'tamagui';
 
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -27,6 +28,7 @@ export default function AuthConfirmScreen() {
     async function verify() {
       if (!token_hash || !type) {
         setError('Lien invalide.');
+        haptics.error();
         return;
       }
 
@@ -34,6 +36,7 @@ export default function AuthConfirmScreen() {
 
       if (verifyError) {
         setError(verifyError.message);
+        haptics.error();
         return;
       }
 

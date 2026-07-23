@@ -1,6 +1,7 @@
 import { Stack } from 'expo-router';
-import { TamaguiProvider } from 'tamagui';
+import { TamaguiProvider, YStack } from 'tamagui';
 
+import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import tamaguiConfig from '@/lib/tamagui.config';
 
 /**
@@ -24,7 +25,18 @@ import tamaguiConfig from '@/lib/tamagui.config';
 export default function RootLayout() {
   return (
     <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-      <Stack screenOptions={{ headerShown: false }} />
+      <YStack flex={1}>
+        {/* Above the Stack, below the device status bar — visible across
+            auth, contractor, and worker screens alike. Deliberately not
+            `position: absolute`: it pushes content down rather than
+            floating over it, so it never covers a header/back button. */}
+        <OfflineBanner />
+        {/* headerShown: false only — no `animation` override here, so
+            expo-router keeps react-native-screens' native default stack
+            transition (slide-from-right on iOS, platform default on
+            Android) rather than an instant cut. */}
+        <Stack screenOptions={{ headerShown: false }} />
+      </YStack>
     </TamaguiProvider>
   );
 }

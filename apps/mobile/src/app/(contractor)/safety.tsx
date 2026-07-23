@@ -9,6 +9,7 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={ShieldWarningIcon}
+        illustration="warning"
         title="Aucun incident signalé"
         description="Les incidents de sécurité signalés apparaîtront ici."
       />

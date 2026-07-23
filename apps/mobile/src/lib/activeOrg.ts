@@ -40,3 +40,27 @@ export async function getActiveOrgId(): Promise<string | null> {
 
   return membership?.org_id ?? null;
 }
+
+/**
+ * Doc 01 §1.4 — this is a UX convenience only (e.g. hiding the "Nouvelle
+ * dépense" FAB for a Viewer, Doc 03 §3.10.3a), never the actual
+ * authorization boundary: every write this gates is independently
+ * enforced server-side by the matching `org_role_of(org_id) in
+ * ('owner','manager')` RLS policy, which still applies even if a client
+ * were modified to skip this check.
+ */
+export async function getMyOrgRole(orgId: string): Promise<'owner' | 'manager' | 'viewer' | null> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return null;
+
+  const { data } = await supabase
+    .from('organization_members')
+    .select('role')
+    .eq('org_id', orgId)
+    .eq('user_id', session.user.id)
+    .maybeSingle();
+
+  return (data?.role as 'owner' | 'manager' | 'viewer' | undefined) ?? null;
+}

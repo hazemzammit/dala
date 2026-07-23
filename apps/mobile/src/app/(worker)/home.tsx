@@ -1,11 +1,16 @@
 import type { AttendanceStatus } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
+import { ArrowsClockwiseIcon, MapPinIcon, SignOutIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
-import { ScrollView, Text, View, XStack, YStack } from 'tamagui';
+import { AnimatePresence, ScrollView, Text, View, XStack, YStack } from 'tamagui';
 
 import { AvatarStack } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { NumericText } from '@/components/ui/NumericText';
+import { SkeletonHero } from '@/components/ui/Skeleton';
+import { haptics } from '@/lib/haptics';
+import { cycleStartISO, todayISO } from '@/lib/salaryCycle';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -44,19 +49,6 @@ interface SalarySummary {
   grossThisWeek: number;
   advancesThisWeek: number;
   netThisWeek: number;
-}
-
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-function startOfWeekISO(): string {
-  const now = new Date();
-  const day = now.getDay(); // 0 = Sunday
-  const diff = day === 0 ? 6 : day - 1; // Monday-start week
-  const monday = new Date(now);
-  monday.setDate(now.getDate() - diff);
-  return monday.toISOString().slice(0, 10);
 }
 
 export default function WorkerHomeScreen() {
@@ -134,17 +126,23 @@ export default function WorkerHomeScreen() {
 
       // Doc 03 §4.1 — salary strip is "never empty," computed independently
       // of whether there's a mission today.
-      const weekStart = startOfWeekISO();
+      const weekStart = cycleStartISO();
       const { data: weekAttendance } = await supabase
         .from('attendance_records')
         .select('status')
         .eq('worker_id', worker.id)
         .gte('record_date', weekStart);
 
+      // Bug fix: this previously had no status filter, so pending and
+      // even rejected advance requests were counted as deductions against
+      // the worker's own displayed "net owed" — a worker could see their
+      // pay understated by a request that hadn't been approved (or had
+      // been turned down) yet.
       const { data: weekAdvances } = await supabase
         .from('advances')
         .select('amount')
         .eq('worker_id', worker.id)
+        .eq('status', 'approved')
         .gte('created_at', weekStart);
 
       const rate = worker.daily_rate ?? 0;
@@ -177,8 +175,10 @@ export default function WorkerHomeScreen() {
         .update({ actual_departure_time: new Date().toISOString(), confirmation_channel: 'app' })
         .eq('id', mission.assignmentId);
       if (error) throw error;
+      haptics.confirm();
       setState('departed');
     } catch {
+      haptics.error();
       Alert.alert('Erreur', "Impossible d'enregistrer votre départ. Réessayez.");
     } finally {
       setBusy(false);
@@ -202,8 +202,10 @@ export default function WorkerHomeScreen() {
         source: 'dispatch_checkin',
       });
       if (error) throw error;
+      haptics.confirm();
       setState('arrived');
     } catch {
+      haptics.error();
       Alert.alert('Erreur', "Impossible d'enregistrer votre arrivée. Réessayez.");
     } finally {
       setBusy(false);
@@ -219,8 +221,8 @@ export default function WorkerHomeScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} alignItems="center" justifyContent="center" backgroundColor="$neutral25">
-        <Text color="$neutral500">Chargement…</Text>
+      <YStack flex={1} backgroundColor="$neutral25">
+        <SkeletonHero />
       </YStack>
     );
   }
@@ -272,27 +274,46 @@ export default function WorkerHomeScreen() {
         )}
 
         <View marginTop="$5">
-          {mission && state === 'not_departed' && (
-            <Button onPress={handleDeparted} loading={busy}>
-              Je suis parti
-            </Button>
-          )}
-          {mission && state === 'departed' && (
-            <Button onPress={handleArrived} loading={busy}>
-              Je suis arrivé
-            </Button>
-          )}
-          {mission && state === 'arrived' && (
-            <Button onPress={handleUpdate} loading={busy}>
-              Envoyer un update
-            </Button>
+          {mission && state !== 'no_assignment' && (
+            <AnimatePresence>
+              {/* key={state} is what drives the crossfade — swapping the
+                  key unmounts the old icon+label and mounts the new one,
+                  and the 'crossfade' animation (tamagui.config.ts, a
+                  critically-damped 135ms spring) fades between them
+                  instead of a hard instant swap. */}
+              <YStack
+                key={state}
+                animation="crossfade"
+                enterStyle={{ opacity: 0 }}
+                exitStyle={{ opacity: 0 }}
+                opacity={1}
+              >
+                {state === 'not_departed' && (
+                  <Button icon={SignOutIcon} onPress={handleDeparted} loading={busy}>
+                    Je suis parti
+                  </Button>
+                )}
+                {state === 'departed' && (
+                  <Button icon={MapPinIcon} onPress={handleArrived} loading={busy}>
+                    Je suis arrivé
+                  </Button>
+                )}
+                {state === 'arrived' && (
+                  <Button icon={ArrowsClockwiseIcon} onPress={handleUpdate} loading={busy}>
+                    Envoyer un update
+                  </Button>
+                )}
+              </YStack>
+            </AnimatePresence>
           )}
         </View>
       </ScrollView>
 
       {/* Doc 05 §2.4 — salary strip pinned at the very bottom, never scrolls
           away, never empty even with no mission today. Sits above
-          WorkerBottomNav, which is rendered by (worker)/_layout.tsx. */}
+          WorkerBottomNav, which is rendered by (worker)/_layout.tsx.
+          NumericText applies tabular-nums so the four figures don't jitter
+          horizontally as their digit widths change day to day. */}
       {salary && (
         <YStack
           position="absolute"
@@ -303,11 +324,11 @@ export default function WorkerHomeScreen() {
           paddingHorizontal="$4"
           paddingVertical={12}
         >
-          <Text color="$neutral0" fontSize={13} textAlign="center">
+          <NumericText color="$neutral0" fontSize={13} textAlign="center">
             Cette semaine : {salary.daysThisWeek}j · {salary.grossThisWeek.toFixed(0)} TND · Avance
             reçue : {salary.advancesThisWeek.toFixed(0)} TND · Net : {salary.netThisWeek.toFixed(0)}{' '}
             TND
-          </Text>
+          </NumericText>
         </YStack>
       )}
     </YStack>

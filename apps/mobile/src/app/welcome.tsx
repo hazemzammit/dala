@@ -1,12 +1,12 @@
-import { color } from '@dala/design-tokens';
 import { router } from 'expo-router';
 import * as SecureStore from 'expo-secure-store';
-import { TruckIcon, WalletIcon, WifiSlashIcon, type Icon } from 'phosphor-react-native';
 import { useRef, useState } from 'react';
 import { Dimensions, NativeScrollEvent, NativeSyntheticEvent, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { Illustration } from '@/components/ui/Illustration';
+import type { IllustrationName } from '@/components/ui/illustrations';
 
 /**
  * apps/mobile/src/app/welcome.tsx
@@ -20,19 +20,19 @@ export const WELCOME_SEEN_KEY = 'dala_welcome_seen';
 
 const { width } = Dimensions.get('window');
 
-const SLIDES: { icon: Icon; title: string; body: string }[] = [
+const SLIDES: { illustration: IllustrationName; title: string; body: string }[] = [
   {
-    icon: TruckIcon,
+    illustration: 'route-planning',
     title: 'Planifiez vos dispatchs en quelques taps',
     body: "Assignez ouvriers et véhicules à vos chantiers, envoyez les instructions par l'app ou WhatsApp.",
   },
   {
-    icon: WalletIcon,
+    illustration: 'mobile-pay',
     title: 'Gardez vos avances et salaires à jour',
     body: 'Suivez les avances données, calculez le net dû, marquez les cycles comme payés en un tap.',
   },
   {
-    icon: WifiSlashIcon,
+    illustration: 'connection-lost',
     title: 'Fonctionne même sans réseau',
     body: 'Continuez à travailler sur le chantier — vos données se synchronisent dès que la connexion revient.',
   },
@@ -73,36 +73,24 @@ export default function WelcomeScreen() {
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
       >
-        {SLIDES.map((slide, i) => {
-          const SlideIcon = slide.icon;
-          return (
-            <YStack
-              key={i}
-              width={width}
-              alignItems="center"
-              justifyContent="center"
-              paddingHorizontal="$6"
-              gap="$4"
-            >
-              <View
-                width={96}
-                height={96}
-                borderRadius={999}
-                backgroundColor="$accent50"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <SlideIcon size={44} color={color.accent[600]} />
-              </View>
-              <Text fontFamily="$display" fontSize={22} fontWeight="600" textAlign="center">
-                {slide.title}
-              </Text>
-              <Text color="$neutral500" fontSize={15.5} textAlign="center">
-                {slide.body}
-              </Text>
-            </YStack>
-          );
-        })}
+        {SLIDES.map((slide, i) => (
+          <YStack
+            key={i}
+            width={width}
+            alignItems="center"
+            justifyContent="center"
+            paddingHorizontal="$6"
+            gap="$4"
+          >
+            <Illustration name={slide.illustration} size={220} />
+            <Text fontFamily="$display" fontSize={22} fontWeight="600" textAlign="center">
+              {slide.title}
+            </Text>
+            <Text color="$neutral500" fontSize={15.5} textAlign="center">
+              {slide.body}
+            </Text>
+          </YStack>
+        ))}
       </ScrollView>
 
       <XStack justifyContent="center" gap="$2" marginBottom="$4">

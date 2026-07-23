@@ -2,12 +2,16 @@ import { router } from 'expo-router';
 import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { Illustration } from '@/components/ui/Illustration';
 
 /** Doc 01 §1.3.3 step 5-6 — see the web equivalent's comment for the
  *  read-only-until-verified reasoning; same applies here. */
 export default function CheckEmailScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center" marginBottom="$2">
+        <Illustration name="mail-sent" size={180} />
+      </YStack>
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Vérifiez votre e-mail
       </Text>

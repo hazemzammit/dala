@@ -1,4 +1,5 @@
 # Dala — Cahier des Charges v4.0
+
 ## Document 03 — Screen-by-Screen Breakdown: Mobile App
 
 > Covers both roles that live on mobile: **Contractor** (owner/manager/
@@ -69,7 +70,7 @@ updated" step needed, since the check is stateless per launch.
 
 **Entry points**: first cold start on a device only; never shown again after dismissal (persisted locally).
 
-**Layout & elements**: 3 swipeable slides (dispatch, advances, offline-first messaging), dot pagination, "Passer" (skip) text button top-right, "Suivant" primary button, final slide has two buttons: "Créer un compte" and "J'ai déjà un compte."
+**Layout & elements**: 3 swipeable slides (dispatch — `route-planning` illustration, advances — `mobile-pay` illustration, offline-first messaging — `connection-lost` illustration; illustration registry and convention in Doc 05 §1.5), dot pagination, "Passer" (skip) text button top-right, "Suivant" primary button, final slide has two buttons: "Créer un compte" and "J'ai déjà un compte."
 
 **Primary actions**: → Sign Up (§3.3) or → Log In (§3.6).
 
@@ -89,28 +90,31 @@ point — the single most consequential screen in this rework.
 
 **Fields & validation**:
 
-| Field | Type | Rules | Error copy |
-|---|---|---|---|
-| Nom complet | text | Required, 2–80 chars | "Merci d'indiquer votre nom complet." |
-| Email | email | Required, valid format, checked for existing-account collision server-side | "Cette adresse e-mail n'est pas valide." / on collision: "Un compte existe déjà avec cet e-mail. Se connecter ?" (links to Login) |
-| Téléphone | tel, TN format | Required, `+216` prefix auto-applied, 8 digits | "Numéro de téléphone invalide." |
-| Mot de passe | password, masked with show/hide toggle | Min 10 characters. Live zxcvbn strength meter (Faible/Moyen/Fort) shown, not a hard blocker below "Fort." | "Le mot de passe doit contenir au moins 10 caractères." |
-| Confirmer le mot de passe | password | Must match | "Les mots de passe ne correspondent pas." |
-| Nom de l'entreprise | text | Required, 2–100 chars | "Merci d'indiquer le nom de votre entreprise." |
-| Type d'activité | select (plomberie / électricité / vacuum central / maçonnerie / autre) | Required | "Merci de sélectionner votre activité." |
-| J'accepte les CGU et la politique de confidentialité | checkbox | Must be checked | "Merci d'accepter les conditions d'utilisation." |
+| Field                                                | Type                                                                   | Rules                                                                                                     | Error copy                                                                                                                        |
+| ---------------------------------------------------- | ---------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Nom complet                                          | text                                                                   | Required, 2–80 chars                                                                                      | "Merci d'indiquer votre nom complet."                                                                                             |
+| Email                                                | email                                                                  | Required, valid format, checked for existing-account collision server-side                                | "Cette adresse e-mail n'est pas valide." / on collision: "Un compte existe déjà avec cet e-mail. Se connecter ?" (links to Login) |
+| Téléphone                                            | tel, TN format                                                         | Required, `+216` prefix auto-applied, 8 digits                                                            | "Numéro de téléphone invalide."                                                                                                   |
+| Mot de passe                                         | password, masked with show/hide toggle                                 | Min 10 characters. Live zxcvbn strength meter (Faible/Moyen/Fort) shown, not a hard blocker below "Fort." | "Le mot de passe doit contenir au moins 10 caractères."                                                                           |
+| Confirmer le mot de passe                            | password                                                               | Must match                                                                                                | "Les mots de passe ne correspondent pas."                                                                                         |
+| Nom de l'entreprise                                  | text                                                                   | Required, 2–100 chars                                                                                     | "Merci d'indiquer le nom de votre entreprise."                                                                                    |
+| Type d'activité                                      | select (plomberie / électricité / vacuum central / maçonnerie / autre) | Required                                                                                                  | "Merci de sélectionner votre activité."                                                                                           |
+| J'accepte les CGU et la politique de confidentialité | checkbox                                                               | Must be checked                                                                                           | "Merci d'accepter les conditions d'utilisation."                                                                                  |
 
 **Primary actions**:
+
 - "Créer mon compte" → submits, disables button + shows inline spinner, calls `auth.signUp` (Doc 01 §1.3.3) then creates `profiles`/`organizations`/`organization_members` in one transaction → routes to §3.4 "Check your email."
 - "J'ai déjà un compte ?" → Login (§3.6).
 
 **States**:
+
 - Idle / filling.
 - Submitting (button disabled, spinner, all fields disabled to prevent double-submit).
 - Server error (network, or unexpected 500) → inline banner: "Une erreur est survenue. Réessayez." with fields preserved, not cleared.
 - Field-level validation errors shown inline, on blur and on submit attempt.
 
 **Edge cases**:
+
 - Email already registered but unverified → same collision message as above (don't reveal password-based details, just route toward login/verification).
 - User backgrounds the app mid-fill → form state persisted in memory for the session, not across app restarts (no draft persistence to avoid storing a partially-typed password anywhere durable).
 - Slow/offline network on submit → "Vérifiez votre connexion et réessayez," button re-enabled.
@@ -126,6 +130,7 @@ point — the single most consequential screen in this rework.
 **Layout & elements**: illustration, headline "Vérifiez votre boîte mail," body text with the submitted email address, "Renvoyer l'e-mail" text button (rate-limited), "Continuer sans vérifier" text button (routes into a read-only Home state), "Modifier l'adresse e-mail" link (routes back to a minimal edit-email flow).
 
 **Primary actions**:
+
 - "Renvoyer l'e-mail" → resend, disabled for 60 seconds after each tap with a visible countdown, capped at 5 resends/hour.
 - "Continuer sans vérifier" → Home, but write actions (create project, invite worker, etc.) are blocked with a bottom-sheet prompt to verify first.
 
@@ -145,12 +150,13 @@ point — the single most consequential screen in this rework.
 
 **Fields & validation**:
 
-| Field | Type | Rules | Error copy |
-|---|---|---|---|
-| Email | email | Required | "Merci de saisir votre e-mail." |
+| Field        | Type     | Rules    | Error copy                            |
+| ------------ | -------- | -------- | ------------------------------------- |
+| Email        | email    | Required | "Merci de saisir votre e-mail."       |
 | Mot de passe | password | Required | "Merci de saisir votre mot de passe." |
 
 **Primary actions**:
+
 - "Se connecter" → auth attempt → success routes per §3.1's session logic; failure shows a single generic error (never "wrong password" specifically, to avoid account enumeration): "E-mail ou mot de passe incorrect."
 - Biometric icon → device biometric prompt → on success, retrieves the stored refresh token and logs in without re-typing credentials.
 - "Mot de passe oublié ?" → §3.6.
@@ -192,6 +198,7 @@ point — the single most consequential screen in this rework.
 **Primary actions**: "Réinitialiser" → on success, all existing sessions for the account are revoked server-side, user is routed to Login with a success banner: "Mot de passe mis à jour. Connectez-vous avec votre nouveau mot de passe."
 
 **Edge cases**:
+
 - Expired token (>1 hour old) → "Ce lien a expiré. Demandez-en un nouveau." with a direct link back to §3.6.
 - Already-used token → same expired-state copy (tokens are single-use).
 
@@ -217,6 +224,7 @@ email-based flow regardless of which channel it arrived through.
 **Primary actions**: "Activer mon compte" → creates `auth.users` + `profiles`, sets `workers.user_id`, marks `worker_invitations.status = 'accepted'` → routes directly to Worker Home (§4.1), no separate email-verification gate (Doc 01 §1.3.4's rationale: the invite channel is itself the identity proof).
 
 **Edge cases**:
+
 - Expired invite token (>7 days) → "Cette invitation a expiré. Demandez à votre responsable de vous en envoyer une nouvelle."
 - Worker already has an account (re-clicked an old invite) → routes straight to Login pre-filled with their phone/email.
 
@@ -241,7 +249,7 @@ anything" hub (Doc 00 §0.6).
 
 ## 3.9a Vue d'ensemble (cross-org rollup)
 
-**Purpose**: a combined glance across every organization the user *owns* — only shown/reachable when the account owns 2+ orgs (Doc 01 §1.17).
+**Purpose**: a combined glance across every organization the user _owns_ — only shown/reachable when the account owns 2+ orgs (Doc 01 §1.17).
 
 **Entry points**: pinned item in the org switcher (§3.22.2a), above the individual org list.
 
@@ -256,27 +264,30 @@ anything" hub (Doc 00 §0.6).
 ## 3.10 Projects
 
 ### 3.10.1 Projects list
+
 **Purpose**: all chantiers the org owns or has been invited onto.
 **Layout**: filter chips (Tous / Actifs / Terminés / Invités), search bar, card list — each card shows project name, client name, progress %, budget-consumed bar, lead-org badge if it's a project this org was invited onto rather than owns.
 **Primary action**: FAB "Nouveau chantier" → §3.10.3. Tap a card → §3.10.2.
-**Empty state**: "Aucun chantier pour le moment" + CTA.
+**Empty state**: "Aucun chantier pour le moment" + CTA, `under-construction` illustration (Doc 05 §1.5 — every empty state in the app follows this illustration+headline+CTA pattern via the shared `EmptyState` component; not re-specified screen by screen below where it wasn't already called out).
 
 ### 3.10.2 Project detail
+
 **Purpose**: hub for everything scoped to one chantier.
 **Layout**: header (name, client, address, progress ring), tab bar (Aperçu / Dispatch / Dépenses / Matériaux / Journal / Sécurité / Équipe), each tab deep-links into the relevant module pre-filtered to this project.
 **Edge cases**: for a project this org is a trade participant on (not the lead), the Private-layer tabs (payroll-adjacent data) are hidden per the visibility model (Doc 02 §2.8) — not shown-then-blocked, simply absent from the tab bar.
 
 ### 3.10.3 Create / Edit project
+
 **Fields & validation**:
 
-| Field | Type | Rules |
-|---|---|---|
-| Nom du chantier | text | Required, 2–100 chars |
-| Client | text or link to existing client | Required |
-| Adresse | text + map pin | Required |
-| Date de début | date picker | Required, cannot be >2 years in the past |
-| Budget total | numeric, TND | Optional, must be ≥0 |
-| Type de projet | select | Required |
+| Field           | Type                            | Rules                                    |
+| --------------- | ------------------------------- | ---------------------------------------- |
+| Nom du chantier | text                            | Required, 2–100 chars                    |
+| Client          | text or link to existing client | Required                                 |
+| Adresse         | text + map pin                  | Required                                 |
+| Date de début   | date picker                     | Required, cannot be >2 years in the past |
+| Budget total    | numeric, TND                    | Optional, must be ≥0                     |
+| Type de projet  | select                          | Required                                 |
 
 **Primary action**: "Enregistrer" → validates → writes → routes to Project Detail.
 
@@ -288,13 +299,13 @@ anything" hub (Doc 00 §0.6).
 
 **Fields & validation (new expense)**:
 
-| Field | Type | Rules | Error copy |
-|---|---|---|---|
-| Catégorie | select (Matériaux/Carburant/Sous-traitance/Autre) | Required | "Merci de sélectionner une catégorie." |
-| Montant (TND) | numeric | Required, >0 | "Merci d'indiquer un montant valide." |
-| Description | text | Optional, max 200 chars | — |
-| Reçu | photo | Optional, same compression pipeline as site logs (Doc 02 §2.5) | — |
-| Date | date picker | Defaults to today, cannot be in the future | "La date ne peut pas être dans le futur." |
+| Field         | Type                                              | Rules                                                          | Error copy                                |
+| ------------- | ------------------------------------------------- | -------------------------------------------------------------- | ----------------------------------------- |
+| Catégorie     | select (Matériaux/Carburant/Sous-traitance/Autre) | Required                                                       | "Merci de sélectionner une catégorie."    |
+| Montant (TND) | numeric                                           | Required, >0                                                   | "Merci d'indiquer un montant valide."     |
+| Description   | text                                              | Optional, max 200 chars                                        | —                                         |
+| Reçu          | photo                                             | Optional, same compression pipeline as site logs (Doc 02 §2.5) | —                                         |
+| Date          | date picker                                       | Defaults to today, cannot be in the future                     | "La date ne peut pas être dans le futur." |
 
 **Primary action**: "Enregistrer" → writes a `project_expenses` row → returns to the list, consumed-% bar updates immediately.
 
@@ -338,19 +349,21 @@ guess here means the wrong worker gets sent to the wrong site.
 ## 3.13 Worker roster & invitations
 
 ### 3.13.1 Worker list
+
 Card per worker: name, trade, status badge (Actif/Invitation en attente/Inactif), tap → detail.
 
 ### 3.13.2 Add / invite worker
+
 **Fields & validation**:
 
-| Field | Type | Rules | Error copy |
-|---|---|---|---|
-| Nom complet | text | Required | "Merci d'indiquer le nom du travailleur." |
-| Email | email | Required — this is the account identity and primary invite channel | "Merci d'indiquer une adresse e-mail valide." |
-| Téléphone | tel | Required — used for the WhatsApp/SMS notification convenience copy, not for auth | "Numéro de téléphone requis." |
-| Métier | text/select | Optional | — |
-| Taux journalier (TND) | numeric | Required, >0 | "Merci d'indiquer un taux journalier valide." |
-| Canal de notification | select: WhatsApp / SMS / aucun (email uniquement) | The invite link is always emailed; this only controls whether a courtesy heads-up message is also sent | — |
+| Field                 | Type                                              | Rules                                                                                                  | Error copy                                    |
+| --------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | --------------------------------------------- |
+| Nom complet           | text                                              | Required                                                                                               | "Merci d'indiquer le nom du travailleur."     |
+| Email                 | email                                             | Required — this is the account identity and primary invite channel                                     | "Merci d'indiquer une adresse e-mail valide." |
+| Téléphone             | tel                                               | Required — used for the WhatsApp/SMS notification convenience copy, not for auth                       | "Numéro de téléphone requis."                 |
+| Métier                | text/select                                       | Optional                                                                                               | —                                             |
+| Taux journalier (TND) | numeric                                           | Required, >0                                                                                           | "Merci d'indiquer un taux journalier valide." |
+| Canal de notification | select: WhatsApp / SMS / aucun (email uniquement) | The invite link is always emailed; this only controls whether a courtesy heads-up message is also sent | —                                             |
 
 **Primary action**: "Envoyer l'invitation" → creates `workers` + `worker_invitations` rows, dispatches via chosen channel → worker lands on §3.8 when they open the link.
 
@@ -439,13 +452,13 @@ in-app square crop tool → uploads), then a plain field list below.
 
 **Fields & validation**:
 
-| Field | Type | Rules | Behavior on change |
-|---|---|---|---|
-| Avatar | image | Square crop enforced client-side, max 512×512 after resize | Uploads immediately on crop-confirm, no separate "save" needed — matches the low-friction pattern of everything else in §1.3.12. |
-| Nom complet | text | Required, 2–80 chars | Saves inline on blur. |
-| Téléphone | tel | Required, TN format | Does **not** save inline — opens a 6-digit SMS code confirmation sheet (§1.3.12) before the new number takes effect; the old number stays active until confirmed. |
-| Email | email | Required, valid format | Does **not** save inline — shows "Un e-mail de confirmation a été envoyé à {{new email}} et à {{old email}}. Le changement prendra effet une fois confirmé." The field itself reverts to showing the old (still-active) email until the new one is confirmed. |
-| Langue | select (Français/العربية/English) | — | Applies immediately, no confirmation needed. |
+| Field       | Type                              | Rules                                                      | Behavior on change                                                                                                                                                                                                                                            |
+| ----------- | --------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Avatar      | image                             | Square crop enforced client-side, max 512×512 after resize | Uploads immediately on crop-confirm, no separate "save" needed — matches the low-friction pattern of everything else in §1.3.12.                                                                                                                              |
+| Nom complet | text                              | Required, 2–80 chars                                       | Saves inline on blur.                                                                                                                                                                                                                                         |
+| Téléphone   | tel                               | Required, TN format                                        | Does **not** save inline — opens a 6-digit SMS code confirmation sheet (§1.3.12) before the new number takes effect; the old number stays active until confirmed.                                                                                             |
+| Email       | email                             | Required, valid format                                     | Does **not** save inline — shows "Un e-mail de confirmation a été envoyé à {{new email}} et à {{old email}}. Le changement prendra effet une fois confirmé." The field itself reverts to showing the old (still-active) email until the new one is confirmed. |
+| Langue      | select (Français/العربية/English) | —                                                          | Applies immediately, no confirmation needed.                                                                                                                                                                                                                  |
 
 **Copy for phone re-verification sheet**: "Confirmez votre nouveau
 numéro. Un code à 6 chiffres a été envoyé par SMS." — 5-minute expiry,
@@ -461,19 +474,19 @@ numéro. Un code à 6 chiffres a été envoyé par SMS." — 5-minute expiry,
 
 **Fields & validation**:
 
-| Field | Type | Rules | Who can edit |
-|---|---|---|---|
-| Logo | image | Max 3:1 aspect box, transparent PNG recommended (copy hint shown), stored full-res for print-quality report exports | Owner, Manager |
-| Nom de l'entreprise | text | Required, 2–100 chars | Owner, Manager |
-| Type d'activité | select | Required | Owner, Manager |
-| Adresse | text | Optional | Owner, Manager |
-| Téléphone de contact | tel | Optional | Owner, Manager |
-| Email de contact | email | Optional — this is the org's public contact address shown on client-facing reports, distinct from any individual member's login email | Owner, Manager |
-| Matricule fiscal | text | Optional for now (Doc 01 §1.3.13 — exact format validation pending accountant/lawyer review), but flagged with a "Requis pour facturer" hint | **Owner only** |
-| Numéro RC | text | Optional for now, same caveat | **Owner only** |
+| Field                | Type   | Rules                                                                                                                                        | Who can edit   |
+| -------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
+| Logo                 | image  | Max 3:1 aspect box, transparent PNG recommended (copy hint shown), stored full-res for print-quality report exports                          | Owner, Manager |
+| Nom de l'entreprise  | text   | Required, 2–100 chars                                                                                                                        | Owner, Manager |
+| Type d'activité      | select | Required                                                                                                                                     | Owner, Manager |
+| Adresse              | text   | Optional                                                                                                                                     | Owner, Manager |
+| Téléphone de contact | tel    | Optional                                                                                                                                     | Owner, Manager |
+| Email de contact     | email  | Optional — this is the org's public contact address shown on client-facing reports, distinct from any individual member's login email        | Owner, Manager |
+| Matricule fiscal     | text   | Optional for now (Doc 01 §1.3.13 — exact format validation pending accountant/lawyer review), but flagged with a "Requis pour facturer" hint | **Owner only** |
+| Numéro RC            | text   | Optional for now, same caveat                                                                                                                | **Owner only** |
 
 **Blocking prompt (only place this screen ever blocks anything)**: if
-an owner navigates here *from* a blocked invoice/report-generation
+an owner navigates here _from_ a blocked invoice/report-generation
 attempt (§1.3.13), the Matricule Fiscal and Logo fields are
 highlighted with a banner: "Ces informations sont nécessaires pour
 générer des documents officiels."
@@ -495,10 +508,10 @@ Créer une nouvelle entreprise."
 
 **"Create organization" form** (Doc 01 §1.3.13's flow):
 
-| Field | Type | Rules |
-|---|---|---|
-| Nom de l'entreprise | text | Required, 2–100 chars |
-| Type d'activité | select | Required |
+| Field               | Type   | Rules                 |
+| ------------------- | ------ | --------------------- |
+| Nom de l'entreprise | text   | Required, 2–100 chars |
+| Type d'activité     | select | Required              |
 
 **Primary action**: "Créer" → creates the org, sets the user as owner, sets it as the new `active_org_id`, dismisses the sheet, and every screen re-scopes to the new (empty) org — landing on Home's empty state (§3.9) prompting "Créez votre premier chantier," exactly like a brand-new sign-up would see, since a freshly created second org is genuinely empty.
 
@@ -535,9 +548,15 @@ gets an account changed (§3.8).
 **Layout & elements**: today's mission card (site name, address, vehicle, teammate(s), departure time, tools to bring), the primary action button (state machine below), a compact salary summary strip ("Cette semaine : 4 jours · 200 TND · Avance reçue : 50 TND · Net : 150 TND").
 
 **Primary action button — state machine**:
+
 1. **"Je suis parti"** (default state) → one tap → flips to state 2, updates the contractor's live dispatch board to "En route · {{time}}."
 2. **"Je suis arrivé"** → one tap → flips to state 3, updates the live board to "Sur place · {{time}}."
 3. **"Envoyer un update"** → opens Update Chantier (§4.2).
+
+**Implemented**: the label+icon change between states is a cross-fade
+(Doc 05 §1.4 `crossfade` token), never a hard instant swap. A light
+confirm haptic fires on each successful departure/arrival write, an
+error haptic on a failed one (Doc 05 §1.4a).
 
 **States**: no assignment today → home shows "Aucune mission aujourd'hui" with the salary summary strip still visible (that part is never empty).
 
@@ -569,12 +588,12 @@ small. GPS/EXIF stripping (Doc 01 §1.3.11) happens in the same pass.
 
 **Fields & validation**:
 
-| Field | Type | Rules |
-|---|---|---|
-| Article | text | Required |
-| Quantité | numeric | Required, >0 |
-| Urgence | toggle (Normal/Urgent) | Defaults to Normal |
-| Note | text | Optional, max 200 chars |
+| Field    | Type                   | Rules                   |
+| -------- | ---------------------- | ----------------------- |
+| Article  | text                   | Required                |
+| Quantité | numeric                | Required, >0            |
+| Urgence  | toggle (Normal/Urgent) | Defaults to Normal      |
+| Note     | text                   | Optional, max 200 chars |
 
 **Primary action**: "Envoyer la demande" → push notification to the contractor (§3.15) → status visible to the worker as En attente/Approuvé/Refusé on a small history list below the form.
 

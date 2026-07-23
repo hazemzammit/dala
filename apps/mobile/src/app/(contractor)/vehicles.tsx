@@ -12,8 +12,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -105,6 +107,7 @@ export default function VehiclesScreen() {
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      haptics.error();
       return;
     }
 
@@ -145,18 +148,28 @@ export default function VehiclesScreen() {
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      haptics.error();
     } finally {
       setSaving(false);
     }
   }
 
-  if (!loading && vehicles.length === 0) {
+  if (loading) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <SkeletonList rows={4} />
+      </YStack>
+    );
+  }
+
+  if (vehicles.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={CarIcon}
+          illustration="destination"
           title="Aucun véhicule"
-          description="Ajoutez votre premier véhicule pour commencer à planifier vos dispatchs."
+          description="Ajoutez votre premier véhicule pour commencer à planifier vos dispatchs. Utilisez le bouton + ci-dessous."
         />
         <FAB icon={PlusIcon} accessibilityLabel="Ajouter un véhicule" onPress={openAdd} />
         {renderSheet()}

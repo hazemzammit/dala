@@ -9,6 +9,7 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={ImageIcon}
+        illustration="organize-photos"
         title="Aucune photo de chantier"
         description="Le journal photo de vos chantiers apparaîtra ici."
       />

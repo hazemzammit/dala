@@ -1,9 +1,8 @@
-import { color } from '@dala/design-tokens';
-import { ArrowSquareOutIcon } from 'phosphor-react-native';
 import { Linking, Platform } from 'react-native';
 import { Text, View, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { Illustration } from '@/components/ui/Illustration';
 
 /**
  * apps/mobile/src/app/forced-update.tsx
@@ -33,16 +32,7 @@ export default function ForcedUpdateScreen() {
       padding="$4"
       gap="$4"
     >
-      <View
-        width={72}
-        height={72}
-        borderRadius={999}
-        backgroundColor="$accent50"
-        alignItems="center"
-        justifyContent="center"
-      >
-        <ArrowSquareOutIcon size={32} color={color.accent[600]} />
-      </View>
+      <Illustration name="maintenance" size={180} />
 
       <Text fontFamily="$display" fontSize={23} fontWeight="600" textAlign="center">
         Mise à jour requise

@@ -4,7 +4,9 @@ import {
   CarIcon,
   ChartBarIcon,
   ClipboardTextIcon,
+  CoinsIcon,
   GearIcon,
+  HandCoinsIcon,
   HandshakeIcon,
   ImageIcon,
   PackageIcon,
@@ -28,6 +30,8 @@ import { Text, View, XStack, YStack } from 'tamagui';
 const ITEMS: { href: string; label: string; icon: Icon }[] = [
   { href: '/vehicles', label: 'Véhicules', icon: CarIcon },
   { href: '/pointage', label: 'Pointage', icon: ClipboardTextIcon },
+  { href: '/advances', label: 'Avances & paie', icon: HandCoinsIcon },
+  { href: '/expenses', label: 'Dépenses', icon: CoinsIcon },
   { href: '/materials', label: 'Matériaux', icon: PackageIcon },
   { href: '/journal', label: 'Journal', icon: ImageIcon },
   { href: '/safety', label: 'Sécurité', icon: ShieldWarningIcon },

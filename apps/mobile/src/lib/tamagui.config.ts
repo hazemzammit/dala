@@ -6,13 +6,49 @@
  * apps/web/src/lib/theme.ts — both wrap @dala/design-tokens, the single
  * source of truth for every color/spacing/radius value in the product.)
  */
-import { color, radius } from '@dala/design-tokens';
+import { color, motion, radius } from '@dala/design-tokens';
+import { createAnimations } from '@tamagui/animations-react-native';
 import { config as tamaguiDefaultConfig } from '@tamagui/config';
 import { createTamagui } from 'tamagui';
 
+/**
+ * `@dala/design-tokens`' `motion.microInteractionMs` (135ms) is the single
+ * source of truth for every button-press / label-crossfade spring in the
+ * app — defined there for Doc 05 parity with web, but unused until now.
+ * `press` and `crossfade` are two damping profiles at the same duration:
+ * `press` has a touch of overshoot (springy scale-back), `crossfade` is
+ * critically damped (no bounce — a label swapping under a fade shouldn't
+ * wobble). `screenTransition` maps to `motion.screenTransitionMs` (220ms)
+ * for anything that isn't a native stack transition (e.g. a custom
+ * modal/sheet reveal).
+ */
+const animations = createAnimations({
+  press: {
+    type: 'spring',
+    damping: 18,
+    mass: 1,
+    stiffness: 260,
+    duration: motion.microInteractionMs * 10, // ~1350ms fallback cap; spring settles well before this
+  },
+  crossfade: {
+    type: 'spring',
+    damping: 26,
+    mass: 1,
+    stiffness: 300,
+    duration: motion.microInteractionMs * 10,
+  },
+  screenTransition: {
+    type: 'spring',
+    damping: 22,
+    mass: 1,
+    stiffness: 180,
+    duration: motion.screenTransitionMs * 10,
+  },
+});
 
 const dalaConfig = createTamagui({
   ...tamaguiDefaultConfig,
+  animations,
   tokens: {
     ...tamaguiDefaultConfig.tokens,
     color: {

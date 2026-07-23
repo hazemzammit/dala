@@ -9,6 +9,7 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={HandshakeIcon}
+        illustration="agreement"
         title="Aucun client connecté"
         description="Invitez vos clients à suivre l'avancement de leur chantier."
       />

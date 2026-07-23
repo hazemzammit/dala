@@ -4,10 +4,10 @@ import { useState } from 'react';
 import { Text, YStack } from 'tamagui';
 import { z } from 'zod';
 
-
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 const newPasswordSchema = z.object({ new_password: passwordSchema });
@@ -26,6 +26,7 @@ export default function ResetPasswordScreen() {
     const parsed = newPasswordSchema.safeParse({ new_password: password });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Mot de passe invalide.');
+      haptics.error();
       return;
     }
 
@@ -37,6 +38,7 @@ export default function ResetPasswordScreen() {
     if (updateError) {
       setLoading(false);
       setError(updateError.message);
+      haptics.error();
       return;
     }
 

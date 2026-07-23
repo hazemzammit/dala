@@ -1,3 +1,5 @@
+import { color as tokenColor } from '@dala/design-tokens';
+import type { Icon } from 'phosphor-react-native';
 import { Spinner, styled, Text, XStack } from 'tamagui';
 import type { GetProps } from 'tamagui';
 
@@ -18,7 +20,8 @@ const StyledButton = styled(XStack, {
   paddingHorizontal: 16,
   alignItems: 'center',
   justifyContent: 'center',
-  pressStyle: { opacity: 0.85 },
+  animation: 'press',
+  pressStyle: { opacity: 0.85, scale: 0.96 },
 
   variants: {
     variant: {
@@ -51,10 +54,22 @@ const textColor: Record<string, string> = {
   text: '$accent600',
 };
 
+// Phosphor's Icon `color` prop needs a real color value, not a Tamagui
+// token string — textColor above works for Text because Tamagui resolves
+// token strings there, but Icon doesn't go through that layer.
+const iconColor: Record<string, string> = {
+  primary: tokenColor.neutral[0],
+  secondary: tokenColor.neutral[900],
+  text: tokenColor.accent[600],
+};
+
 type ButtonProps = GetProps<typeof StyledButton> & {
   loading?: boolean;
   onPress?: () => void;
   children: string;
+  /** Rendered before the label — e.g. the worker check-in state-machine
+   * button, so a state change reads as icon+label together, not text alone. */
+  icon?: Icon;
 };
 
 export function Button({
@@ -62,6 +77,7 @@ export function Button({
   disabled,
   children,
   variant = 'primary',
+  icon: IconComponent,
   ...props
 }: ButtonProps) {
   return (
@@ -69,14 +85,20 @@ export function Button({
       variant={variant}
       disabled={disabled || loading}
       opacity={disabled || loading ? 0.6 : 1}
+      gap="$2"
       {...props}
     >
       {loading ? (
         <Spinner color={variant === 'primary' ? 'white' : '$accent600'} />
       ) : (
-        <Text color={textColor[variant as string]} fontSize={15.5} fontWeight="500">
-          {children}
-        </Text>
+        <>
+          {IconComponent && (
+            <IconComponent size={18} weight="bold" color={iconColor[variant as string]} />
+          )}
+          <Text color={textColor[variant as string]} fontSize={15.5} fontWeight="500">
+            {children}
+          </Text>
+        </>
       )}
     </StyledButton>
   );

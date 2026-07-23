@@ -6,6 +6,7 @@ import { ScrollView, Text, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -35,6 +36,7 @@ export default function SignUpScreen() {
     const parsed = signUpSchema.safeParse(form);
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      haptics.error();
       return;
     }
 
@@ -47,6 +49,7 @@ export default function SignUpScreen() {
 
     if (fnError || data?.error) {
       setError(data?.error ?? fnError?.message ?? 'Impossible de créer le compte.');
+      haptics.error();
       return;
     }
 

@@ -9,7 +9,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -95,6 +97,7 @@ export default function PointageScreen() {
     const entries = Object.entries(statuses).filter(([, status]) => status !== undefined);
     if (entries.length === 0) {
       Alert.alert('Aucune modification', 'Sélectionnez au moins un statut avant de valider.');
+      haptics.error();
       return;
     }
 
@@ -109,9 +112,11 @@ export default function PointageScreen() {
       }));
       const { error } = await supabase.from('attendance_records').insert(rows);
       if (error) throw error;
+      haptics.confirm();
       Alert.alert('Pointage enregistré', `${rows.length} travailleur(s) mis à jour.`);
       router.back();
     } catch (e: any) {
+      haptics.error();
       Alert.alert('Erreur', e?.message ?? "Impossible d'enregistrer le pointage.");
     } finally {
       setSaving(false);
@@ -126,11 +131,20 @@ export default function PointageScreen() {
     setStatuses(next);
   }
 
-  if (!loading && workers.length === 0) {
+  if (loading) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <SkeletonList rows={5} />
+      </YStack>
+    );
+  }
+
+  if (workers.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={UsersIcon}
+          illustration="check-boxes"
           title="Aucun travailleur"
           description="Invitez d'abord des travailleurs depuis l'écran Équipe."
         />

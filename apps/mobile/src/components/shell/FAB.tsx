@@ -1,6 +1,14 @@
 import { color } from '@dala/design-tokens';
 import type { Icon } from 'phosphor-react-native';
-import { View } from 'tamagui';
+import { styled, View } from 'tamagui';
+
+/** Same spring press feedback as Button — the FAB previously had no press
+ * state at all (no pressStyle, no scale), which reads as unresponsive
+ * given how prominent it is on-screen. */
+const PressableFAB = styled(View, {
+  animation: 'press',
+  pressStyle: { scale: 0.92 },
+});
 
 /**
  * apps/mobile/src/components/shell/FAB.tsx
@@ -17,7 +25,7 @@ interface FABProps {
 
 export function FAB({ icon: IconComponent, onPress, accessibilityLabel }: FABProps) {
   return (
-    <View
+    <PressableFAB
       position="absolute"
       bottom={96}
       right={20}
@@ -40,6 +48,6 @@ export function FAB({ icon: IconComponent, onPress, accessibilityLabel }: FABPro
       elevation={4}
     >
       <IconComponent size={24} color={color.neutral[0]} weight="bold" />
-    </View>
+    </PressableFAB>
   );
 }

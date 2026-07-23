@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -24,6 +25,7 @@ export default function ForgotPasswordScreen() {
     const parsed = forgotPasswordSchema.safeParse({ email });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Adresse e-mail invalide.');
+      haptics.error();
       return;
     }
 

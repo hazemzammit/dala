@@ -9,6 +9,7 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={UsersThreeIcon}
+        illustration="team-collaboration"
         title="Aucune collaboration inter-entreprises"
         description="Les chantiers partagés avec d'autres entreprises apparaîtront ici."
       />

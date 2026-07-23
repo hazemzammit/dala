@@ -9,8 +9,9 @@ export default function Screen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={ReceiptIcon}
+        illustration="receipt"
         title="Aucune facture pour le moment"
-        description="Vos factures apparaîtront ici."
+        description="Générez une facture à partir des jalons d'un chantier — elle apparaîtra ici, prête à envoyer par WhatsApp ou e-mail."
       />
     </YStack>
   );

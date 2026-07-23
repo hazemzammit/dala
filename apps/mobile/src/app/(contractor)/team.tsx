@@ -13,8 +13,10 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -131,6 +133,7 @@ export default function TeamScreen() {
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      haptics.error();
       return;
     }
 
@@ -163,6 +166,7 @@ export default function TeamScreen() {
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      haptics.error();
     } finally {
       setSaving(false);
     }
@@ -187,13 +191,22 @@ export default function TeamScreen() {
     await load();
   }
 
-  if (!loading && workers.length === 0) {
+  if (loading) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <SkeletonList rows={5} />
+      </YStack>
+    );
+  }
+
+  if (workers.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={UsersIcon}
+          illustration="team"
           title="Aucun travailleur"
-          description="Invitez votre équipe pour commencer à planifier vos dispatchs."
+          description="Invitez votre équipe pour commencer à planifier vos dispatchs. Utilisez le bouton + ci-dessous."
         />
         <FAB icon={PlusIcon} accessibilityLabel="Inviter un travailleur" onPress={openInvite} />
         {renderSheet()}

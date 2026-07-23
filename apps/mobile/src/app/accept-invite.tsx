@@ -5,7 +5,9 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Illustration } from '@/components/ui/Illustration';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -73,12 +75,14 @@ export default function AcceptInviteScreen() {
     setError(null);
     if (password !== confirm) {
       setError('Les mots de passe ne correspondent pas.');
+      haptics.error();
       return;
     }
 
     const parsed = workerSetPasswordSchema.safeParse({ invitation_token: token, password });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      haptics.error();
       return;
     }
 
@@ -91,6 +95,7 @@ export default function AcceptInviteScreen() {
 
       if (fnError || data?.error) {
         const code = data?.error;
+        haptics.error();
         if (code === 'already_accepted') {
           setLoadState('already_accepted');
         } else if (code === 'expired') {
@@ -111,10 +116,12 @@ export default function AcceptInviteScreen() {
         setError(
           'Compte créé, mais la connexion automatique a échoué. Connectez-vous manuellement.',
         );
+        haptics.error();
         router.replace('/login');
         return;
       }
 
+      haptics.confirm();
       router.replace('/(worker)/home');
     } finally {
       setSubmitting(false);
@@ -132,6 +139,9 @@ export default function AcceptInviteScreen() {
   if (loadState === 'not_found') {
     return (
       <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$3">
+        <YStack alignItems="center" marginBottom="$2">
+          <Illustration name="page-not-found" size={170} />
+        </YStack>
         <Text fontFamily="$display" fontSize={20} fontWeight="600" textAlign="center">
           Invitation introuvable
         </Text>
@@ -145,6 +155,9 @@ export default function AcceptInviteScreen() {
   if (loadState === 'expired') {
     return (
       <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$3">
+        <YStack alignItems="center" marginBottom="$2">
+          <Illustration name="alarm-clock" size={170} />
+        </YStack>
         <Text fontFamily="$display" fontSize={20} fontWeight="600" textAlign="center">
           Invitation expirée
         </Text>
@@ -158,6 +171,9 @@ export default function AcceptInviteScreen() {
   if (loadState === 'already_accepted') {
     return (
       <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+        <YStack alignItems="center">
+          <Illustration name="confirmed" size={170} />
+        </YStack>
         <Text fontFamily="$display" fontSize={20} fontWeight="600" textAlign="center">
           Compte déjà activé
         </Text>

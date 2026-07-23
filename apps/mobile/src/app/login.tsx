@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -23,6 +24,7 @@ export default function LoginScreen() {
     const parsed = loginSchema.safeParse({ email, password });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      haptics.error();
       return;
     }
 
@@ -32,6 +34,7 @@ export default function LoginScreen() {
 
     if (authError) {
       setError(authError.message);
+      haptics.error();
       return;
     }
 

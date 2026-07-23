@@ -14,8 +14,9 @@ export default function ProjectsScreen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <EmptyState
         icon={BuildingsIcon}
+        illustration="under-construction"
         title="Aucun chantier pour le moment"
-        description="Créez votre premier chantier pour commencer à suivre budget, équipe et avancement."
+        description="Créez votre premier chantier pour commencer à suivre budget, équipe et avancement. Utilisez le bouton + ci-dessous."
       />
       <FAB icon={PlusIcon} accessibilityLabel="Nouveau chantier" onPress={() => {}} />
     </YStack>

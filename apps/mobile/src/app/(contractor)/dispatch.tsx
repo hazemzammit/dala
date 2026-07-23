@@ -18,7 +18,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
+import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -209,6 +211,7 @@ export default function DispatchScreen() {
     setError(null);
     if (!orgId || selectedWorkerIds.length === 0) {
       setError('Sélectionnez au moins un ouvrier.');
+      haptics.error();
       return;
     }
 
@@ -224,6 +227,7 @@ export default function DispatchScreen() {
         });
         if (!parsed.success) {
           setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+          haptics.error();
           setSaving(false);
           return;
         }
@@ -232,10 +236,12 @@ export default function DispatchScreen() {
           .insert({ ...parsed.data, org_id: orgId, confirmation_channel: channel });
         if (insertError) throw insertError;
       }
+      haptics.confirm();
       setSheetOpen(false);
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      haptics.error();
     } finally {
       setSaving(false);
     }
@@ -296,6 +302,7 @@ export default function DispatchScreen() {
       });
       if (!parsed.success) {
         setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+        haptics.error();
         setSaving(false);
         return;
       }
@@ -308,11 +315,13 @@ export default function DispatchScreen() {
         .eq('version', version); // last-ditch DB-level guard against a race between the read above and this write
 
       if (updateError) throw updateError;
+      haptics.confirm();
       setConflict(null);
       setSheetOpen(false);
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      haptics.error();
     } finally {
       setSaving(false);
     }
@@ -399,9 +408,12 @@ export default function DispatchScreen() {
       {!loading && vehicles.length === 0 && assignments.length === 0 ? (
         <EmptyState
           icon={CalendarBlankIcon}
+          illustration="route-planning"
           title="Rien à afficher"
           description="Ajoutez un véhicule pour commencer à planifier vos dispatchs."
         />
+      ) : loading ? (
+        <SkeletonCardList cards={3} />
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
           <YStack gap="$3">
