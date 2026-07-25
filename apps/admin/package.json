@@ -8,7 +8,9 @@
     "start": "next start -p 3001",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "playwright test"
+    "test": "playwright test",
+    "create-admin": "tsx scripts/create-admin.ts",
+    "generate-totp-vault-key": "tsx scripts/generate-totp-vault-key.ts"
   },
   "dependencies": {
     "@dala/design-tokens": "workspace:*",
@@ -21,7 +23,11 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "@phosphor-icons/react": "^2.1.7",
-    "@sentry/nextjs": "^8.34.0"
+    "@sentry/nextjs": "^8.34.0",
+    "jose": "^5.9.6",
+    "otpauth": "^9.3.4",
+    "pg": "^8.13.1",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
     "@dala/config": "workspace:*",
@@ -33,6 +39,9 @@
     "eslint-config-next": "14.2.15",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.13",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "tsx": "^4.19.1",
+    "@types/pg": "^8.11.10",
+    "dotenv": "^16.4.5"
   }
 }

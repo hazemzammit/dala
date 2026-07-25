@@ -28,6 +28,11 @@ export type ProjectStatus = 'active' | 'completed' | 'archived';
 export type VehicleStatus = 'available' | 'in_use' | 'maintenance';
 export type InvitationChannel = 'app' | 'whatsapp' | 'sms';
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';
+/** migration 0024 — org-to-org invites have no 'app' channel: the invited
+ *  org has no session/app-notification target to reach until it accepts,
+ *  unlike a worker invite where the org itself is already in the app.
+ *  'email' is added since Doc 02 §2.8 invites "by phone or email". */
+export type OrgInvitationChannel = 'whatsapp' | 'sms' | 'email';
 export type AttendanceStatus = 'present' | 'absent' | 'half_day';
 export type AttendanceSource = 'dispatch_checkin' | 'manual_pointage';
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -49,6 +54,7 @@ export interface Profile {
   avatar_url: string | null;
   active_org_id: string | null;
   profile_checklist_dismissed_at: string | null;
+  suspended_at: string | null; // 0019 — Doc 04 §4.3.4, admin-only write path
   created_at: string;
   last_login_at: string | null;
   last_login_platform: Platform | null;
@@ -69,6 +75,37 @@ export interface Organization {
   created_by: string;
   created_at: string;
   updated_at: string;
+  suspended_at: string | null; // 0019 — Doc 04 §4.3.3, admin-only write path
+  deleted_at: string | null; // 0019 — Doc 04 §4.3.3, 30-day recoverable soft-delete
+}
+
+// ---------------------------------------------------------------------------
+// Platform Admin (admin-only tables; never read/written by mobile or web)
+// ---------------------------------------------------------------------------
+
+export type PlatformAdminRole = 'super_admin' | 'admin' | 'support';
+
+export interface PlatformAdmin {
+  id: string;
+  full_name: string;
+  role: PlatformAdminRole;
+  totp_enabled: boolean;
+  allowed_ips: string[] | null;
+  last_login_at: string | null;
+  created_at: string;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string | null;
+  actor_type: 'user' | 'platform_admin' | 'system';
+  action: string;
+  target_table: string | null;
+  target_id: string | null;
+  metadata: Record<string, unknown> | null;
+  impersonated_user_id: string | null;
+  impersonation_reason: string | null;
+  created_at: string;
 }
 
 export interface OrganizationMember {
@@ -122,7 +159,28 @@ export interface ProjectMembership {
   org_id: string;
   role: ProjectMembershipRole;
   budget_rollup_opt_in: boolean;
+  report_branding_opt_out: boolean; // migration 0024 — Doc 02 §2.8 report branding
   created_at: string;
+}
+
+/** migration 0024 — Doc 02 §2.8 org-to-org invite. `invited_org_id` is null
+ *  until accepted (the invited org may not exist yet — see Doc 02 §2.8's
+ *  "invite doubles as onboarding link" flow). */
+export interface ProjectInvitation {
+  id: string;
+  project_id: string;
+  lead_org_id: string;
+  invited_org_id: string | null;
+  invited_phone: string | null;
+  invited_email: string | null;
+  trade_type: string | null;
+  token: string;
+  sent_via: OrgInvitationChannel;
+  status: InvitationStatus;
+  created_by: string;
+  sent_at: string;
+  expires_at: string;
+  accepted_at: string | null;
 }
 
 export interface Vehicle {
@@ -211,6 +269,9 @@ export interface Material {
   rejection_reason: string | null;
   created_by: string | null;
   approved_by: string | null;
+  // migration 0020 — Doc 03 §3.15 "Réassigner": who the request is now
+  // routed to, independent of created_by (who originally asked).
+  assigned_worker_id: string | null;
   created_at: string;
 }
 
@@ -218,7 +279,15 @@ export interface SiteLog {
   id: string;
   org_id: string;
   project_id: string;
-  photo_url: string;
+  // migration 0020 — nullable now: "at least one of photo/voice/text" (Doc
+  // 03 §4.2) replaced the old photo-mandatory shape.
+  photo_url: string | null;
+  voice_note_url: string | null;
+  note_text: string | null;
+  thumbnail_url: string | null;
+  idempotency_key: string | null;
+  location_lat: number | null;
+  location_lng: number | null;
   caption: string | null;
   logged_by: string | null;
   created_at: string;
@@ -230,9 +299,16 @@ export interface SafetyIncident {
   project_id: string | null;
   description: string;
   severity: IncidentSeverity;
+  location: string | null; // migration 0020
   photo_url: string | null;
   reported_by: string | null;
   created_at: string;
+}
+
+/** migration 0020 — Doc 03 §3.17 involved-worker multi-select, many-to-many. */
+export interface SafetyIncidentWorker {
+  incident_id: string;
+  worker_id: string;
 }
 
 export interface OrgInsurance {
@@ -240,31 +316,26 @@ export interface OrgInsurance {
   org_id: string;
   provider_name: string;
   policy_number: string | null;
+  coverage_type: string | null; // migration 0020
+  reminder_enabled: boolean; // migration 0020
   document_url: string | null;
   expires_at: string | null;
   created_at: string;
 }
 
-export interface PlatformAdmin {
+/** migration 0020 — Doc 02 §2.7 / Doc 03 §3.18. `pin_hash` never leaves the DB. */
+export interface ClientPortal {
   id: string;
-  full_name: string;
-  totp_enabled: boolean;
-  allowed_ips: string[] | null;
-  last_login_at: string | null;
+  org_id: string;
+  project_id: string;
+  link_token: string;
+  pin_enabled: boolean;
+  failed_pin_attempts: number;
+  locked_until: string | null;
+  last_reset_at: string | null;
+  last_reset_by: string | null;
   created_at: string;
-}
-
-export interface AuditLogEntry {
-  id: string;
-  actor_id: string | null;
-  actor_type: 'user' | 'platform_admin' | 'system';
-  action: string;
-  target_table: string | null;
-  target_id: string | null;
-  metadata: Record<string, unknown> | null;
-  impersonated_user_id: string | null;
-  impersonation_reason: string | null;
-  created_at: string;
+  updated_at: string;
 }
 
 export interface AppVersion {

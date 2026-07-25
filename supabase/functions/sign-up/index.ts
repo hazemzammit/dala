@@ -27,7 +27,19 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json();
-    const { full_name, email, password, phone, organization_name, trade_type } = body ?? {};
+    const {
+      full_name,
+      email,
+      password,
+      phone,
+      organization_name,
+      trade_type,
+      // Phase 4 (Doc 02 §2.8) — set only when this sign-up was reached via
+      // an org-to-org invite deep link for a contact with no account yet.
+      // Both optional; ordinary sign-up is unaffected when absent.
+      org_invite_token,
+      org_invite_budget_rollup_opt_in,
+    } = body ?? {};
 
     if (!full_name || !email || !password || !phone || !organization_name) {
       return jsonResponse({ error: 'Champs requis manquants.' }, 400);
@@ -75,7 +87,7 @@ Deno.serve(async (req) => {
       .single();
 
     if (orgError) {
-      +console.error('[sign-up] organizations insert failed', orgError);
+      console.error('[sign-up] organizations insert failed', orgError);
       // Best-effort rollback: don't leave an orphaned auth user if the org
       // half of the "transaction" fails. Not a real DB transaction (auth.users
       // lives in a separate service from the rest of the schema), so this is
@@ -96,6 +108,52 @@ Deno.serve(async (req) => {
     }
 
     await admin.from('profiles').update({ active_org_id: org.id }).eq('id', userId);
+
+    // Phase 4 (Doc 02 §2.8) — no-account invite path. The invite screen
+    // (accept-org-invite.tsx) sent the person here instead of calling
+    // accept_project_invitation directly, precisely because that RPC
+    // requires auth.uid() and this person had no account yet. Now that the
+    // org exists, do the equivalent activation with the service role —
+    // same reasoning as accept-worker-invitation using service role instead
+    // of an RLS-gated RPC, and non-fatal on failure for the same reason
+    // that function's invitation-status-update is non-fatal: the account
+    // and organization both succeeded, which is what actually lets the
+    // person use the app; a failed invite-attach is worth logging, not
+    // worth rolling back a successful sign-up over.
+    if (org_invite_token) {
+      const { data: invitation, error: invitationError } = await admin
+        .from('project_invitations')
+        .select('id, project_id, status, expires_at')
+        .eq('token', org_invite_token)
+        .maybeSingle();
+
+      if (invitationError || !invitation) {
+        console.error('[sign-up] org_invite_token lookup failed', invitationError);
+      } else if (invitation.status === 'accepted') {
+        console.error('[sign-up] org_invite_token already accepted, skipping attach');
+      } else if (new Date(invitation.expires_at).getTime() < Date.now()) {
+        console.error('[sign-up] org_invite_token expired, skipping attach');
+      } else {
+        const { error: membershipError } = await admin.from('project_memberships').insert({
+          project_id: invitation.project_id,
+          org_id: org.id,
+          role: 'trade',
+          budget_rollup_opt_in: Boolean(org_invite_budget_rollup_opt_in),
+        });
+        if (membershipError) {
+          console.error('[sign-up] project_memberships insert failed', membershipError);
+        } else {
+          await admin
+            .from('project_invitations')
+            .update({
+              status: 'accepted',
+              accepted_at: new Date().toISOString(),
+              invited_org_id: org.id,
+            })
+            .eq('id', invitation.id);
+        }
+      }
+    }
 
     // Built from hashed_token via our own /auth/confirm route handler, NOT
     // linkData.properties.action_link — action_link points at Supabase's

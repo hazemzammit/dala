@@ -25,7 +25,30 @@
       "package": "tn.dala.app",
       "usesCleartextTraffic": true
     },
-    "plugins": ["expo-router", "expo-secure-store", "@sentry/react-native"],
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "@sentry/react-native",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Dala a besoin d'accéder à vos photos pour joindre une image à une mise à jour de chantier.",
+          "cameraPermission": "Dala a besoin d'accéder à l'appareil photo pour documenter l'avancement du chantier."
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Dala a besoin du micro pour enregistrer une note vocale sur une mise à jour de chantier."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Dala peut associer un repère de localisation à une photo de chantier, uniquement avec votre autorisation."
+        }
+      ]
+    ],
     "extra": {
       "eas": {
         "projectId": "97011893-3003-4c19-89df-699323ebea9b"

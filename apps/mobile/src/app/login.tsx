@@ -1,5 +1,5 @@
 import { loginSchema } from '@dala/validation';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { Text, YStack } from 'tamagui';
 
@@ -12,8 +12,16 @@ import { supabase } from '@/lib/supabase';
  * Doc 03 §3.1 / Doc 01 §1.3.5 — Login. Same validation schema and same
  * backend as the web login screen — this is the concrete "one product, two
  * surfaces" mechanism, not just a claim (Doc 00 §0.4).
+ *
+ * Phase 4 addition — optional `next` param. accept-org-invite.tsx's
+ * existing-account path ("J'ai déjà un compte") routes here with
+ * `next=/accept-org-invite` (and the token still attached) rather than
+ * hardcoding a return path, so this screen doesn't need to know anything
+ * about the invite flow specifically — just "is there somewhere other than
+ * Dashboard I was asked to go back to."
  */
 export default function LoginScreen() {
+  const { next } = useLocalSearchParams<{ next?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +46,7 @@ export default function LoginScreen() {
       return;
     }
 
-    router.replace('/dashboard');
+    router.replace((next as never) ?? '/dashboard');
   }
 
   return (

@@ -16,6 +16,7 @@ import CheckBoxes from '@/assets/illustrations/undraw_check-boxes_x5fg.svg';
 import Confirmed from '@/assets/illustrations/undraw_confirmed_c5lo.svg';
 import ConnectionLost from '@/assets/illustrations/undraw_connection-lost_am29.svg';
 import Destination from '@/assets/illustrations/undraw_destination_fkst.svg';
+import GlobalTeam from '@/assets/illustrations/undraw_global-team_8jok.svg';
 import MailSent from '@/assets/illustrations/undraw_mail-sent_ujev.svg';
 import Maintenance from '@/assets/illustrations/undraw_maintenance_4unj.svg';
 import MobileAnalytics from '@/assets/illustrations/undraw_mobile-analytics_bz2a.svg';
@@ -43,6 +44,7 @@ export const illustrations = {
   'under-construction': UnderConstruction,
   'team-collaboration': TeamCollaboration,
   destination: Destination,
+  'global-team': GlobalTeam,
   'to-do-app': ToDoApp,
   'check-boxes': CheckBoxes,
   receipt: Receipt,

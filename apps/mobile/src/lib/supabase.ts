@@ -1,6 +1,6 @@
 import 'react-native-url-polyfill/auto';
-import * as SecureStore from 'expo-secure-store';
 import { createClient } from '@supabase/supabase-js';
+import * as SecureStore from 'expo-secure-store';
 
 /**
  * Session persistence uses SecureStore (Keychain/Keystore-backed), never

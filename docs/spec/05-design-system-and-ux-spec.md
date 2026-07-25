@@ -111,6 +111,10 @@ or opening a FAB/sheet — only:
 | Contractor marks a salary cycle as paid successfully                        | `confirm()` |
 | Contractor approves a pending advance request successfully                  | `confirm()` |
 | Worker submits an advance request successfully                              | `confirm()` |
+| Org-to-org invitation sent successfully (Collaboration)                     | `confirm()` |
+| Org-to-org invitation accepted successfully                                 | `confirm()` |
+| Budget-rollup / report-branding toggle saved successfully                   | `confirm()` |
+| Org switch (org-switcher sheet) saved successfully                          | `confirm()` |
 | Any form validation failure (sign-up, login, invite, dispatch assign, etc.) | `error()`   |
 | Any save/auth/network failure surfaced to the user                          | `error()`   |
 
@@ -160,6 +164,17 @@ the illustration over the icon-circle fallback when both are given.
 | Advances & payroll (no workers)       | `send-money`         |
 | Worker salary (no data for cycle yet) | `payments`           |
 | Dépenses / expense ledger (empty)     | `receipt`            |
+| Accept org invite — not found         | `page-not-found`     |
+| Accept org invite — expired           | `alarm-clock`        |
+| Accept org invite — already accepted  | `confirmed`          |
+| Accept org invite — accepted          | `confirmed`          |
+| Vue d'ensemble (only 1 owned org)     | `global-team`        |
+
+_Phase 4 diff: added `global-team` (new registry entry — no existing slug
+already fit "several distinct orgs shown together," which is what Vue
+d'ensemble's edge-case empty state needed; everything else in the accept-
+org-invite screen reuses accept-invite.tsx's existing three slugs rather
+than adding new ones for a near-identical set of states)._
 
 Adding a new one: pick the closest-matching slug from the 181 already in
 `src/assets/illustrations/`, add one static import + one registry entry

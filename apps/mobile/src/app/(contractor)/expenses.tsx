@@ -3,7 +3,7 @@ import { createProjectExpenseSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CoinsIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -54,7 +54,6 @@ function todayISO(): string {
 }
 
 export default function ExpensesScreen() {
-  const [orgId, setOrgId] = useState<string | null>(null);
   const [canWrite, setCanWrite] = useState(false);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -84,7 +83,6 @@ export default function ExpensesScreen() {
   async function load() {
     setLoading(true);
     const org = await getActiveOrgId();
-    setOrgId(org);
     if (!org) {
       setLoading(false);
       return;

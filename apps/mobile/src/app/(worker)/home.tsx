@@ -1,6 +1,6 @@
 import type { AttendanceStatus } from '@dala/shared-types';
-import { useFocusEffect } from 'expo-router';
-import { ArrowsClockwiseIcon, MapPinIcon, SignOutIcon } from 'phosphor-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { ArrowsClockwiseIcon, MapPinIcon, PackageIcon, SignOutIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Alert } from 'react-native';
 import { AnimatePresence, ScrollView, Text, View, XStack, YStack } from 'tamagui';
@@ -26,7 +26,7 @@ import { supabase } from '@/lib/supabase';
  *   - no actual_departure_time yet        → "Je suis parti"   (writes departure time)
  *   - actual_departure_time set, no       → "Je suis arrivé"  (writes attendance record)
  *     attendance record for today yet
- *   - attendance record exists for today  → "Envoyer un update" (§4.2, Phase 3 — not built yet)
+ *   - attendance record exists for today  → "Envoyer un update" (§4.2, now routes to (worker)/update-chantier.tsx)
  * This also means the state survives an app restart/re-login without any
  * extra local persistence — it's always read straight from the two tables
  * that already exist for this purpose.
@@ -213,10 +213,7 @@ export default function WorkerHomeScreen() {
   }
 
   function handleUpdate() {
-    // §4.2 Update chantier — Phase 3 per the roadmap (Doc 02 §2.10), not
-    // built yet. Placeholder so the state machine's 3rd state has somewhere
-    // to go rather than a dead tap target.
-    Alert.alert('Bientôt disponible', "L'envoi de mises à jour de chantier arrive prochainement.");
+    router.push('/update-chantier');
   }
 
   if (loading) {
@@ -307,6 +304,19 @@ export default function WorkerHomeScreen() {
             </AnimatePresence>
           )}
         </View>
+
+        {mission && state !== 'no_assignment' && (
+          <XStack justifyContent="center" marginTop="$3">
+            <Button
+              variant="text"
+              fullWidth={false}
+              icon={PackageIcon}
+              onPress={() => router.push('/material-request')}
+            >
+              Demander du matériel
+            </Button>
+          </XStack>
+        )}
       </ScrollView>
 
       {/* Doc 05 §2.4 — salary strip pinned at the very bottom, never scrolls

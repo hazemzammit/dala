@@ -34,13 +34,25 @@ export const markSalaryCyclePaidSchema = z
   .merge(idempotencyKeySchema);
 export type MarkSalaryCyclePaidInput = z.infer<typeof markSalaryCyclePaidSchema>;
 
-/** Doc 03 §4.3/§4.4 (worker side) — material and advance requests. */
+/**
+ * Doc 03 §4.3 (worker side) — material request.
+ *
+ * Bug fix (Phase 3): `quantity` was `.optional()` and `note` had no length
+ * cap. Doc 03 §4.3's table is explicit — "Quantité: numeric, required, >0"
+ * and "Note: optional, max 200 chars" — this schema silently allowed a
+ * request with no quantity at all and an unbounded note, neither of which
+ * matches the spec it's supposedly enforcing. `project_id` stays optional
+ * here: the worker's form has no project selector (§4.3 lists only
+ * Article/Quantité/Urgence/Note), so the mobile screen resolves it
+ * automatically from the worker's current assignment before this schema
+ * ever sees the payload — see (worker)/material-request.tsx.
+ */
 export const requestMaterialSchema = z.object({
   project_id: z.string().uuid().optional(),
-  item: z.string().min(1),
-  quantity: z.number().positive().optional(),
+  item: z.string().min(1, 'Indiquez un article.'),
+  quantity: z.number().positive('La quantité doit être supérieure à 0.'),
   urgency: z.enum(['normal', 'urgent']).default('normal'),
-  note: z.string().optional(),
+  note: z.string().max(200, 'Note limitée à 200 caractères.').optional(),
 });
 export type RequestMaterialInput = z.infer<typeof requestMaterialSchema>;
 

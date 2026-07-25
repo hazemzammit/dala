@@ -125,6 +125,40 @@ export function SkeletonCardList({ cards = 3 }: { cards?: number }) {
   );
 }
 
+/**
+ * Journal's timeline row shape (square photo-thumbnail + two lines) —
+ * SkeletonListRow's round avatar circle doesn't read as "a photo is about
+ * to load here," so this is a new preset rather than reusing it. Added
+ * per Doc 05 §1.6, Phase 3.
+ */
+export function SkeletonTimelineRow() {
+  return (
+    <XStack
+      backgroundColor="$neutral0"
+      borderRadius="$card"
+      padding="$4"
+      alignItems="center"
+      gap="$3"
+    >
+      <SkeletonBlock width={56} height={56} radius={12} />
+      <YStack gap="$2" flex={1}>
+        <SkeletonBlock width="70%" height={15} />
+        <SkeletonBlock width="40%" height={12} />
+      </YStack>
+    </XStack>
+  );
+}
+
+export function SkeletonTimeline({ rows = 4 }: { rows?: number }) {
+  return (
+    <YStack gap="$2" padding="$4">
+      {Array.from({ length: rows }).map((_, i) => (
+        <SkeletonTimelineRow key={i} />
+      ))}
+    </YStack>
+  );
+}
+
 /** Worker home's single hero card + button shape. */
 export function SkeletonHero() {
   return (

@@ -42,6 +42,31 @@ export async function getActiveOrgId(): Promise<string | null> {
 }
 
 /**
+ * Doc 05 §2.2's org-switcher sheet is the first thing in the app that
+ * writes to `profiles.active_org_id` after initial sign-up/org-creation
+ * (confirmed by grepping the repo before adding this — org creation sets
+ * it once via create_organization_for_current_user/the sign-up Edge
+ * Function, and nothing since Phase 1 ever changes it again). A plain
+ * client-side update, not an RPC: `profiles` write access is already
+ * scoped to `id = auth.uid()` by its own RLS policy (Doc 01 §1.5), so no
+ * SECURITY DEFINER escape hatch is needed here the way org creation
+ * needed one for organization_members' first row.
+ */
+export async function setActiveOrgId(orgId: string): Promise<boolean> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { error } = await supabase
+    .from('profiles')
+    .update({ active_org_id: orgId })
+    .eq('id', session.user.id);
+
+  return !error;
+}
+
+/**
  * Doc 01 §1.4 — this is a UX convenience only (e.g. hiding the "Nouvelle
  * dépense" FAB for a Viewer, Doc 03 §3.10.3a), never the actual
  * authorization boundary: every write this gates is independently

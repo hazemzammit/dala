@@ -9,7 +9,18 @@ export const passwordSchema = z
   .string()
   .min(10, 'Le mot de passe doit contenir au moins 10 caractères.');
 
-/** Doc 01 §1.3.3 — contractor sign-up, creating a new organization. */
+/**
+ * Doc 01 §1.3.3 — contractor sign-up, creating a new organization.
+ *
+ * `org_invite_token` / `org_invite_budget_rollup_opt_in` — Phase 4 addition
+ * (Doc 02 §2.8). Set only when this sign-up was reached via an org-to-org
+ * invite deep link for a contact with no existing account yet ("the invite
+ * doubles as an onboarding link into the standard sign-up flow... it just
+ * pre-fills organization context" — it must NOT skip this schema or this
+ * screen). Both optional and additive: a sign-up with neither field behaves
+ * exactly as before this pass. See supabase/functions/sign-up for what it
+ * does with them once the new organization exists.
+ */
 export const signUpSchema = z.object({
   full_name: z.string().min(2, 'Nom complet requis.'),
   email: z.string().email('Adresse e-mail invalide.'),
@@ -17,6 +28,8 @@ export const signUpSchema = z.object({
   phone: z.string().min(8, 'Numéro de téléphone invalide.'),
   organization_name: z.string().min(2, "Nom de l'entreprise requis."),
   trade_type: z.string().optional(),
+  org_invite_token: z.string().optional(),
+  org_invite_budget_rollup_opt_in: z.boolean().optional(),
 });
 export type SignUpInput = z.infer<typeof signUpSchema>;
 
