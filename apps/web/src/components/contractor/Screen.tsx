@@ -187,9 +187,11 @@ export function TimelineList({ items }: { items: TimelineItem[] }) {
 
 interface CalendarGridProps {
   days: Array<{ day: string; label: string; tone?: 'accent' | 'success' | 'warning' }>;
+  selectedDay?: string | null;
+  onDayClick?: (day: string) => void;
 }
 
-export function CalendarGrid({ days }: CalendarGridProps) {
+export function CalendarGrid({ days, selectedDay, onDayClick }: CalendarGridProps) {
   return (
     <div className="grid grid-cols-7 gap-2">
       {days.map((day) => {
@@ -199,11 +201,16 @@ export function CalendarGrid({ days }: CalendarGridProps) {
             : day.tone === 'warning'
               ? 'border-warning/30 bg-warning/10 text-warning'
               : 'border-accent-200 bg-accent-50 text-accent-700';
+        const isSelected = selectedDay === day.day;
 
         return (
           <button
             key={`${day.day}-${day.label}`}
-            className={`hover:border-accent-300 flex min-h-[92px] flex-col justify-between rounded-2xl border p-3 text-left transition-colors ${toneClass}`}
+            type="button"
+            onClick={() => onDayClick?.(day.day)}
+            className={`hover:border-accent-300 flex min-h-[92px] flex-col justify-between rounded-2xl border p-3 text-left transition-colors ${toneClass} ${
+              isSelected ? 'ring-accent-600 ring-2 ring-offset-2' : ''
+            }`}
           >
             <span className="text-xs font-semibold uppercase tracking-[0.08em] opacity-70">
               {day.day}

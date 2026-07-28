@@ -1,4 +1,5 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { createProject, deleteProject, updateProject } from './actions';
 import { ProjectsView } from './ProjectsView';
@@ -42,12 +43,14 @@ export default async function Page() {
         </p>
       </div>
 
-      <ProjectsView
-        projects={projects ?? []}
-        createProject={createProject}
-        updateProject={updateProject}
-        deleteProject={deleteProject}
-      />
+      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+        <ProjectsView
+          projects={projects ?? []}
+          createProject={createProject}
+          updateProject={updateProject}
+          deleteProject={deleteProject}
+        />
+      </Suspense>
     </div>
   );
 }

@@ -2,7 +2,8 @@
 
 import type { InvitationStatus, Worker } from '@dala/shared-types';
 import { HardHatIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 
 import { WorkerFormModal } from './WorkerFormModal';
 
@@ -51,6 +52,13 @@ export function TeamView({
   const [query, setQuery] = useState('');
   const [tradeFilter, setTradeFilter] = useState<string>('all');
   const [notice, setNotice] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('invite') === '1') {
+      setModalState({ mode: 'invite' });
+    }
+  }, [searchParams]);
 
   const latestInvitationByWorker = new Map<string, InvitationSummary>();
   for (const inv of invitations) {

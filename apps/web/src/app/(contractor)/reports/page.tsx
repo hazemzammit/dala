@@ -1,5 +1,7 @@
 import { ChartBarIcon } from '@phosphor-icons/react/ssr';
 
+import { ReportsActions } from './ReportsActions';
+
 import { PageHeader, MiniBarChart, SectionCard } from '@/components/contractor/Screen';
 import { Card } from '@/components/ui/Card';
 
@@ -10,16 +12,7 @@ export default function Page() {
         eyebrow="Analytics"
         title="Reports"
         description="Review expenses, revenue, profit, budget, attendance, materials, and vehicle costs."
-        actions={
-          <>
-            <button className="bg-neutral-0 rounded-2xl border border-neutral-200 px-4 py-2.5 text-sm font-medium">
-              Download PDF
-            </button>
-            <button className="bg-accent-600 rounded-2xl px-4 py-2.5 text-sm font-medium text-white">
-              Export Excel
-            </button>
-          </>
-        }
+        actions={<ReportsActions />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

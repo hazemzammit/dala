@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { TeamView } from './TeamView';
 
 import { createClient } from '@/lib/supabase/server';
-
 
 /**
  * Doc 04 §4.2.5 — Team roster. Fetches workers + their latest invitation
@@ -48,7 +48,9 @@ export default async function Page() {
         </p>
       </div>
 
-      <TeamView workers={workers ?? []} invitations={invitations ?? []} />
+      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+        <TeamView workers={workers ?? []} invitations={invitations ?? []} />
+      </Suspense>
     </div>
   );
 }

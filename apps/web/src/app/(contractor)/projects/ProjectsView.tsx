@@ -9,6 +9,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from '@phosphor-icons/react';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 
 import { ProjectFormModal } from './ProjectFormModal';
@@ -78,10 +79,17 @@ export function ProjectsView({
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
+  const searchParams = useSearchParams();
 
   useEffect(() => {
     setRows(projects);
   }, [projects]);
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setModalState({ mode: 'create' });
+    }
+  }, [searchParams]);
 
   function upsertProject(project: Project) {
     setRows((current) => [project, ...current.filter((row) => row.id !== project.id)]);

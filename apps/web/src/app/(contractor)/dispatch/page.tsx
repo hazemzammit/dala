@@ -30,6 +30,8 @@ export default function Page() {
   const [date, setDate] = useState('2026-07-21');
   const [items, setItems] = useState(initialItems);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
 
   const grouped = useMemo(() => {
     return {
@@ -41,10 +43,68 @@ export default function Page() {
 
   function moveItem(id: string, lane: LaneKey) {
     setItems((current) => current.map((item) => (item.id === id ? { ...item, lane } : item)));
+    setConfirmed(false);
   }
+
+  function autoBalanceCrew() {
+    setItems((current) => {
+      const workers = current.filter((item) => item.lane === 'workers');
+      const sites = current.filter((item) => item.lane === 'sites');
+      if (workers.length === 0 || sites.length === 0) {
+        setNotice('Add workers and sites to the board before auto-balancing.');
+        return current;
+      }
+
+      const siteIds = sites.map((site) => site.id);
+      let siteIndex = 0;
+      const rebalanced = current.map((item) => {
+        if (item.lane !== 'workers') return item;
+        const targetSite = siteIds[siteIndex % siteIds.length]!;
+        siteIndex += 1;
+        return {
+          ...item,
+          lane: 'sites' as LaneKey,
+          meta: `Worker · assigned to ${sites.find((s) => s.id === targetSite)?.name ?? 'site'}`,
+        };
+      });
+
+      setNotice(`Auto-balanced ${workers.length} worker(s) across ${sites.length} site(s).`);
+      setConfirmed(false);
+      return rebalanced;
+    });
+  }
+
+  function confirmDispatch() {
+    const workerCount = items.filter(
+      (item) => item.lane === 'workers' || item.lane === 'sites',
+    ).length;
+    if (workerCount === 0) {
+      setNotice('Assign at least one worker before confirming dispatch.');
+      return;
+    }
+    setConfirmed(true);
+    setNotice(`Dispatch confirmed for ${new Date(date).toLocaleDateString('en-GB')}.`);
+  }
+
+  const formattedDate = new Date(`${date}T12:00:00`).toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
+      {notice && (
+        <div
+          className={`rounded-2xl border px-4 py-3 text-sm ${
+            confirmed
+              ? 'border-success/20 bg-success/10 text-success'
+              : 'border-accent-200 bg-accent-50 text-accent-700'
+          }`}
+        >
+          {notice}
+        </div>
+      )}
+
       <PageHeader
         eyebrow="Dispatch planning"
         title="Drag workers into vehicles and assign them to construction sites."
@@ -57,8 +117,12 @@ export default function Page() {
               onChange={(event) => setDate(event.target.value)}
               className="bg-neutral-0 rounded-2xl border border-neutral-200 px-4 py-2.5 text-sm outline-none"
             />
-            <Button variant="secondary">Auto-balance crew</Button>
-            <Button>Confirm dispatch</Button>
+            <Button variant="secondary" onClick={autoBalanceCrew}>
+              Auto-balance crew
+            </Button>
+            <Button onClick={confirmDispatch} disabled={confirmed}>
+              {confirmed ? 'Confirmed' : 'Confirm dispatch'}
+            </Button>
           </>
         }
       />
@@ -118,7 +182,9 @@ export default function Page() {
               <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
                 Date
               </p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">21 Jul</p>
+              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
+                {formattedDate}
+              </p>
             </div>
           </div>
         </Card>

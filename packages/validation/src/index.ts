@@ -19,3 +19,4 @@ export * from './projects';
 export * from './materials';
 export * from './dispatch';
 export * from './money';
+export * from './site-logs';

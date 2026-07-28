@@ -1,9 +1,9 @@
 import { redirect } from 'next/navigation';
+import { Suspense } from 'react';
 
 import { VehiclesView } from './VehiclesView';
 
 import { createClient } from '@/lib/supabase/server';
-
 
 export default async function Page() {
   const supabase = await createClient();
@@ -34,7 +34,9 @@ export default async function Page() {
         </p>
       </div>
 
-      <VehiclesView vehicles={vehicles ?? []} />
+      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+        <VehiclesView vehicles={vehicles ?? []} />
+      </Suspense>
     </div>
   );
 }

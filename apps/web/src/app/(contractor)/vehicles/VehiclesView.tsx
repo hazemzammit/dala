@@ -2,7 +2,8 @@
 
 import type { Vehicle, VehicleStatus } from '@dala/shared-types';
 import { CarIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useMemo, useState } from 'react';
 
 import { VehicleFormModal } from './VehicleFormModal';
 
@@ -13,7 +14,6 @@ import { Card } from '@/components/ui/Card';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: 'Disponible',
@@ -52,6 +52,13 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setModalState({ mode: 'create' });
+    }
+  }, [searchParams]);
 
   const displayRows = useMemo<VehicleRow[]>(() => {
     return rows.map((vehicle, index) => ({

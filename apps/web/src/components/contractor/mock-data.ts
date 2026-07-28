@@ -84,10 +84,10 @@ export const weeklyCalendar = [
 ];
 
 export const quickActions = [
-  'Create project',
-  'Assign dispatch',
-  'Add vehicle',
-  'Invite worker',
-  'Log expense',
-  'Generate report',
-];
+  { label: 'Create project', href: '/projects?create=1' },
+  { label: 'Assign dispatch', href: '/dispatch' },
+  { label: 'Add vehicle', href: '/vehicles?create=1' },
+  { label: 'Invite worker', href: '/team?invite=1' },
+  { label: 'Log expense', href: '/billing' },
+  { label: 'Generate report', href: '/reports' },
+] as const;

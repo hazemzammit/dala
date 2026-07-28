@@ -8,6 +8,7 @@ import {
   SignOutIcon,
   UserCircleIcon,
 } from '@phosphor-icons/react';
+import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Avatar } from '@/components/ui/Avatar';
@@ -42,13 +43,29 @@ export function TopBar({
   unreadNotifications = 0,
   onSearch,
 }: TopBarProps) {
+  const router = useRouter();
   const [query, setQuery] = useState('');
   const [orgOpen, setOrgOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [activeOrganization, setActiveOrganization] = useState(organizationName);
   const orgOptions = useMemo(
     () => ['Atlas BTP', organizationName, 'Sahara Infrastructure'],
     [organizationName],
   );
+
+  const notifications = useMemo(
+    () => [
+      { id: '1', title: 'Dispatch reminder', body: 'Confirm morning crew before 08:30.' },
+      { id: '2', title: 'Invoice paid', body: 'El Baraka Residence settled invoice #1042.' },
+      { id: '3', title: 'Low stock alert', body: 'Cement stock below 25% on School Annex.' },
+    ],
+    [],
+  );
+
+  useEffect(() => {
+    setActiveOrganization(organizationName);
+  }, [organizationName]);
 
   useEffect(() => {
     if (!onSearch) return;
@@ -71,11 +88,11 @@ export function TopBar({
             className="bg-neutral-0 hover:border-accent-200 group flex min-w-0 items-center gap-3 rounded-2xl border border-neutral-200 px-4 py-3 text-left shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors"
           >
             <div className="bg-accent-600 flex h-10 w-10 items-center justify-center rounded-2xl text-sm font-semibold text-white">
-              {organizationName.charAt(0).toUpperCase()}
+              {activeOrganization.charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-neutral-900">
-                {organizationName}
+                {activeOrganization}
               </div>
               <div className="truncate text-xs text-neutral-500">Organization switcher</div>
             </div>
@@ -92,14 +109,17 @@ export function TopBar({
                   <button
                     key={option}
                     className={`hover:bg-neutral-25 flex w-full items-center justify-between rounded-2xl px-3 py-3 text-left text-sm transition-colors ${
-                      option === organizationName
+                      option === activeOrganization
                         ? 'bg-accent-50 text-accent-700'
                         : 'text-neutral-900'
                     }`}
-                    onClick={() => setOrgOpen(false)}
+                    onClick={() => {
+                      setActiveOrganization(option);
+                      setOrgOpen(false);
+                    }}
                   >
                     <span className="font-medium">{option}</span>
-                    {option === organizationName && (
+                    {option === activeOrganization && (
                       <span className="text-xs font-semibold">Current</span>
                     )}
                   </button>
@@ -124,19 +144,49 @@ export function TopBar({
         </div>
 
         <div className="ms-auto flex items-center gap-2 lg:gap-3">
-          <button
-            aria-label="Notifications"
-            className="bg-neutral-0 hover:border-accent-200 relative rounded-2xl border border-neutral-200 p-3 text-neutral-500 shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors hover:text-neutral-900"
-          >
-            <BellIcon size={19} />
-            {unreadNotifications > 0 && (
-              <span className="bg-danger absolute end-2 top-2 h-2 w-2 rounded-full" />
+          <div className="relative">
+            <button
+              type="button"
+              aria-label="Notifications"
+              onClick={() => {
+                setNotificationsOpen((open) => !open);
+                setProfileOpen(false);
+              }}
+              className="bg-neutral-0 hover:border-accent-200 relative rounded-2xl border border-neutral-200 p-3 text-neutral-500 shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors hover:text-neutral-900"
+            >
+              <BellIcon size={19} />
+              {unreadNotifications > 0 && (
+                <span className="bg-danger absolute end-2 top-2 h-2 w-2 rounded-full" />
+              )}
+            </button>
+
+            {notificationsOpen && (
+              <div className="bg-neutral-0 absolute end-0 top-[58px] z-40 w-[320px] rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
+                <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Notifications
+                </div>
+                <div className="space-y-1">
+                  {notifications.map((notification) => (
+                    <div
+                      key={notification.id}
+                      className="hover:bg-neutral-25 rounded-2xl px-3 py-3 text-left"
+                    >
+                      <p className="text-sm font-medium text-neutral-900">{notification.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-neutral-500">{notification.body}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
-          </button>
+          </div>
 
           <div className="relative">
             <button
-              onClick={() => setProfileOpen((value) => !value)}
+              type="button"
+              onClick={() => {
+                setProfileOpen((value) => !value);
+                setNotificationsOpen(false);
+              }}
               className="bg-neutral-0 hover:border-accent-200 flex items-center gap-3 rounded-2xl border border-neutral-200 px-3 py-2.5 shadow-[0_4px_14px_rgba(17,19,24,0.04)] transition-colors"
             >
               <Avatar name={userName} imageUrl={userAvatarUrl} size={34} />
@@ -152,11 +202,25 @@ export function TopBar({
                 <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
                   Account
                 </div>
-                <button className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    router.push('/settings');
+                  }}
+                  className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors"
+                >
                   <UserCircleIcon size={18} className="text-neutral-500" />
                   Profile settings
                 </button>
-                <button className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    router.push('/dashboard');
+                  }}
+                  className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors"
+                >
                   <NotepadIcon size={18} className="text-neutral-500" />
                   Shortcuts
                 </button>
