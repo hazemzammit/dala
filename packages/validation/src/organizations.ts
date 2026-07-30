@@ -48,3 +48,14 @@ export const changePhoneSchema = z.object({
 export const confirmPhoneChangeSchema = z.object({
   code: z.string().length(6),
 });
+/** Doc 06 §6.9 — change a member's role. Owner-only at the RLS layer
+ *  (organization_members_write_owner policy, migration 0005); this schema
+ *  just validates shape. Excludes 'owner' from the target value — a
+ *  transfer-of-ownership flow, if ever built, should be its own explicit
+ *  action, not a side effect of this generic role-change form. */
+export const updateMemberRoleSchema = z.object({
+  org_id: z.string().uuid(),
+  user_id: z.string().uuid(),
+  role: z.enum(['manager', 'viewer']),
+});
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

@@ -20,3 +20,4 @@ export * from './materials';
 export * from './dispatch';
 export * from './money';
 export * from './site-logs';
+export * from './project-invitations';
