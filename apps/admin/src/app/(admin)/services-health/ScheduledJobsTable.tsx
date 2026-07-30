@@ -1,25 +1,16 @@
 'use client';
 
+import type { ScheduledJobRun } from '@dala/shared-types';
 import { useEffect, useState } from 'react';
 
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 
-interface Run {
-  id: string;
-  job_name: string;
-  started_at: string;
-  completed_at: string | null;
-  status: 'running' | 'success' | 'failed';
-  error_message: string | null;
-  retry_count: number;
-}
-
 interface JobStatus {
   job_name: string;
-  latest: Run | null;
+  latest: ScheduledJobRun | null;
   lastTwoFailed: boolean;
-  recentRuns: Run[];
+  recentRuns: ScheduledJobRun[];
 }
 
 export function ScheduledJobsTable() {

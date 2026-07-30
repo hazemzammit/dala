@@ -64,3 +64,63 @@ export async function processPhoto(uri: string): Promise<ProcessedPhoto> {
 
   return { uri: main.uri, thumbnailUri: thumb.uri };
 }
+
+/**
+ * Doc 03 §3.22.1 — avatar upload. "Square crop enforced client-side, max
+ * 512×512 after resize." This is a CENTER crop to the largest square that
+ * fits the source image, then a resize down to 512×512 — not the full
+ * interactive drag-to-reposition crop tool the spec's "in-app square crop
+ * tool" phrase could imply. A real interactive crop UI is a meaningfully
+ * bigger lift (gesture-driven crop overlay component, nothing like it
+ * exists anywhere in this app yet) than this phase's settings.tsx/
+ * projects.tsx scope — disclosed here and in delivery notes, not silently
+ * substituted.
+ */
+export async function processAvatarPhoto(uri: string): Promise<string> {
+  const { width, height } = await getImageSize(uri);
+  const side = Math.min(width, height);
+  const originX = Math.round((width - side) / 2);
+  const originY = Math.round((height - side) / 2);
+
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [
+      { crop: { originX, originY, width: side, height: side } },
+      { resize: { width: 512, height: 512 } },
+    ],
+    { compress: 0.85, format: ImageManipulator.SaveFormat.JPEG },
+  );
+  return result.uri;
+}
+
+/**
+ * Doc 03 §3.22.2 — organization logo. "Max 3:1 aspect box" — center-crops
+ * down to 3:1 only if the source is WIDER than 3:1 (a portrait or square
+ * logo is left as-is rather than padded/letterboxed, since Doc 03 doesn't
+ * specify a fill color for that case and inventing one felt worse than
+ * just not cropping when the source is already within the box).
+ */
+export async function processLogoPhoto(uri: string): Promise<string> {
+  const { width, height } = await getImageSize(uri);
+  const maxRatio = 3;
+  if (width / height <= maxRatio) {
+    const result = await ImageManipulator.manipulateAsync(
+      uri,
+      [{ resize: { width: Math.min(width, 1200) } }],
+      {
+        compress: 0.9,
+        format: ImageManipulator.SaveFormat.PNG,
+      },
+    );
+    return result.uri;
+  }
+
+  const targetWidth = Math.round(height * maxRatio);
+  const originX = Math.round((width - targetWidth) / 2);
+  const result = await ImageManipulator.manipulateAsync(
+    uri,
+    [{ crop: { originX, originY: 0, width: targetWidth, height } }, { resize: { width: 1200 } }],
+    { compress: 0.9, format: ImageManipulator.SaveFormat.PNG },
+  );
+  return result.uri;
+}

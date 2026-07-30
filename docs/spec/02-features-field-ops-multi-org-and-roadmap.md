@@ -1,4 +1,5 @@
 # Dala — Cahier des Charges v4.0
+
 ## Document 02 — Features, Field Operations, Multi-Org Collaboration & Roadmap
 
 > Every module below is now built for **both mobile and web simultaneously**
@@ -10,16 +11,16 @@
 
 ## 2.1 Feature overview
 
-| Module | Section | Contractor platforms |
-|---|---|---|
-| Dispatch & vehicle management | 2.2 | Mobile + Web |
-| Advances & payroll | 2.3 | Mobile + Web |
-| Materials | 2.4 | Mobile + Web |
-| Site logs / photo timeline | 2.5 | Mobile + Web |
-| Safety & legal compliance | 2.6 | Mobile + Web |
-| Client-facing features | 2.7 | Mobile + Web (portal itself is a separate client-only surface) |
-| Multi-org collaboration | 2.8 | Mobile + Web |
-| Professional & Enterprise features | 2.9 | Mobile + Web (post-MVP) |
+| Module                             | Section | Contractor platforms                                           |
+| ---------------------------------- | ------- | -------------------------------------------------------------- |
+| Dispatch & vehicle management      | 2.2     | Mobile + Web                                                   |
+| Advances & payroll                 | 2.3     | Mobile + Web                                                   |
+| Materials                          | 2.4     | Mobile + Web                                                   |
+| Site logs / photo timeline         | 2.5     | Mobile + Web                                                   |
+| Safety & legal compliance          | 2.6     | Mobile + Web                                                   |
+| Client-facing features             | 2.7     | Mobile + Web (portal itself is a separate client-only surface) |
+| Multi-org collaboration            | 2.8     | Mobile + Web                                                   |
+| Professional & Enterprise features | 2.9     | Mobile + Web (post-MVP)                                        |
 
 ---
 
@@ -164,8 +165,9 @@ diverge in input method while producing the same `site_logs` rows.
 **Client-side photo compression (mandatory, both platforms)**: site-log
 photos are by far the highest-volume content type against the org's
 1GB storage quota (Doc 01 §1.6), so every photo is resized and
-re-encoded on-device *before* it enters the upload queue, never
+re-encoded on-device _before_ it enters the upload queue, never
 server-side after the fact:
+
 - Resize to a 1920px longest edge (construction-site photos rarely need more resolution than that for their actual use — reviewing progress, documenting an issue — and this alone typically cuts a modern phone photo from 4–8MB down to a few hundred KB).
 - Re-encode as JPEG at ~80% quality.
 - Strip GPS/EXIF metadata in the same pass (this was already required for privacy, Doc 01 §1.3.11 — compression and EXIF-stripping are done as one combined step, not two separate passes).
@@ -198,6 +200,7 @@ certificates, contracts; counts toward the org's storage quota.
 
 **Client portal**: read-only web view per project, access via a signed
 link, optional 4-digit PIN for sensitive projects.
+
 - PIN hashed with Argon2id before storage.
 - Lockout: 5 failed PIN attempts locks the portal link for 15 minutes.
 - Session: portal session token expires after 24 hours of inactivity; re-entering the PIN refreshes it.
@@ -220,16 +223,16 @@ loop. Built for both mobile and web from day one.
 
 **Visibility layers** (three-layer model):
 
-| Layer | Who sees it | Example |
-|---|---|---|
-| Private | Only the org that owns the data | Trade org's own itemized expenses, its own payroll |
-| Shared | All orgs on the project | Task list, schedule, comment thread |
-| Client | The project's client (portal only) | Progress %, photos, contract balance — never margin |
+| Layer   | Who sees it                        | Example                                             |
+| ------- | ---------------------------------- | --------------------------------------------------- |
+| Private | Only the org that owns the data    | Trade org's own itemized expenses, its own payroll  |
+| Shared  | All orgs on the project            | Task list, schedule, comment thread                 |
+| Client  | The project's client (portal only) | Progress %, photos, contract balance — never margin |
 
-| Data | Lead sees | Trade sees | Client sees |
-|---|:---:|:---:|:---:|
-| Task list | yes | yes | summary only |
-| Comment thread | yes | yes | comment only |
+| Data           | Lead sees | Trade sees | Client sees  |
+| -------------- | :-------: | :--------: | :----------: |
+| Task list      |    yes    |    yes     | summary only |
+| Comment thread |    yes    |    yes     | comment only |
 
 **Report branding**: lead org's branding is primary (logo, header,
 contact block); each contributing trade org gets a secondary
@@ -253,8 +256,8 @@ doubles as an onboarding link into the standard sign-up flow (Doc 01
 account creation, it just pre-fills organization context.
 
 **Not to be confused with §2.8a below**: this section is about
-multiple *different* organizations collaborating on one shared
-project. §2.8a is about one *single* account that owns multiple
+multiple _different_ organizations collaborating on one shared
+project. §2.8a is about one _single_ account that owns multiple
 organizations — a different concept using a different mechanism.
 
 ---
@@ -264,13 +267,39 @@ organizations — a different concept using a different mechanism.
 Now that one account can own more than one organization (Doc 01
 §1.3.13), an owner running two related businesses wants a combined
 glance without having to switch back and forth. The **"Vue d'ensemble"**
-screen shows every org the user *owns* (not orgs they're merely a
+screen shows every org the user _owns_ (not orgs they're merely a
 member of) side by side — active projects, this week's advances,
 tomorrow's dispatch status, pending request counts — each figure
 independently fetched per org and composed in the UI, never blended
 into a single misleading number that would conflate two separate
 legal businesses' finances (Doc 01 §1.17 has the full mechanics and
 why it's built this way rather than as a single cross-tenant query).
+
+---
+
+## 2.8b Multi-project rollup dashboard (resolves the Phase 6+ roadmap line)
+
+§2.10's "multi-project rollup dashboards" line originally had no further
+spec anywhere in this document set — resolved during Phase 6 build, not
+invented after the fact without confirmation. This is a THIRD, distinct
+axis of "rollup," easy to conflate with the other two:
+
+- §2.8's `budget_rollup_opt_in` — per-**project** visibility, shared
+  _across orgs_ that are members of the same project.
+- §2.8a's Vue d'ensemble — per-**owned-org** summary, across _multiple
+  orgs_ one account owns.
+- This section — per-**org** summary, across _multiple projects_ that one
+  org leads. The one combination the other two don't cover.
+
+Shows every non-deleted project the active org leads, each as an
+independent card: budget consumed % (same definition as the per-project
+Dépenses screen — all-time `project_expenses` sum vs. `budget_total`,
+advances excluded per Doc 01 §1.14.2, so a project never shows two
+different consumed-% figures on two screens), workers dispatched today,
+and pending material requests. Figures are fetched and shown per-project,
+never summed into a single cross-project total — same reasoning as §2.8a:
+a blended number across projects with different clients/budgets would be
+more misleading than useful.
 
 ---
 
@@ -368,25 +397,41 @@ in the same phase, rather than staggering web behind mobile, increases
 UI implementation time per phase — this was an explicit trade the
 product owner chose knowingly (Doc 00 §0.4), not a free upgrade. The
 shared backend, shared validation, and shared RLS (Doc 01 §1.5–1.6)
-are what keep the *rules* consistent even though the *screens* are
+are what keep the _rules_ consistent even though the _screens_ are
 built twice.
 
 ---
 
 ## 2.11 Testing strategy
 
-| Layer | Tool | Notes |
-|---|---|---|
-| Unit | Jest | Shared Zod schemas tested once, trusted by both clients. |
-| Mobile E2E | Detox | Contractor + worker flows. |
-| Web E2E | Playwright | Contractor flows — now covers the full module set per §0.4's parity matrix, not just reporting screens as in the prior scope. |
-| RLS / security | Doc 01 §1.5's test matrix, run against real seeded data before any multi-org or auth change ships | Cross-org isolation is the single highest-severity thing to regress. Includes a specific test asserting a permission change (role demotion, project-membership revocation) takes effect on the *very next request*, to guard against any future regression back toward JWT-claims-based checks. |
-| Idempotency | Integration test firing the same request twice with the same `Idempotency-Key` | Asserts exactly one financial write occurs (Doc 01 §1.11), not "eventually consistent" — a hard assertion. |
-| Offline conflicts | Detox test simulating two concurrent edits to one dispatch cell, one offline | Asserts a `409` surfaces the explicit keep-mine/use-theirs choice (Doc 01 §1.9) rather than silently merging. |
-| App version gate | Unit test on the Splash routing logic with a mocked stale `build` number | Asserts routing to Forced Update happens before any session check runs (Doc 01 §1.8). |
-| Admin | Playwright, separate suite | Runs against the isolated Admin deployment only. Includes a dedicated impersonation test asserting scope is limited to the target user's own permissions and that every impersonated action is tagged in `audit_log` (Doc 04 §4.3.3a). |
-| Attendance reconciliation | Integration test writing a manual attendance record, then a dispatch check-in for the same worker/day | Asserts the manual entry is preserved, not silently overwritten (Doc 01 §1.14.3). |
-| Expense/budget calculation | Unit test on the consumed-% formula | Asserts advances are never included in the sum (Doc 01 §1.14.2) — the specific double-counting bug this design avoids. |
-| Cross-org rollup isolation | Integration test asserting the rollup screen's per-org data never appears in a query that spans both orgs at the database layer | Directly guards the "no super-owner" constraint (Doc 01 §1.17.1) — this is a regression test for a principle, not just a feature. |
-| Soft-delete / restore | Integration test: delete a project, assert it's excluded from normal queries but restorable within 30 days, then assert `purge_soft_deleted_records` removes it after | Doc 01 §1.16.2. |
-| 2FA enrollment/login | Detox + Playwright test covering the full opt-in enroll → logout → login-with-TOTP cycle | Doc 01 §1.15 — since this is opt-in, also asserts a non-enrolled account's login is entirely unaffected. |
+| Layer                      | Tool                                                                                                                                                                  | Notes                                                                                                                                                                                                                                                                                           |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Unit                       | Jest                                                                                                                                                                  | Shared Zod schemas tested once, trusted by both clients.                                                                                                                                                                                                                                        |
+| Mobile E2E                 | Detox                                                                                                                                                                 | Contractor + worker flows.                                                                                                                                                                                                                                                                      |
+| Web E2E                    | Playwright                                                                                                                                                            | Contractor flows — now covers the full module set per §0.4's parity matrix, not just reporting screens as in the prior scope.                                                                                                                                                                   |
+| RLS / security             | Doc 01 §1.5's test matrix, run against real seeded data before any multi-org or auth change ships                                                                     | Cross-org isolation is the single highest-severity thing to regress. Includes a specific test asserting a permission change (role demotion, project-membership revocation) takes effect on the _very next request_, to guard against any future regression back toward JWT-claims-based checks. |
+| Idempotency                | Integration test firing the same request twice with the same `Idempotency-Key`                                                                                        | Asserts exactly one financial write occurs (Doc 01 §1.11), not "eventually consistent" — a hard assertion.                                                                                                                                                                                      |
+| Offline conflicts          | Detox test simulating two concurrent edits to one dispatch cell, one offline                                                                                          | Asserts a `409` surfaces the explicit keep-mine/use-theirs choice (Doc 01 §1.9) rather than silently merging.                                                                                                                                                                                   |
+| App version gate           | Unit test on the Splash routing logic with a mocked stale `build` number                                                                                              | Asserts routing to Forced Update happens before any session check runs (Doc 01 §1.8).                                                                                                                                                                                                           |
+| Admin                      | Playwright, separate suite                                                                                                                                            | Runs against the isolated Admin deployment only. Includes a dedicated impersonation test asserting scope is limited to the target user's own permissions and that every impersonated action is tagged in `audit_log` (Doc 04 §4.3.3a).                                                          |
+| Attendance reconciliation  | Integration test writing a manual attendance record, then a dispatch check-in for the same worker/day                                                                 | Asserts the manual entry is preserved, not silently overwritten (Doc 01 §1.14.3).                                                                                                                                                                                                               |
+| Expense/budget calculation | Unit test on the consumed-% formula                                                                                                                                   | Asserts advances are never included in the sum (Doc 01 §1.14.2) — the specific double-counting bug this design avoids.                                                                                                                                                                          |
+| Cross-org rollup isolation | Integration test asserting the rollup screen's per-org data never appears in a query that spans both orgs at the database layer                                       | Directly guards the "no super-owner" constraint (Doc 01 §1.17.1) — this is a regression test for a principle, not just a feature.                                                                                                                                                               |
+| Soft-delete / restore      | Integration test: delete a project, assert it's excluded from normal queries but restorable within 30 days, then assert `purge_soft_deleted_records` removes it after | Doc 01 §1.16.2.                                                                                                                                                                                                                                                                                 |
+| 2FA enrollment/login       | Detox + Playwright test covering the full opt-in enroll → logout → login-with-TOTP cycle                                                                              | Doc 01 §1.15 — since this is opt-in, also asserts a non-enrolled account's login is entirely unaffected.                                                                                                                                                                                        |
+
+**Mobile implementation status (as of Phase 9)** — this table is the
+target strategy; for what's actually built in `apps/mobile` against it,
+see `docs/MOBILE_IMPLEMENTATION_STATUS.md`'s Phase 9 section rather than
+duplicating a status tracker here. Short version: Jest and Detox
+infrastructure exist for the first time as of Phase 9 (previously
+neither was wired up at all, despite `detox` sitting in `package.json`).
+Built this phase: Jest unit coverage for the expense consumed-% formula
+row above and the app-version-gate row above, and a real Detox spec for
+the 2FA enrollment/login row above. Not yet built: the RLS/security row,
+the idempotency row, the offline-conflicts row, and the attendance-
+reconciliation row — each needs seeded test-data infrastructure that
+doesn't exist yet, scoped as its own follow-up phase rather than rushed
+alongside Phase 9's other work. The Playwright/web and Admin rows are
+out of scope for this document entirely (web/admin are separate
+branches/apps).

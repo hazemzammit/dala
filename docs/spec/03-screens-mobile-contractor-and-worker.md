@@ -525,7 +525,17 @@ Créer une nouvelle entreprise."
 
 **Notifications**: push toggles per category (dispatch, advances, materials, safety).
 
-**Membres de l'équipe**: → Worker roster (§3.13), plus org-member (non-worker) invite/role-management for Owner.
+**Membres de l'équipe**: two separate screens on two separate tables — the
+worker roster (§3.13, `workers`) is unchanged; org-member (non-worker)
+role-change/removal for existing members shipped in Phase 7
+(`organization_members`); invite-by-email for a NEW org member (owner
+only, role limited to manager/viewer — not owner) shipped in Phase 9 via
+`organization_member_invitations` (migration 0030) — see
+`docs/MOBILE_IMPLEMENTATION_STATUS.md`'s Phase 9 section for the accept-flow
+design (three-way branch: already logged in / has an account / no
+account) and the one deliberate scope cut (actual e-mail delivery of the
+invitation isn't wired up yet — the link has to be shared manually for
+now, same disclosed boundary as the worker-invite WhatsApp/SMS gap).
 
 **Facturation**: → §3.21.
 

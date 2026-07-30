@@ -1,5 +1,5 @@
-import { useFocusEffect } from 'expo-router';
-import { CaretDownIcon } from 'phosphor-react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { BuildingsIcon, CaretDownIcon, CaretRightIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Text, XStack, YStack } from 'tamagui';
 
@@ -22,6 +22,10 @@ import { listMyOrganizations, listOwnedOrganizations, type MyOrgSummary } from '
  * entry point and that pill/sheet is where Doc 05 says it belongs. This is
  * the minimum slice of Dashboard needed to make that entry point exist —
  * not a signal that the rest of §3.9 has been built.
+ *
+ * PHASE 6: same minimum-slice reasoning adds one more row here — an entry
+ * point to the new multi-project rollup screen (project-rollup.tsx, Doc 02
+ * §2.10). Doesn't touch the rest of §3.9 either.
  */
 export default function DashboardScreen() {
   const [orgs, setOrgs] = useState<MyOrgSummary[]>([]);
@@ -98,6 +102,29 @@ export default function DashboardScreen() {
         activeOrgId={activeOrgId}
         onSelect={handleSelect}
       />
+
+      {/* Phase 6 — entry point to the multi-project rollup screen (Doc 02
+          §2.10). Always shown regardless of org count, unlike the pill
+          above — every account with an active org has projects worth
+          rolling up, even a single-org one. */}
+      <XStack
+        alignItems="center"
+        justifyContent="space-between"
+        backgroundColor="$neutral0"
+        borderRadius="$card"
+        padding="$4"
+        onPress={() => router.push('/project-rollup')}
+        accessibilityRole="button"
+        accessibilityLabel="Voir tous les chantiers"
+      >
+        <XStack alignItems="center" gap="$3">
+          <BuildingsIcon size={20} weight="bold" />
+          <Text fontSize={15} fontWeight="500">
+            Chantiers
+          </Text>
+        </XStack>
+        <CaretRightIcon size={16} color="$neutral500" />
+      </XStack>
     </YStack>
   );
 }

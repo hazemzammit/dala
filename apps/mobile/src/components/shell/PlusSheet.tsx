@@ -1,10 +1,12 @@
 import { color } from '@dala/design-tokens';
 import { router } from 'expo-router';
 import {
+  BuildingsIcon,
   CarIcon,
   ChartBarIcon,
   ClipboardTextIcon,
   CoinsIcon,
+  DownloadSimpleIcon,
   GearIcon,
   HandCoinsIcon,
   HandshakeIcon,
@@ -12,6 +14,7 @@ import {
   PackageIcon,
   ReceiptIcon,
   ShieldWarningIcon,
+  TrashIcon,
   UsersThreeIcon,
   XIcon,
   type Icon,
@@ -38,7 +41,17 @@ const ITEMS: { href: string; label: string; icon: Icon }[] = [
   { href: '/client-portal', label: 'Portail client', icon: HandshakeIcon },
   { href: '/collaboration', label: 'Collaboration', icon: UsersThreeIcon },
   { href: '/reports', label: 'Rapports', icon: ChartBarIcon },
+  // Phase 6 (Doc 02 §2.10) — multi-project rollup, distinct from Vue
+  // d'ensemble's cross-org rollup (see portfolio.tsx's header for the
+  // naming-collision check).
+  { href: '/portfolio', label: 'Portefeuille', icon: BuildingsIcon },
   { href: '/billing', label: 'Facturation', icon: ReceiptIcon },
+  // Phase 5 (Doc 02 §2.10) — Trash and self-service data export. Both are
+  // organization-wide utility screens, same shelf as Reports/Billing rather
+  // than nested under Settings (Doc 03 §3.22's Settings list doesn't itself
+  // include a Trash or Export row).
+  { href: '/trash', label: 'Corbeille', icon: TrashIcon },
+  { href: '/data-export', label: 'Exporter mes données', icon: DownloadSimpleIcon },
   { href: '/settings', label: 'Paramètres', icon: GearIcon },
 ];
 
@@ -79,6 +92,7 @@ export function PlusSheet({ visible, onClose }: PlusSheetProps) {
             return (
               <XStack
                 key={item.href}
+                testID={`plus-sheet-${item.href.replace('/', '')}`}
                 alignItems="center"
                 gap="$3"
                 paddingVertical={12}

@@ -6,9 +6,15 @@ import { AnnouncementForm } from './AnnouncementForm';
 import { AnnouncementsList } from './AnnouncementsList';
 
 /**
- * Doc 04 §4.3.10 — Announcements authoring. Delivery (rendering the banner
- * in mobile/web, actually sending email/push) is a separate consumer of
- * the `announcements` table (0022) — not built here.
+ * Doc 06 §6.3 — Announcements authoring + push delivery.
+ *
+ * Push delivery is real as of migration 0030: send-announcement-
+ * notifications (Edge Function, cron every 5 min) resolves recipients and
+ * sends via Expo Push, logged in announcement_deliveries. In-app banner
+ * delivery has a real DB-side read contract (get_active_in_app_announcements(),
+ * 0030) but no rendered UI here — that's apps/web's / apps/mobile's own
+ * screen to build against it, not apps/admin's. Email channel selection is
+ * still authoring-intent only; no Resend send is wired for it yet.
  */
 export default function AnnouncementsPage() {
   const [refreshKey, setRefreshKey] = useState(0);

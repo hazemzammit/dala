@@ -46,6 +46,20 @@ export default function LoginScreen() {
       return;
     }
 
+    // Phase 8 — Doc 01 §1.15. Supabase issues a valid session immediately
+    // regardless of enrolled TOTP factors (see migration 0029's header for
+    // why that's by design, not a gap) — checking currentLevel vs.
+    // nextLevel is how the client knows a challenge is still pending
+    // before letting the person past this screen.
+    const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+    if (aal && aal.nextLevel === 'aal2' && aal.nextLevel !== aal.currentLevel) {
+      router.replace({
+        pathname: '/mfa-challenge' as never,
+        params: { next: (next as string) ?? '/dashboard' },
+      });
+      return;
+    }
+
     router.replace((next as never) ?? '/dashboard');
   }
 
@@ -56,17 +70,24 @@ export default function LoginScreen() {
       </Text>
 
       <FormField
+        testID="login-email-input"
         label="E-mail"
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
       />
-      <FormField label="Mot de passe" value={password} onChangeText={setPassword} secureTextEntry />
+      <FormField
+        testID="login-password-input"
+        label="Mot de passe"
+        value={password}
+        onChangeText={setPassword}
+        secureTextEntry
+      />
 
       {error && <Text color="$danger">{error}</Text>}
 
-      <Button onPress={handleSubmit} loading={loading}>
+      <Button testID="login-submit-button" onPress={handleSubmit} loading={loading}>
         Se connecter
       </Button>
 

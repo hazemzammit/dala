@@ -44,5 +44,10 @@
     "*.{ts,tsx,js,jsx,json,md,css}": [
       "prettier --write"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "@babel/runtime": "^7.25.0"
+    }
   }
 }

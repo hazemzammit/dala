@@ -1,14 +1,14 @@
 /**
- * Doc 04 §4.3.10 — Announcements authoring. The recipient-count estimate
+ * Doc 06 §6.3 — Announcements authoring. The recipient-count estimate
  * (GET ?estimate=...) is what powers the spec's "preview panel shows the
  * estimated recipient count before sending, to catch an overly broad
  * targeting mistake" requirement — computed for real against `profiles`/
- * `organizations`, not a placeholder number.
- *
- * Actual delivery (rendering the in-app banner, sending the email/push)
- * is NOT built here — this migration/route only covers authoring +
- * scheduling intent (see 0022_announcements.sql's comment). That's a
- * separate consumer to build against this table.
+ * `organizations`, not a placeholder number. This route only inserts the
+ * row (published_at set immediately for a non-scheduled publish); actual
+ * push delivery happens out-of-band via the send-announcement-
+ * notifications Edge Function (cron, migration 0030) picking up rows with
+ * published_at set and delivered_at null — kept decoupled so a slow/failed
+ * Expo Push call never blocks this route's response.
  */
 import { NextResponse } from 'next/server';
 
@@ -133,8 +133,10 @@ export async function POST(request: Request) {
       target_value: targetValue,
       scheduled_for: scheduledFor,
       // "Publier" (no scheduledFor) marks it published now; "Programmer"
-      // leaves published_at null until the scheduled time — actual firing
-      // of the scheduled send is the not-yet-built delivery job's job.
+      // leaves published_at null until scheduled_for is due — a real
+      // cron job (migration 0031, every minute) flips published_at at
+      // that point, which then feeds send-announcement-notifications
+      // (0030) the same way an immediate publish already does.
       published_at: scheduledFor ? null : new Date().toISOString(),
       estimated_recipient_count: estimatedCount,
     })

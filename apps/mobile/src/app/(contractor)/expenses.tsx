@@ -15,6 +15,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
+import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -55,6 +56,7 @@ function todayISO(): string {
 
 export default function ExpensesScreen() {
   const [canWrite, setCanWrite] = useState(false);
+  const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -83,6 +85,7 @@ export default function ExpensesScreen() {
   async function load() {
     setLoading(true);
     const org = await getActiveOrgId();
+    setOrgId(org);
     if (!org) {
       setLoading(false);
       return;
@@ -120,14 +123,8 @@ export default function ExpensesScreen() {
     [projects, selectedProjectId],
   );
 
-  const consumedTotal = useMemo(
-    () => expenses.reduce((sum, e) => sum + Number(e.amount), 0),
-    [expenses],
-  );
-  const consumedPercent =
-    selectedProject?.budget_total && selectedProject.budget_total > 0
-      ? Math.min(100, Math.round((consumedTotal / selectedProject.budget_total) * 100))
-      : null;
+  const consumedTotal = useMemo(() => calculateConsumedTotal(expenses), [expenses]);
+  const consumedPercent = calculateConsumedPercent(consumedTotal, selectedProject?.budget_total);
 
   function openSheet() {
     setCategory('materiaux');
@@ -141,6 +138,7 @@ export default function ExpensesScreen() {
   async function handleSave() {
     setError(null);
     if (!selectedProjectId) return;
+    if (!orgId) return;
 
     const parsed = createProjectExpenseSchema.safeParse({
       project_id: selectedProjectId,

@@ -1,7 +1,8 @@
+import { color } from '@dala/design-tokens';
 import type { Worker, WorkerInvitation } from '@dala/shared-types';
 import { inviteWorkerSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
-import { PlusIcon, UsersIcon } from 'phosphor-react-native';
+import { PlusIcon, TrashIcon, UsersIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -33,6 +34,17 @@ import { supabase } from '@/lib/supabase';
  * in addition to the Plus sheet — it's used often enough alongside roster
  * management that a second, closer entry point is worth the minor
  * duplication.
+ *
+ * Phase 5 additions (migration 0025, Doc 02 §2.10 Trash / §2.2 Tier 0):
+ *   - queries `active_workers` instead of `workers` directly, so a
+ *     soft-deleted worker drops off this list immediately rather than
+ *     waiting for a client-side filter (same view-based pattern
+ *     `active_projects` already established in 0013).
+ *   - each row now has a delete affordance (soft_delete_worker RPC) — Trash
+ *     screen needs a real entry point to soft-delete FROM, and this is the
+ *     only fully-built worker screen to put it on.
+ *   - tapping a row (rather than its delete icon) opens the new Worker
+ *     Detail screen (`worker/[id].tsx`) for Tier 0 lateness surfacing.
  */
 type DerivedStatus = 'active' | 'pending' | 'inactive';
 
@@ -86,7 +98,7 @@ export default function TeamScreen() {
     }
 
     const { data: workerRows } = await supabase
-      .from('workers')
+      .from('active_workers')
       .select('*')
       .eq('org_id', org)
       .order('full_name');
@@ -191,6 +203,30 @@ export default function TeamScreen() {
     await load();
   }
 
+  function confirmDelete(row: WorkerRow) {
+    Alert.alert(
+      'Supprimer ce travailleur ?',
+      `${row.full_name} sera déplacé vers la corbeille et restaurable pendant 30 jours.`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        { text: 'Supprimer', style: 'destructive', onPress: () => void handleDelete(row) },
+      ],
+    );
+  }
+
+  async function handleDelete(row: WorkerRow) {
+    const { error: rpcError } = await supabase.rpc('soft_delete_worker', {
+      p_worker_id: row.id,
+    });
+    if (rpcError) {
+      Alert.alert('Erreur', 'Impossible de supprimer ce travailleur.');
+      haptics.error();
+      return;
+    }
+    haptics.confirm();
+    await load();
+  }
+
   if (loading) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
@@ -242,6 +278,7 @@ export default function TeamScreen() {
                 padding="$4"
                 justifyContent="space-between"
                 alignItems="center"
+                onPress={() => router.push(`/worker/${worker.id}` as never)}
               >
                 <XStack gap="$3" alignItems="center" flex={1}>
                   <Avatar name={worker.full_name} />
@@ -254,16 +291,36 @@ export default function TeamScreen() {
                     </Text>
                   </YStack>
                 </XStack>
-                <YStack alignItems="flex-end" gap="$2">
-                  <StatusBadge variant={STATUS_BADGE[derived].variant}>
-                    {STATUS_BADGE[derived].label}
-                  </StatusBadge>
-                  {derived !== 'active' && (
-                    <Text fontSize={12} color="$accent600" onPress={() => handleResend(worker)}>
-                      Renvoyer l&apos;invitation
-                    </Text>
-                  )}
-                </YStack>
+                <XStack alignItems="center" gap="$3">
+                  <YStack alignItems="flex-end" gap="$2">
+                    <StatusBadge variant={STATUS_BADGE[derived].variant}>
+                      {STATUS_BADGE[derived].label}
+                    </StatusBadge>
+                    {derived !== 'active' && (
+                      <Text
+                        fontSize={12}
+                        color="$accent600"
+                        onPress={(e: any) => {
+                          e.stopPropagation?.();
+                          handleResend(worker);
+                        }}
+                      >
+                        Renvoyer l&apos;invitation
+                      </Text>
+                    )}
+                  </YStack>
+                  <XStack
+                    padding={6}
+                    onPress={(e: any) => {
+                      e.stopPropagation?.();
+                      confirmDelete(worker);
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Supprimer ${worker.full_name}`}
+                  >
+                    <TrashIcon size={18} color={color.neutral[500]} />
+                  </XStack>
+                </XStack>
               </XStack>
             );
           })}

@@ -24,6 +24,8 @@ import { processPhoto } from '@/lib/photoPipeline';
 import { uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
+// cspell:disable
+
 /**
  * apps/mobile/src/app/(worker)/update-chantier.tsx
  *
@@ -80,6 +82,11 @@ export default function UpdateChantierScreen() {
       void load();
     }, []),
   );
+
+  const handleStopRecording = useCallback(async () => {
+    await recorder.stop();
+    setRecordingUri(recorder.uri ?? null);
+  }, [recorder]);
 
   // Auto-stop at the 2-minute cap (Doc 03 §4.2 "max 2 min").
   useEffect(() => {
@@ -166,11 +173,6 @@ export default function UpdateChantierScreen() {
     await recorder.prepareToRecordAsync();
     recorder.record();
   }
-
-  const handleStopRecording = useCallback(async () => {
-    await recorder.stop();
-    setRecordingUri(recorder.uri ?? null);
-  }, [recorder]);
 
   function removeRecording() {
     setRecordingUri(null);

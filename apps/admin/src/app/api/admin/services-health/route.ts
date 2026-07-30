@@ -1,15 +1,19 @@
 /**
- * Doc 04 §4.3.9 — scheduled-job status table, backed directly by
- * `scheduled_job_runs` (migration 0010), one row per execution.
+ * Doc 06 §6.3 — Services Health.
  *
- * The infrastructure status grid (Supabase API/Auth/Storage/Realtime,
- * Edge Functions, Konnect, Resend, Expo Push) and the edge-function
- * invocation log are NOT built here — those need either a real uptime-
- * ping mechanism per service or a log source Doc 01 doesn't define yet
- * (no `edge_function_invocations` table exists). Wiring up fake "green"
- * indicators for services with no real check behind them would be
- * actively misleading, so the grid is left as a documented gap on the
- * page rather than faked.
+ * Two independent data sources:
+ *   1. Scheduled-job status — real, backed by `scheduled_job_runs`
+ *      (migration 0010). MONITORED_JOBS below was corrected this
+ *      session: it previously listed five job names
+ *      ('expire_invitations', 'send_payment_reminders',
+ *      'weekly_salary_summaries', 'cleanup_orphaned_files',
+ *      'realtime_edge_function_usage_budget_check') that don't match any
+ *      job_name any real Edge Function in this repo actually inserts —
+ *      a stale placeholder list, silently monitoring nothing. The three
+ *      real cron-invoked jobs (0026, 0027, 0030) weren't in it at all.
+ *   2. Infra reachability grid — real as of migration 0032, backed by
+ *      `service_health_checks` (ping-service-health, cron every 5 min).
+ *      Konnect is deliberately absent — see that migration's header.
  */
 import { NextResponse } from 'next/server';
 
@@ -17,12 +21,12 @@ import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 const MONITORED_JOBS = [
-  'expire_invitations',
-  'send_payment_reminders',
-  'weekly_salary_summaries',
-  'cleanup_orphaned_files',
-  'realtime_edge_function_usage_budget_check',
+  'send_impersonation_notifications',
+  'send_digest_notifications',
+  'send_announcement_notifications',
 ];
+
+const MONITORED_SERVICES = ['supabase_auth', 'supabase_storage', 'resend', 'expo_push'] as const;
 
 export async function GET() {
   const ctx = await getAdminSessionContext();
@@ -54,5 +58,25 @@ export async function GET() {
     return { job_name: name, latest, lastTwoFailed, recentRuns: jobRuns.slice(0, 5) };
   });
 
-  return NextResponse.json({ jobs });
+  const { data: healthChecks, error: healthError } = await supabase
+    .from('service_health_checks')
+    .select('*')
+    .order('checked_at', { ascending: false })
+    .limit(200);
+
+  if (healthError) return NextResponse.json({ error: healthError.message }, { status: 500 });
+
+  const latestByService = new Map<string, (typeof healthChecks)[number]>();
+  for (const check of healthChecks ?? []) {
+    if (!latestByService.has(check.service_name)) {
+      latestByService.set(check.service_name, check);
+    }
+  }
+
+  const services = MONITORED_SERVICES.map((name) => ({
+    service_name: name,
+    latest: latestByService.get(name) ?? null,
+  }));
+
+  return NextResponse.json({ jobs, services });
 }

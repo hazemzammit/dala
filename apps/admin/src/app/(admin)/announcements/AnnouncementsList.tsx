@@ -1,22 +1,12 @@
 'use client';
 
+import type { Announcement } from '@dala/shared-types';
 import { MegaphoneIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
-
-interface Announcement {
-  id: string;
-  message: string;
-  channels: string[];
-  target_type: string;
-  scheduled_for: string | null;
-  published_at: string | null;
-  estimated_recipient_count: number | null;
-  created_at: string;
-}
 
 export function AnnouncementsList({ refreshKey }: { refreshKey: number }) {
   const [items, setItems] = useState<Announcement[]>([]);
@@ -56,6 +46,26 @@ export function AnnouncementsList({ refreshKey }: { refreshKey: number }) {
         ) : (
           <StatusBadge variant="neutral">—</StatusBadge>
         ),
+    },
+    {
+      key: 'delivery',
+      header: 'Livraison',
+      render: (a) => {
+        // Doc 06 §6.3 — real signal from send-announcement-notifications
+        // (migration 0030), not authoring intent. 'push' channel only; an
+        // in_app-only or email-only announcement is marked delivered
+        // immediately since there's nothing this job sends for it (see
+        // that Edge Function's header).
+        if (!a.published_at) return <span className="text-neutral-500">—</span>;
+        if (!a.delivered_at) {
+          return <StatusBadge variant="warning">En cours (push)</StatusBadge>;
+        }
+        return a.channels.includes('push') ? (
+          <StatusBadge variant="success">Push envoyé</StatusBadge>
+        ) : (
+          <StatusBadge variant="neutral">Aucun push à envoyer</StatusBadge>
+        );
+      },
     },
   ];
 

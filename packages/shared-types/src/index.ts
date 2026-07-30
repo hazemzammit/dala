@@ -25,6 +25,14 @@ export type Platform = 'mobile' | 'web';
 export type OrgRole = 'owner' | 'manager' | 'viewer';
 export type ProjectMembershipRole = 'lead' | 'trade' | 'client';
 export type ProjectStatus = 'active' | 'completed' | 'archived';
+
+/**
+ * Doc 03 §3.10.3 "Type de projet" — migration 0028. Spec never enumerates
+ * the values (just "select, Required"); this is the Phase 7 judgment call,
+ * see that migration's header comment.
+ */
+export type ProjectType =
+  'residentiel' | 'commercial' | 'industriel' | 'renovation' | 'infrastructure' | 'autre';
 export type VehicleStatus = 'available' | 'in_use' | 'maintenance';
 export type InvitationChannel = 'app' | 'whatsapp' | 'sms';
 export type InvitationStatus = 'pending' | 'accepted' | 'expired';
@@ -58,6 +66,22 @@ export interface Profile {
   created_at: string;
   last_login_at: string | null;
   last_login_platform: Platform | null;
+  expo_push_token: string | null; // migration 0025 — Doc 02 §2.9a
+  notification_prefs: NotificationPrefs; // migration 0025 — Doc 03 §3.23 / Doc 02 §2.9a
+  deletion_requested_at: string | null; // migration 0028 — Doc 03 §3.22 "Supprimer mon compte"
+}
+
+/** migration 0025 — Doc 03 §3.23 per-category push toggles + Doc 02 §2.9a
+ *  digest opt-in. Per-account (profiles), not per-org — see activeOrg.ts's
+ *  note that a digest isn't scoped to whichever org is currently active. */
+export type DigestFrequency = 'off' | 'daily' | 'weekly';
+
+export interface NotificationPrefs {
+  dispatch: boolean;
+  advances: boolean;
+  materials: boolean;
+  safety: boolean;
+  digest_frequency: DigestFrequency;
 }
 
 export interface Organization {
@@ -125,6 +149,7 @@ export interface Worker {
   daily_rate: number | null;
   user_id: string | null;
   created_at: string;
+  deleted_at: string | null; // migration 0025 — Doc 02 §2.10, 30-day recoverable soft-delete (same pattern as Project.deleted_at)
 }
 
 export interface WorkerInvitation {
@@ -146,6 +171,8 @@ export interface Project {
   address: string | null;
   budget_total: number | null;
   status: ProjectStatus;
+  start_date: string | null; // migration 0028 — Doc 03 §3.10.3
+  project_type: ProjectType | null; // migration 0028 — Doc 03 §3.10.3
   deleted_at: string | null;
   version: number;
   created_by: string;
@@ -360,4 +387,103 @@ export interface SearchResult {
   id: string;
   label: string;
   rank: number;
+}
+
+/** migration 0025 — return shape of get_worker_lateness_pattern(), Doc 02
+ *  §2.2/§2.9 Tier 0. day_of_week follows Postgres extract(dow): 0 = Sunday
+ *  .. 6 = Saturday. Rows only appear once sample_count >= 4 for that day
+ *  (enforced in SQL, not here) — this type describes what's returned, not
+ *  the display-worthiness threshold itself. */
+export interface WorkerLatenessPattern {
+  day_of_week: number;
+  avg_lateness_min: number;
+  sample_count: number;
+}
+
+/** migration 0025 — return shape of get_digest_summary(), Doc 02 §2.9a. */
+export interface DigestSummary {
+  pending_advances_count: number;
+  pending_materials_count: number;
+  tomorrow_dispatch_planned: boolean;
+  week_advances_total: number;
+}
+
+/** Doc 02 §2.10 Trash screen — a soft-deleted project or worker, normalized
+ *  to one shape so the Trash screen can render both entity types in a
+ *  single list without a union of near-identical row components. Composed
+ *  client-side from Project/Worker rows where deleted_at is not null, not
+ *  a table of its own. */
+export interface TrashItem {
+  entity_type: 'project' | 'worker';
+  id: string;
+  label: string;
+  deleted_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Platform Admin (apps/admin) — Doc 06 §6.3
+//
+// Moved here from being defined locally/inline inside apps/admin's own
+// route files, where they'd drifted since first written (a prior session's
+// notes claimed these three already lived here; a fresh read found they
+// didn't — admin's routes had their own local equivalents instead). Real
+// value in having them here: apps/web/apps/mobile can now consume the same
+// `Announcement` shape that get_active_in_app_announcements() (migration
+// 0030) returns, without redefining it, if either app builds against that
+// RPC.
+// ---------------------------------------------------------------------------
+
+/** `announcements` table (migration 0022) + `delivered_at` (migration
+ *  0030). channels/target_type mirror the CHECK constraints in 0022 —
+ *  kept as string unions here so a constraint change needs a matching
+ *  type change, not just a migration. */
+export interface Announcement {
+  id: string;
+  message: string;
+  channels: ('push' | 'email' | 'in_app')[];
+  target_type: 'all_users' | 'owners_only' | 'by_plan' | 'by_trade_type' | 'inactive_30d';
+  target_value: string | null;
+  scheduled_for: string | null;
+  published_at: string | null;
+  /** Set by send-announcement-notifications (0030) once every resolved
+   *  recipient has been processed for the push channel. Null does not
+   *  necessarily mean "not sent" — an in_app-only/email-only announcement
+   *  is marked delivered immediately since there's no push to wait on. */
+  delivered_at: string | null;
+  estimated_recipient_count: number | null;
+  created_at: string;
+}
+
+/** `scheduled_job_runs` table (migration 0010) — one row per Edge Function
+ *  execution. Real job_name values currently in use: see MONITORED_JOBS in
+ *  apps/admin's services-health route (send_impersonation_notifications,
+ *  send_digest_notifications, send_announcement_notifications) — job_name
+ *  has no DB-level CHECK constraint, so this type doesn't enumerate it as
+ *  a union; a new cron-invoked Edge Function can start writing a new name
+ *  without a migration or a type change here. */
+export interface ScheduledJobRun {
+  id: string;
+  job_name: string;
+  started_at: string;
+  completed_at: string | null;
+  status: 'running' | 'success' | 'failed';
+  error_message: string | null;
+  retry_count: number;
+}
+
+/** Return shape of admin_storage_usage_by_org() (migration 0026) joined
+ *  against `organizations`, with overage_status added this session (Doc
+ *  00 §0.3 item 7's free-tier thresholds — see apps/admin's storage route
+ *  for the actual byte cutoffs). 'no_limit_defined' covers any plan other
+ *  than 'free', since no numeric limit is defined for those anywhere in
+ *  Doc 00/03 — not a value to treat as "no problem", just "not checked". */
+export interface OrgStorageUsage {
+  organization_id: string;
+  organization_name: string;
+  plan: string | null;
+  suspended_at: string | null;
+  deleted_at: string | null;
+  file_count: number;
+  total_bytes: number;
+  overage_status: 'ok' | 'warning' | 'critical' | 'over_limit' | 'no_limit_defined';
 }

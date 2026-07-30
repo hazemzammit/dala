@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "create-admin": "tsx scripts/create-admin.ts",
-    "generate-totp-vault-key": "tsx scripts/generate-totp-vault-key.ts"
+    "generate-totp-vault-key": "tsx scripts/generate-totp-vault-key.ts",
+    "register-cron-secrets": "tsx scripts/register-cron-secrets.ts"
   },
   "dependencies": {
     "@dala/design-tokens": "workspace:*",

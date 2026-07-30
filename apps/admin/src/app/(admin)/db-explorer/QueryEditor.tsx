@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -19,6 +19,7 @@ export function QueryEditor() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const reasonId = useId();
 
   async function run() {
     setError(null);
@@ -91,10 +92,11 @@ export function QueryEditor() {
 
       {dangerZone && (
         <div>
-          <label className="text-sm font-medium text-neutral-900">
+          <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
             Motif (10 caractères minimum)
           </label>
           <textarea
+            id={reasonId}
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             rows={2}

@@ -13,9 +13,11 @@
 import Agreement from '@/assets/illustrations/undraw_agreement_ftet.svg';
 import AlarmClock from '@/assets/illustrations/undraw_alarm-clock_zgtg.svg';
 import CheckBoxes from '@/assets/illustrations/undraw_check-boxes_x5fg.svg';
+import CleanUp from '@/assets/illustrations/undraw_clean-up_af4s.svg';
 import Confirmed from '@/assets/illustrations/undraw_confirmed_c5lo.svg';
 import ConnectionLost from '@/assets/illustrations/undraw_connection-lost_am29.svg';
 import Destination from '@/assets/illustrations/undraw_destination_fkst.svg';
+import ExportFiles from '@/assets/illustrations/undraw_export-files_gc69.svg';
 import GlobalTeam from '@/assets/illustrations/undraw_global-team_8jok.svg';
 import MailSent from '@/assets/illustrations/undraw_mail-sent_ujev.svg';
 import Maintenance from '@/assets/illustrations/undraw_maintenance_4unj.svg';
@@ -25,6 +27,7 @@ import OnlineRevenue from '@/assets/illustrations/undraw_online-revenue_6egl.svg
 import OrganizePhotos from '@/assets/illustrations/undraw_organize-photos_t5k9.svg';
 import PageNotFound from '@/assets/illustrations/undraw_page-not-found_6wni.svg';
 import Payments from '@/assets/illustrations/undraw_payments_nbqu.svg';
+import PushNotifications from '@/assets/illustrations/undraw_push-notifications_5z1s.svg';
 import Receipt from '@/assets/illustrations/undraw_receipt_tzi0.svg';
 import RoutePlanning from '@/assets/illustrations/undraw_route-planning_2psv.svg';
 import SendMoney from '@/assets/illustrations/undraw_send-money_4qc7.svg';
@@ -58,6 +61,9 @@ export const illustrations = {
   'alarm-clock': AlarmClock,
   'send-money': SendMoney,
   payments: Payments,
+  'clean-up': CleanUp,
+  'export-files': ExportFiles,
+  'push-notifications': PushNotifications,
 } as const;
 
 export type IllustrationName = keyof typeof illustrations;

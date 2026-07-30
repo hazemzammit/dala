@@ -38,7 +38,7 @@ export function ImpersonationBanner() {
         onClick={endImpersonation}
         className="rounded-control border border-white/40 px-3 py-1 text-xs font-medium text-white hover:bg-white/10"
       >
-        Quitter l&rsquo;impersonation
+        Quitter l'impersonation
       </button>
     </div>
   );

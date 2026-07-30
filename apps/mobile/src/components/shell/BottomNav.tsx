@@ -10,7 +10,6 @@ import {
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-
 /**
  * apps/mobile/src/components/shell/BottomNav.tsx
  *
@@ -78,7 +77,13 @@ export function BottomNav({ onPlusPress }: BottomNavProps) {
         );
       })}
 
-      <YStack alignItems="center" gap={2} onPress={onPlusPress} paddingHorizontal="$2">
+      <YStack
+        testID="bottom-nav-plus"
+        alignItems="center"
+        gap={2}
+        onPress={onPlusPress}
+        paddingHorizontal="$2"
+      >
         <DotsThreeIcon size={22} weight="regular" color={color.neutral[500]} />
         <Text fontSize={11} color="$neutral500">
           Plus

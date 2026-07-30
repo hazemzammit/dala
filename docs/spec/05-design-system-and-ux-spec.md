@@ -115,6 +115,18 @@ or opening a FAB/sheet — only:
 | Org-to-org invitation accepted successfully                                 | `confirm()` |
 | Budget-rollup / report-branding toggle saved successfully                   | `confirm()` |
 | Org switch (org-switcher sheet) saved successfully                          | `confirm()` |
+| Worker soft-deleted / restored successfully (Trash, Team)                   | `confirm()` |
+| Trash restore fails                                                         | `error()`   |
+| Data export / report generated and share sheet opened successfully          | `confirm()` |
+| Notification preference (category toggle or digest frequency) saved         | `confirm()` |
+| Chantier created/edited/soft-deleted successfully (Projects, Trash)         | `confirm()` |
+| Profile field (name, avatar, language) saved successfully                   | `confirm()` |
+| Phone-change code sent / new phone number confirmed                         | `confirm()` |
+| Organization profile saved successfully                                     | `confirm()` |
+| Password changed successfully                                               | `confirm()` |
+| Org member role changed / member removed successfully                       | `confirm()` |
+| Two-factor authentication enrolled / disabled successfully                  | `confirm()` |
+| Account recovered via recovery code successfully                            | `confirm()` |
 | Any form validation failure (sign-up, login, invite, dispatch assign, etc.) | `error()`   |
 | Any save/auth/network failure surfaced to the user                          | `error()`   |
 
@@ -169,12 +181,24 @@ the illustration over the icon-circle fallback when both are given.
 | Accept org invite — already accepted  | `confirmed`          |
 | Accept org invite — accepted          | `confirmed`          |
 | Vue d'ensemble (only 1 owned org)     | `global-team`        |
+| Trash (empty)                         | `clean-up`           |
+| Data export (not owner/manager)       | `export-files`       |
 
 _Phase 4 diff: added `global-team` (new registry entry — no existing slug
 already fit "several distinct orgs shown together," which is what Vue
 d'ensemble's edge-case empty state needed; everything else in the accept-
 org-invite screen reuses accept-invite.tsx's existing three slugs rather
 than adding new ones for a near-identical set of states)._
+
+_Phase 5 diff: added `clean-up` (Trash's empty state — no existing wired
+slug fit "nothing in the trash," and unDraw's own asset name is a closer
+match than reusing e.g. `to-do-app`) and `export-files` (Data export's
+access-denied state). `push-notifications` was also added to the registry
+for the Notifications settings screen, but that screen has no empty state
+today — registered for when one is needed, not wired to a "screen /
+moment" row yet. `receipt` (Billing) and `mobile-analytics` (Reports) were
+already wired from their Phase-0-era stubs and are unchanged by this
+phase's build-out of those two screens._
 
 Adding a new one: pick the closest-matching slug from the 181 already in
 `src/assets/illustrations/`, add one static import + one registry entry

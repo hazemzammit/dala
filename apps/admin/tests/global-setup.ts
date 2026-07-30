@@ -71,6 +71,14 @@ async function upsertAuthUser(
     email,
     password,
     email_confirm: true,
+    // impersonation.spec.ts's confirm-typing step fills in the target's
+    // EMAIL and expects it to match OrgDetail.tsx's confirmValue, which is
+    // `profiles.full_name` (falling back to user_id only when full_name is
+    // null/undefined — an empty string does NOT trigger that fallback).
+    // Without this, the auto-profile-creation trigger
+    // (handle_new_auth_user in 0002_profiles_and_auth.sql) leaves
+    // full_name as '', and the confirm-typing gate can never be satisfied.
+    user_metadata: { full_name: email },
   });
   if (error || !created.user) {
     throw new Error(`Failed to create test auth user ${email}: ${error?.message}`);
@@ -149,12 +157,14 @@ export default async function globalSetup() {
     await supabase
       .from('organization_members')
       .upsert({ org_id: orgId, user_id: ownerId, role: 'owner' }, { onConflict: 'org_id,user_id' });
-    await supabase
-      .from('organization_members')
-      .upsert(
-        { org_id: orgId, user_id: targetId, role: 'worker' },
-        { onConflict: 'org_id,user_id' },
-      );
+    await supabase.from('organization_members').upsert(
+      // 'worker' is not a valid organization_members.role — the CHECK
+      // constraint in 0003_organizations.sql only allows
+      // ('owner','manager','viewer'). 'viewer' is the correct
+      // lowest-privilege role for an impersonation target here.
+      { org_id: orgId, user_id: targetId, role: 'viewer' },
+      { onConflict: 'org_id,user_id' },
+    );
 
     fs.writeFileSync(
       FIXTURES_PATH,

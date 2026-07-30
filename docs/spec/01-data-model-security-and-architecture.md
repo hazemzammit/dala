@@ -1,4 +1,5 @@
 # Dala — Cahier des Charges v4.0
+
 ## Document 01 — Data Model, Security & Architecture
 
 ---
@@ -8,22 +9,22 @@
 Principle: $0/month until there's revenue. Every service below runs on
 a free tier sufficient for 0–500 users.
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Mobile | React Native + Expo | iOS & Android from one codebase |
-| Offline store (mobile only) | WatermelonDB | Local-first sync engine. **Web does not need this** — web is an always-online client, so web screens hit Supabase directly through TanStack Query with standard cache invalidation, no local sync engine. |
-| Web | Next.js 14 (App Router) | **Full contractor-parity client**, not a reporting-only surface (superseded from v3.1). |
-| Admin | Next.js 14, separate app/deployment | Platform Admin only. Deployed independently from the contractor web app — different domain, different env vars, different CI pipeline, so an Admin deploy can never accidentally ship to the contractor surface or vice versa. |
-| UI kit | Tamagui (mobile), Tailwind CSS + shadcn/ui (web) | Shared design tokens (Doc 00 §0.6) so the two feel like one product. |
-| Validation | Zod | **Single shared schema package** (`packages/validation` in the monorepo) imported by mobile, web, and edge functions — this is the concrete mechanism that keeps the two clients from drifting on what's a valid input (Doc 00 §0.7). |
-| Data fetching | TanStack Query | Mobile + web. Web has no offline cache, so `staleTime`/`refetchOnWindowFocus` are tuned more aggressively than mobile's WatermelonDB-backed queries. |
-| Backend | Supabase (Postgres, Auth, Storage, Realtime, Edge Functions) | One backend serving all three clients (mobile, web, admin). |
-| Auth provider | Supabase Auth — **email/password provider only** | Magic link and OTP providers are disabled at the Supabase project level for regular users (§1.3). |
-| Payments | Konnect (MVP only) | Tunisian payment gateway. |
-| Error tracking | Sentry (free tier, 5,000 errors/month) | Separate DSN per client (mobile / web / admin) so an admin bug doesn't blow the contractor app's error budget. |
-| Push notifications | Expo Push | Mobile only — web uses in-app + email notifications (Doc 00 §0.4 table). |
-| Email | Resend (free tier) | Verification emails, password reset, invitations, digests. |
-| Analytics | PostHog (free tier, 1M events/month) | Shared across mobile + web with a `platform` property on every event so funnels can be split. |
+| Layer                       | Choice                                                       | Notes                                                                                                                                                                                                                                 |
+| --------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mobile                      | React Native + Expo                                          | iOS & Android from one codebase                                                                                                                                                                                                       |
+| Offline store (mobile only) | WatermelonDB                                                 | Local-first sync engine. **Web does not need this** — web is an always-online client, so web screens hit Supabase directly through TanStack Query with standard cache invalidation, no local sync engine.                             |
+| Web                         | Next.js 14 (App Router)                                      | **Full contractor-parity client**, not a reporting-only surface (superseded from v3.1).                                                                                                                                               |
+| Admin                       | Next.js 14, separate app/deployment                          | Platform Admin only. Deployed independently from the contractor web app — different domain, different env vars, different CI pipeline, so an Admin deploy can never accidentally ship to the contractor surface or vice versa.        |
+| UI kit                      | Tamagui (mobile), Tailwind CSS + shadcn/ui (web)             | Shared design tokens (Doc 00 §0.6) so the two feel like one product.                                                                                                                                                                  |
+| Validation                  | Zod                                                          | **Single shared schema package** (`packages/validation` in the monorepo) imported by mobile, web, and edge functions — this is the concrete mechanism that keeps the two clients from drifting on what's a valid input (Doc 00 §0.7). |
+| Data fetching               | TanStack Query                                               | Mobile + web. Web has no offline cache, so `staleTime`/`refetchOnWindowFocus` are tuned more aggressively than mobile's WatermelonDB-backed queries.                                                                                  |
+| Backend                     | Supabase (Postgres, Auth, Storage, Realtime, Edge Functions) | One backend serving all three clients (mobile, web, admin).                                                                                                                                                                           |
+| Auth provider               | Supabase Auth — **email/password provider only**             | Magic link and OTP providers are disabled at the Supabase project level for regular users (§1.3).                                                                                                                                     |
+| Payments                    | Konnect (MVP only)                                           | Tunisian payment gateway.                                                                                                                                                                                                             |
+| Error tracking              | Sentry (free tier, 5,000 errors/month)                       | Separate DSN per client (mobile / web / admin) so an admin bug doesn't blow the contractor app's error budget.                                                                                                                        |
+| Push notifications          | Expo Push                                                    | Mobile only — web uses in-app + email notifications (Doc 00 §0.4 table).                                                                                                                                                              |
+| Email                       | Resend (free tier)                                           | Verification emails, password reset, invitations, digests.                                                                                                                                                                            |
+| Analytics                   | PostHog (free tier, 1M events/month)                         | Shared across mobile + web with a `platform` property on every event so funnels can be split.                                                                                                                                         |
 
 ---
 
@@ -55,7 +56,7 @@ password hash (bcrypt, managed entirely by Supabase — the application
 never touches, sees, or logs a raw or hashed password). `profiles` is
 purely our application-level extension, joined 1:1 on `id`. This is
 unchanged in structure from the pre-rework spec — what changed is
-*which Supabase Auth providers are enabled* (§1.3), not the shape of
+_which Supabase Auth providers are enabled_ (§1.3), not the shape of
 this table, except for the new `email_verified_at` and
 `last_login_platform` columns, which didn't need to exist under the old
 magic-link flow (magic link clicks are inherently verification) but are
@@ -238,13 +239,13 @@ section is written from scratch rather than diffed.
 
 ### 1.3.8 Rate limiting & lockout
 
-| Action | Limit |
-|---|---|
-| Login attempts | 5 failed attempts/hour/account → account locked for 1 hour, with an in-app explanation and a "reset your password" shortcut (a lockout is exactly when a user most needs the reset path surfaced, not hidden). |
-| Password reset requests | 3/hour/email |
-| Sign-up attempts (same email) | 3/hour/IP |
-| General API | 100 req/min/org |
-| Photo upload | 50/hour/org |
+| Action                        | Limit                                                                                                                                                                                                          |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Login attempts                | 5 failed attempts/hour/account → account locked for 1 hour, with an in-app explanation and a "reset your password" shortcut (a lockout is exactly when a user most needs the reset path surfaced, not hidden). |
+| Password reset requests       | 3/hour/email                                                                                                                                                                                                   |
+| Sign-up attempts (same email) | 3/hour/IP                                                                                                                                                                                                      |
+| General API                   | 100 req/min/org                                                                                                                                                                                                |
+| Photo upload                  | 50/hour/org                                                                                                                                                                                                    |
 
 ### 1.3.9 Session & token security (unchanged from prior spec)
 
@@ -287,7 +288,7 @@ not re-shown once dismissed even if incomplete).
 field-by-field spec in Doc 03 §3.22.1 / Doc 04 §4.2.10), with two
 fields requiring more than a plain inline edit:
 
-- **Changing email**: uses Supabase Auth's built-in secure email-change flow — a confirmation link is sent to *both* the old and new address. The change only takes effect once the new address confirms; the old address's confirmation link exists purely as an "was this you?" tripwire — clicking it cancels the pending change rather than confirming it. `email_verified_at` is not reset by this (the account was already verified; changing the address doesn't reopen the original soft-gate from §1.3.3), but a changed, unconfirmed email does temporarily revert login to require the *old* email until the new one is confirmed.
+- **Changing email**: uses Supabase Auth's built-in secure email-change flow — a confirmation link is sent to _both_ the old and new address. The change only takes effect once the new address confirms; the old address's confirmation link exists purely as an "was this you?" tripwire — clicking it cancels the pending change rather than confirming it. `email_verified_at` is not reset by this (the account was already verified; changing the address doesn't reopen the original soft-gate from §1.3.3), but a changed, unconfirmed email does temporarily revert login to require the _old_ email until the new one is confirmed.
 - **Changing phone**: since phone is the channel workers/contractors actually get dispatch and invite notifications on, a change triggers a 6-digit SMS re-verification code before the new number is saved — this isn't an auth mechanism (§1.3.2 still only recognizes email+password), just a delivery-channel integrity check.
 - **Avatar**: client-side crop to a square, resized to 512×512 max, uploaded to Storage, EXIF stripped (same pipeline discipline as site-log photos, Doc 02 §2.5, just smaller dimensions).
 
@@ -304,7 +305,7 @@ ID) and `rc_number` are what turn a generic PDF report into a real,
 legally usable invoice — and report branding (Doc 02 §2.8) already
 depends on `logo_url` being set for a lead org's exports to look
 professional on a multi-org project. This is the same open item as the
-TVA/tax-handling decision (Doc 00 §0.5 item 9): the *exact* validation
+TVA/tax-handling decision (Doc 00 §0.5 item 9): the _exact_ validation
 format for `matricule_fiscal` needs the same accountant/lawyer review
 before it ships, so this field is modeled now (nullable, loosely
 validated as non-empty alphanumeric in the interim) but its real
@@ -322,11 +323,11 @@ incomplete document, not a UX inconvenience.
 
 **Who can edit what** (RBAC, composing with Doc 01 §1.4's role table):
 
-| Field | Owner | Manager | Viewer |
-|---|:---:|:---:|:---:|
-| Name, logo, trade type, address, contact phone/email | ✓ | ✓ | — |
-| Matricule fiscal, RC number | ✓ | — | — |
-| Delete organization | ✓ | — | — |
+| Field                                                | Owner | Manager | Viewer |
+| ---------------------------------------------------- | :---: | :-----: | :----: |
+| Name, logo, trade type, address, contact phone/email |   ✓   |    ✓    |   —    |
+| Matricule fiscal, RC number                          |   ✓   |    —    |   —    |
+| Delete organization                                  |   ✓   |    —    |   —    |
 
 Legal/tax identity fields are owner-only even though a manager can edit
 everyday org details — the same split already applied to billing (Doc
@@ -371,7 +372,7 @@ already prevent an org from having zero owners).
 **RBAC across owned orgs**: owning multiple orgs doesn't blur their
 data — each org is still fully isolated by the same table-lookup RLS
 pattern as any other org (§1.5). Being the owner of Org A grants
-nothing on Org B; the switcher changes which org's data the *client*
+nothing on Org B; the switcher changes which org's data the _client_
 requests, but every request is still independently authorized against
 `organization_members` for whichever org is currently active. There's
 no "super-owner across all my orgs" concept — deliberately, since
@@ -390,15 +391,15 @@ layer, not the client layer:
 - **Org role** (`owner / manager / viewer`, `organization_members`) — gates what a person can do inside their own organization's data: billing, worker management, deleting the org, editing another member's role.
 - **Project membership role** (`lead / trade / client`, `project_memberships`) — gates what an organization can do on a specific shared project.
 
-| Action | Owner | Manager | Viewer | Worker |
-|---|:---:|:---:|:---:|:---:|
-| Invite/remove org members | ✓ | — | — | — |
-| Delete organization | ✓ | — | — | — |
-| Manage billing | ✓ | — | — | — |
-| Create/edit projects | ✓ | ✓ | — | — |
-| Approve advances | ✓ | ✓ | — | — |
-| View reports | ✓ | ✓ | ✓ | — |
-| Own dispatch assignment | — | — | — | ✓ (read-only, own record) |
+| Action                    | Owner | Manager | Viewer |          Worker           |
+| ------------------------- | :---: | :-----: | :----: | :-----------------------: |
+| Invite/remove org members |   ✓   |    —    |   —    |             —             |
+| Delete organization       |   ✓   |    —    |   —    |             —             |
+| Manage billing            |   ✓   |    —    |   —    |             —             |
+| Create/edit projects      |   ✓   |    ✓    |   —    |             —             |
+| Approve advances          |   ✓   |    ✓    |   —    |             —             |
+| View reports              |   ✓   |    ✓    |   ✓    |             —             |
+| Own dispatch assignment   |   —   |    —    |   —    | ✓ (read-only, own record) |
 
 A Manager inside a Trade org can create/edit that org's own expenses on
 a shared project (org role grants that), but can never read the Lead
@@ -430,7 +431,7 @@ means membership changes constantly and needs to take effect
 immediately:
 
 - A trade org accepts a project invite and should see that project's shared data on their very next request — not up to an hour later.
-- An owner demotes a manager to viewer (e.g. after an internal dispute) and that permission change needs to be enforced on the manager's *next request*, not whenever their token happens to refresh.
+- An owner demotes a manager to viewer (e.g. after an internal dispute) and that permission change needs to be enforced on the manager's _next request_, not whenever their token happens to refresh.
 - A platform admin suspends an org mid-session — a stale claim would let that org's members keep working against cached authorization for up to an hour after suspension.
 
 A claims-based check would silently permit all of the above for up to
@@ -536,10 +537,11 @@ To make "some users are on an old build" survivable rather than just
 detectable, schema changes follow one rule: **never remove or rename a
 column/endpoint an already-shipped client depends on without a
 deprecation window.**
+
 - Adding a column/table: always safe, no version bump needed.
 - Renaming/removing a column an old client reads: add the new column alongside the old one, backfill, keep both live for at least one full min-supported-version cycle, then drop the old one only after bumping `min_supported_version` past every build that still read it.
 - Changing a field's meaning (not just its name): treated as a breaking change requiring the same deprecation window, even though no SQL migration looks "breaking" on its face.
-- Supabase's auto-generated REST API means there's no separate API-versioning layer to maintain (Doc 01 §1.6) — the schema *is* the API contract, so this migration discipline **is** the versioning strategy, not a supplement to one.
+- Supabase's auto-generated REST API means there's no separate API-versioning layer to maintain (Doc 01 §1.6) — the schema _is_ the API contract, so this migration discipline **is** the versioning strategy, not a supplement to one.
 
 ---
 
@@ -591,17 +593,17 @@ Numbers below reflect Supabase's published free tier as of mid-2026 —
 worth re-checking against `supabase.com/pricing` periodically, since
 free-tier terms shift.
 
-| Resource | Free tier limit | This app's usage pattern | Mitigation |
-|---|---|---|---|
-| Concurrent Realtime connections | 200 | Naively, every logged-in contractor session (mobile *and* web, since both now subscribe per Doc 00 §0.4) opens a Realtime channel — this hits 200 fast once there are more than ~100 simultaneously active users across both platforms. | **Scoped, not global, subscriptions**: a client only opens a Realtime channel for the screen currently in view (e.g. the dispatch board for *today's* date range, the site-log timeline for the currently-open project) — never one org-wide channel per session. **Role-based downgrade**: Viewer-role sessions and any backgrounded/inactive tab use polling (TanStack Query, 30s interval) instead of Realtime; only an actively-viewed Owner/Manager screen holds a live channel. This keeps concurrent connections proportional to "screens currently being actively watched," not "users logged in." |
-| Realtime messages/month | 2,000,000 | Each dispatch-board or site-log write broadcasts to subscribers — at MVP scale (tens of orgs) this is nowhere close to the ceiling; flagged here so it's checked, not assumed, once usage grows past a few hundred orgs. | Monitored in Platform Admin's Services Health (Doc 04 §4.3.9); no action needed until usage data says otherwise. |
-| Edge Function invocations/month | 500,000 | Reserved for genuinely server-side logic only (report PDFs, Konnect webhooks, scheduled jobs, Doc 01 §1.6) — never used for simple reads, which go through the auto-generated REST API directly. | Keeping Edge Functions off the read path is the entire mitigation — at that usage shape, 500K/month comfortably covers hundreds of active orgs. |
-| Project auto-pause after 7 days of inactivity | N/A (operational, not usage-based) | A quiet week (e.g. a holiday) with zero API requests would pause the *entire* production project — unacceptable for a live product, even at zero users. | A scheduled GitHub Actions workflow (free on public or low-usage private repos) pings a lightweight `SELECT 1` health-check RPC every 24 hours, resetting the inactivity timer — this is infrastructure housekeeping, not a feature, but it's a documented, deliberate line item rather than a surprise. |
-| PostgREST Data API explicit-grants requirement (rolling out to existing free projects from **October 30, 2026**) | N/A | Supabase is changing how tables are exposed through the auto-generated REST API — existing free projects need explicit Postgres `GRANT`s added for tables queried through the Data API, or those queries start failing. | Tracked as a pre-October-2026 action item: audit every table the app queries via the REST API and add the required grants as part of a scheduled migration, well before the deadline — not discovered in production when queries start failing. |
+| Resource                                                                                                         | Free tier limit                    | This app's usage pattern                                                                                                                                                                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Concurrent Realtime connections                                                                                  | 200                                | Naively, every logged-in contractor session (mobile _and_ web, since both now subscribe per Doc 00 §0.4) opens a Realtime channel — this hits 200 fast once there are more than ~100 simultaneously active users across both platforms. | **Scoped, not global, subscriptions**: a client only opens a Realtime channel for the screen currently in view (e.g. the dispatch board for _today's_ date range, the site-log timeline for the currently-open project) — never one org-wide channel per session. **Role-based downgrade**: Viewer-role sessions and any backgrounded/inactive tab use polling (TanStack Query, 30s interval) instead of Realtime; only an actively-viewed Owner/Manager screen holds a live channel. This keeps concurrent connections proportional to "screens currently being actively watched," not "users logged in." |
+| Realtime messages/month                                                                                          | 2,000,000                          | Each dispatch-board or site-log write broadcasts to subscribers — at MVP scale (tens of orgs) this is nowhere close to the ceiling; flagged here so it's checked, not assumed, once usage grows past a few hundred orgs.                | Monitored in Platform Admin's Services Health (Doc 04 §4.3.9); no action needed until usage data says otherwise.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| Edge Function invocations/month                                                                                  | 500,000                            | Reserved for genuinely server-side logic only (report PDFs, Konnect webhooks, scheduled jobs, Doc 01 §1.6) — never used for simple reads, which go through the auto-generated REST API directly.                                        | Keeping Edge Functions off the read path is the entire mitigation — at that usage shape, 500K/month comfortably covers hundreds of active orgs.                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Project auto-pause after 7 days of inactivity                                                                    | N/A (operational, not usage-based) | A quiet week (e.g. a holiday) with zero API requests would pause the _entire_ production project — unacceptable for a live product, even at zero users.                                                                                 | A scheduled GitHub Actions workflow (free on public or low-usage private repos) pings a lightweight `SELECT 1` health-check RPC every 24 hours, resetting the inactivity timer — this is infrastructure housekeeping, not a feature, but it's a documented, deliberate line item rather than a surprise.                                                                                                                                                                                                                                                                                                   |
+| PostgREST Data API explicit-grants requirement (rolling out to existing free projects from **October 30, 2026**) | N/A                                | Supabase is changing how tables are exposed through the auto-generated REST API — existing free projects need explicit Postgres `GRANT`s added for tables queried through the Data API, or those queries start failing.                 | Tracked as a pre-October-2026 action item: audit every table the app queries via the REST API and add the required grants as part of a scheduled migration, well before the deadline — not discovered in production when queries start failing.                                                                                                                                                                                                                                                                                                                                                            |
 
 **Overall approach**: none of this requires paying for Supabase Pro to
 stay functional at MVP scale — it requires being deliberate about
-*when* a Realtime channel opens versus falling back to polling, and
+_when_ a Realtime channel opens versus falling back to polling, and
 treating the two operational quirks (7-day pause, the October 2026
 grants change) as scheduled work rather than surprises.
 
@@ -629,7 +631,7 @@ CREATE TABLE idempotency_keys (
 2. The request carries that UUID as an `Idempotency-Key` header.
 3. Server-side, before processing: check `idempotency_keys` for that key.
    - **Not found**: process normally, then insert a row with the result.
-   - **Found, same `request_hash`**: this is a retry (double-tap, timeout-retry, offline-sync replay) — return the cached `response_body`/`response_status` *without re-executing the write*.
+   - **Found, same `request_hash`**: this is a retry (double-tap, timeout-retry, offline-sync replay) — return the cached `response_body`/`response_status` _without re-executing the write_.
    - **Found, different `request_hash`**: reject with a 409 — a client reusing a key for a genuinely different request is a bug, not a legitimate retry, and should fail loudly rather than silently process the wrong data under an old key.
 4. Keys are retained 24 hours (covers any realistic retry window, including offline-sync delays) then purged by a scheduled job.
 
@@ -694,9 +696,274 @@ watching.
 **Alerting**: a failure fires a Sentry error immediately (existing
 free-tier error tracking, Doc 01 §1.1 — no new service needed) and
 posts to a free webhook target (Slack/Discord/email — whichever the
-founder already checks). Two consecutive failures of the *same* job
+founder already checks). Two consecutive failures of the _same_ job
 escalate the message severity rather than just repeating it, so a
 transient blip and a genuinely broken job read differently at a
 glance. Surfaced in Platform Admin's Services Health screen (Doc 04
 §4.3.9), backed directly by this table — not a separate hand-maintained
 status indicator that can drift from reality.
+
+---
+
+> **Phase 7 note**: §1.14–§1.19 below did not exist in this document
+> before Phase 7, despite Doc 02 and Doc 03 citing them by number
+> (including sub-sections like §1.14.2 and §1.17.1–3) since Phase 4/5.
+> Each section is written from what was actually built for the feature
+> it covers — attendance/expenses (Phase 1), 2FA (investigated fresh
+> this phase, see §1.15), Trash (Phase 5), cross-org rollup (Phase 4),
+> Tier 0 (Phase 5), digest scheduling (Phases 5–6) — not invented to
+> fill a section number. Where a citing document's sub-numbering
+> doesn't map cleanly onto what exists, that's called out inline
+> rather than smoothed over.
+
+## 1.14 Attendance and project-expense mechanics
+
+### 1.14.1 Attendance as its own ledger, not a projects sub-table
+
+`attendance_records` (Doc 02 §2.2a "Pointage") is append-only, one row
+per worker per day per check-in/departure event — never an `UPDATE` of
+a prior day's row, for the same offline-conflict reason every
+append-only table in §1.9.1 is modeled this way. A day's attendance
+status (Présent / Absent / Demi-journée, Doc 03 §3.12's
+`SegmentedControl`) is derived by reading the latest row for that
+worker+date, not stored as a separate mutable field anywhere.
+
+### 1.14.2 Advances are excluded from the project budget-consumed calculation
+
+`project_expenses` (migration 0006) and `advances` (migration 0007) are
+deliberately separate tables feeding two different, non-overlapping
+figures:
+
+- **Budget-consumed % on a project card/detail** (Doc 03 §3.10.1,
+  §3.10.3a) sums `project_expenses.amount` only.
+- **Payroll due** (Doc 02's advances/salary-cycle flows) sums
+  `advances.amount` only.
+
+A worker's cash advance is compensation the org owes that worker — it
+consumes payroll budget, not project material/subcontractor budget.
+Summing both into one "budget consumed" figure would double-count the
+same money against two different mental models a contractor uses (`is
+this chantier still profitable` vs. `who do I owe payroll to`) and
+would make the number swing every time payroll happens on a day
+otherwise unrelated to material spend. `expenses.tsx` (Phase 6) only
+ever queries `project_expenses` for exactly this reason.
+
+### 1.14.3 Manual Pointage entries take precedence over dispatch check-ins
+
+A worker can be marked present two ways: an automatic check-in
+generated when a dispatch assignment starts (Doc 02 §2.1), or a manual
+entry a contractor makes directly in Pointage (Doc 03 §3.12). These are
+both rows in `attendance_records`, distinguished by a `source` column
+(`'dispatch'` | `'manual'`). When both exist for the same worker+date,
+the `'manual'` row is what the UI displays and what payroll reads —
+never silently overwritten by a later-arriving dispatch check-in sync.
+Rationale: a contractor correcting attendance by hand (a worker who
+showed up despite no dispatch record, or left early despite one) is
+asserting ground truth over an automated inference, and Doc 01 §1.9's
+offline-sync model must never let a stale automated write clobber that
+correction after the fact.
+
+---
+
+## 1.15 Optional two-factor authentication (per organization account)
+
+**Status as of Phase 8: built**, using **Supabase Auth's own native TOTP
+MFA** (`auth.mfa.enroll`/`challenge`/`verify`/`unenroll` — GoTrue-managed;
+`auth.mfa_factors`/`auth.mfa_challenges` need no migration of this
+schema's own to create) — deliberately **not** a custom `totp_secret`
+column on `profiles` mirroring Platform Admin's existing approach.
+
+**Why native MFA over mirroring Platform Admin's pattern**:
+`platform_admins.totp_secret` (migrations 0009, 0021, 0023) is real,
+working TOTP, but stored in **plain text** — migration 0021's own
+comment already flags this as needing Vault hardening before
+production, not a decision to repeat here. More fundamentally: any
+custom post-login TOTP check can only ever be a client-side gate,
+because Supabase issues a fully-valid session at `signInWithPassword`
+regardless of what factors are enrolled — a modified client (or a
+captured token) could skip a custom check entirely. Native MFA's
+session instead carries a real `aal` (authenticator assurance level)
+claim that GoTrue itself controls, so a check against
+`auth.jwt() ->> 'aal'` is enforcing something the server actually
+knows, not something the client promised it checked. Platform Admin's
+TOTP is left as-is — a separate, legacy mechanism — migrating it to
+native MFA too is a bigger, cross-cutting change than a mobile-only
+phase's scope.
+
+**What's built** (migration 0029, `supabase/functions/mfa-recover/`,
+and the mobile screens listed in delivery notes):
+
+- **Enrollment**: `auth.mfa.enroll({ factorType: 'totp' })` returns a
+  ready-to-render SVG QR code plus the manual-entry secret — both
+  Supabase-generated and Supabase-held, nothing this schema stores
+  itself. A 6-digit confirmation via `auth.mfa.challenge`/`verify`
+  completes enrollment, which elevates the session to `aal2`.
+- **Recovery codes**: the one thing native MFA doesn't provide —
+  `mfa_recovery_codes` table + `generate_mfa_recovery_codes()` RPC (10
+  single-use codes, bcrypt-hashed, shown once, regenerable) closes that
+  gap. `generate_mfa_recovery_codes()` requires the calling session to
+  already be `aal2` — it only makes sense right after enrollment
+  verification or a later re-verified login.
+- **Login-flow verification**: after `signInWithPassword` succeeds,
+  the client checks `getAuthenticatorAssuranceLevel()`; a pending
+  `aal2` requirement routes to a TOTP-challenge screen before the app
+  is reachable.
+- **Lost-authenticator recovery**: a correct recovery code does not
+  fake an `aal2` session (there is no supported way to do that outside
+  a real verified challenge) — it verifies password + code, then
+  **disables 2FA entirely** via the admin API and returns a normal
+  `aal1` session, with a clear message to re-enroll if desired. A real,
+  disclosed trade-off: a recovery code turns 2FA off, it doesn't grant
+  one-time entry while leaving it on.
+- Doc 02 §2.11's test-matrix line ("enroll → logout → login-with-TOTP")
+  targets this flow, now built — see delivery notes for what test
+  coverage actually exists versus what that section still expects.
+
+---
+
+## 1.16 Trash / soft-delete
+
+### 1.16.1 What's soft-deletable, and the recovery window
+
+Two entity types, as shipped in Phase 5 (workers) and earlier (projects,
+migration 0013): `projects.deleted_at` and `workers.deleted_at`. A
+non-null `deleted_at` removes the row from every normal `select` a
+screen makes (RLS policies filter `deleted_at is null` on the read
+side) without physically deleting it, for a 30-day window.
+
+```sql
+-- 0013 (projects), extended by 0025 (workers) — same shape both times.
+CREATE OR REPLACE FUNCTION soft_delete_project(p_project_id uuid) ...
+CREATE OR REPLACE FUNCTION restore_project(p_project_id uuid) ...
+CREATE OR REPLACE FUNCTION soft_delete_worker(p_worker_id uuid) ...
+```
+
+`trash.tsx` (Doc 02 §2.10) is the one screen listing and restoring both
+entity types together, computing "days remaining" client-side from
+`deleted_at` — it does not own the 30-day number itself.
+
+### 1.16.2 Purge
+
+```sql
+CREATE OR REPLACE FUNCTION purge_soft_deleted_records() ...
+```
+
+A scheduled job (same `pg_cron` mechanism as §1.19's digest, tracked in
+`scheduled_job_runs` per §1.13) runs daily and hard-deletes any row
+whose `deleted_at` is more than 30 days old, across both entity types —
+0025 extended what was originally a projects-only purge (0013) to also
+sweep `workers`, rather than adding a second, parallel purge job.
+Purge is genuinely irreversible; nothing about Trash's UI hints
+otherwise past the "supprimé définitivement dans N jours" copy Doc 03
+§3.22's Trash prose already commits to.
+
+### 1.16.3 Entry points, as they actually exist
+
+Restoring an already-deleted project or worker works from `trash.tsx`
+regardless of how it got there. _Creating_ a soft-deleted project from
+mobile only got an entry point in Phase 7 (`projects.tsx`'s delete
+action, see delivery notes) — before that, a project could only be
+soft-deleted via web, Platform Admin, or seed data, a gap `trash.tsx`'s
+own Phase 5 header comment already flagged honestly rather than
+silently working around.
+
+---
+
+## 1.17 Cross-org rollup mechanics
+
+Two distinct rollup surfaces exist and must not be confused with each
+other:
+
+- **`portfolio.tsx`** ("Portefeuille", Phase 4) — a _cross-organization_
+  view: every project this user's organizations are either the lead on
+  or a trade participant on, aggregated across however many
+  organizations that user belongs to.
+- **`project-rollup.tsx`** (Phase 6, reached via dashboard.tsx's
+  "Chantiers" row) — a _single-organization, multi-project_ view: every
+  project the current active org leads, aggregated within just that one
+  org.
+
+### 1.17.1 No "super-owner" constraint
+
+Doc 02 §2.8 places no cap on how many organizations a user can belong
+to (§3.22.2a already documents this for org creation), which means
+there is no notion of one privileged "super-owner" role across
+organizations — cross-org rollup aggregates strictly by _membership_
+(`organization_members` rows for the current user), never by any global
+role. A user who is a `viewer` in one org and `owner` in another sees
+both in `portfolio.tsx`, each still governed by that org's own role for
+any write action.
+
+### 1.17.2 Client-side sum, not a cross-tenant query
+
+Both rollup screens fetch each org/project's own numbers through the
+normal per-org RLS-scoped queries (one query per org the user belongs
+to, or one query for the active org's projects) and sum client-side —
+there is no single SQL query that reaches across `organizations` rows
+the way a naive "rollup view" might. This is a direct consequence of
+Doc 01 §1.5's RLS model: a predicate function like `is_org_member()`
+is evaluated per-row against the _current_ org context, so a genuine
+cross-tenant aggregate query would need a different, weaker RLS
+posture than the rest of this schema uses. Client-side summation keeps
+every underlying read exactly as tenant-isolated as any other screen.
+
+### 1.17.3 Owned-projects-only exclusion in `project-rollup.tsx`
+
+`project-rollup.tsx` sums only projects where the active org is
+`lead_org_id` — projects this org is merely a trade participant on
+(via `project_memberships`) are excluded from its budget/progress
+aggregates, even though they're visible elsewhere (collaboration.tsx,
+the project's own detail). Rationale: a trade participant only ever
+sees the shared/Private-layer subset of another org's project data
+(Doc 02 §2.8's visibility model) — aggregating a partial view of
+someone else's project budget into this org's own rollup total would
+produce a number that looks precise but is actually not comparable to
+its own fully-visible projects.
+
+---
+
+## 1.18 Tier 0 pattern surfacing
+
+"Tier 0" (Doc 02 §2.2's own naming, distinguished from the still-blocked
+Tier 1 AI in the roadmap) is live computation over existing data, not a
+model and not a stored prediction — a distinction worth restating here
+since Doc 01 previously had no section to anchor either term to.
+
+Computed on-demand when a contractor opens a worker's detail screen:
+average lateness in minutes, grouped by day-of-week, over that worker's
+`dispatch_assignments`/`attendance_records` for a trailing window (Doc
+02 §2.2's own example: "Ahmed est en retard de 22 minutes en moyenne le
+lundi"). No new table stores this — it is a query against data that
+already exists for other reasons (dispatch, attendance), run fresh
+every time the screen opens. Because it is not persisted, there is
+nothing here for `purge_soft_deleted_records()` (§1.16.2) or any
+retention policy to ever act on.
+
+## 1.19 Digest scheduling and delivery mechanics
+
+`profiles.notification_prefs.digest_frequency` (migration 0025:
+`'off' | 'daily' | 'weekly'`) is the only per-user setting; there is no
+per-org digest configuration.
+
+```sql
+-- 0027 — pg_cron + pg_net, not a Deno-side setInterval or a manually
+-- triggered function. Runs once daily at 05:00 UTC regardless of
+-- frequency; the send-digest-notifications function itself decides,
+-- per recipient, whether "daily" recipients get today's content and
+-- whether "weekly" recipients are due (their weekly anchor day).
+SELECT cron.schedule(
+  'send-digest-notifications',
+  '0 5 * * *',
+  $$ SELECT net.http_post(...) $$
+);
+```
+
+Content is assembled by a dedicated RPC (Phase 5) reading each
+recipient's own org(s) — new dispatch assignments, pending advance
+requests, safety incidents, Tier 0 patterns worth surfacing (§1.18) —
+and delivered via Resend (Doc 01 §1.1's existing email provider, no
+separate transactional-email service). Every run is wrapped in
+`scheduled_job_runs` (§1.13), so a misconfigured or missing
+`project_url`/`service_role_key` Vault secret shows up as a _failed_
+row with a clear error, not as digests that simply never arrive with no
+diagnosable trail.

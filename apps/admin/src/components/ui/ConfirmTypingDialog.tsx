@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 
 import { Button } from './Button';
 import { Card } from './Card';
@@ -36,6 +36,7 @@ export function ConfirmTypingDialog({
   const [typed, setTyped] = useState('');
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const reasonId = useId();
 
   const canConfirm = typed === confirmValue && (!requireReason || reason.trim().length >= 10);
 
@@ -56,10 +57,11 @@ export function ConfirmTypingDialog({
 
         {requireReason && (
           <div className="mt-4">
-            <label className="text-sm font-medium text-neutral-900">
+            <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
               Motif (10 caractères minimum)
             </label>
             <textarea
+              id={reasonId}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
