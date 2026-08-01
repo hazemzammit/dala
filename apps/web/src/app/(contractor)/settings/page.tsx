@@ -6,24 +6,24 @@ import { Card } from '@/components/ui/Card';
 
 const topCards = [
   {
-    label: 'Company information',
+    label: 'Informations de l’entreprise',
     labelFr: "Informations de l'entreprise",
     href: '/settings/company',
   },
-  { label: 'Users', labelFr: 'Équipe', href: '/team' },
-  { label: 'Roles & permissions', labelFr: 'Rôles & permissions', href: '/settings/roles' },
-  { label: 'Security & appearance', labelFr: 'Sécurité & apparence', href: null },
+  { label: 'Équipe', labelFr: 'Équipe', href: '/team' },
+  { label: 'Rôles & permissions', labelFr: 'Rôles & permissions', href: '/settings/roles' },
+  { label: 'Sécurité & apparence', labelFr: 'Sécurité & apparence', href: null },
 ];
 
 const configModules = [
-  { label: 'Company Information', href: '/settings/company' },
-  { label: 'Users', href: '/team' },
-  { label: 'Roles', href: '/settings/roles' },
+  { label: 'Informations de l’entreprise', href: '/settings/company' },
+  { label: 'Équipe', href: '/team' },
+  { label: 'Rôles', href: '/settings/roles' },
   { label: 'Permissions', href: null },
   { label: 'Notifications', href: null },
-  { label: 'Security', href: null },
-  { label: 'Language', href: null },
-  { label: 'Appearance', href: null },
+  { label: 'Sécurité', href: null },
+  { label: 'Langue', href: null },
+  { label: 'Apparence', href: null },
 ];
 
 export default function Page() {
@@ -31,8 +31,8 @@ export default function Page() {
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
         eyebrow="Administration"
-        title="Settings"
-        description="Manage company information, users, roles, permissions, notifications, security, language, and appearance."
+        title="Paramètres"
+        description="Gérez les informations de l’entreprise, l’équipe, les rôles, les permissions, les notifications, la sécurité, la langue et l’apparence."
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
@@ -60,8 +60,8 @@ export default function Page() {
       </div>
 
       <SectionCard
-        title="Configuration modules"
-        description="Core settings areas for the company workspace."
+        title="Modules de configuration"
+        description="Sections principales des paramètres de l’espace entreprise."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {configModules.map((item) =>

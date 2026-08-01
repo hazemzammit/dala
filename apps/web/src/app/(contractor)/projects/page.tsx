@@ -34,6 +34,19 @@ export default async function Page() {
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
+  const projectIds = (projects ?? []).map((project) => project.id);
+  const { data: expenses } = projectIds.length
+    ? await supabase
+        .from('project_expenses')
+        .select(
+          'id, org_id, project_id, category, amount, description, receipt_photo_url, expense_date, created_by, created_at',
+        )
+        .eq('org_id', profile.active_org_id)
+        .in('project_id', projectIds)
+        .order('expense_date', { ascending: false })
+        .order('created_at', { ascending: false })
+    : { data: [] };
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -46,6 +59,8 @@ export default async function Page() {
       <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
         <ProjectsView
           projects={projects ?? []}
+          expenses={expenses ?? []}
+          orgId={profile.active_org_id}
           createProject={createProject}
           updateProject={updateProject}
           deleteProject={deleteProject}

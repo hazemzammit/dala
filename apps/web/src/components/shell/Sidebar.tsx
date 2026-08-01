@@ -11,6 +11,7 @@ import {
   HandshakeIcon,
   ImageIcon,
   PackageIcon,
+  RadioButtonIcon,
   ReceiptIcon,
   ShieldWarningIcon,
   SignOutIcon,
@@ -37,20 +38,21 @@ import { createClient } from '@/lib/supabase/client';
  * org-membership list query, which is Track B work, not this shell pass.
  */
 const NAV_ITEMS = [
-  { href: '/dashboard', label: 'Dashboard', icon: GaugeIcon },
-  { href: '/projects', label: 'Projects', icon: BuildingsIcon },
+  { href: '/dashboard', label: 'Tableau de bord', icon: GaugeIcon },
+  { href: '/projects', label: 'Chantiers', icon: BuildingsIcon },
   { href: '/dispatch', label: 'Dispatch', icon: TruckIcon },
-  { href: '/vehicles', label: 'Vehicles', icon: CarIcon },
-  { href: '/team', label: 'Team', icon: HardHatIcon },
-  { href: '/advances', label: 'Salary Advances', icon: WalletIcon },
-  { href: '/materials', label: 'Materials', icon: PackageIcon },
-  { href: '/journal', label: 'Daily Journal', icon: ImageIcon },
-  { href: '/safety', label: 'Safety', icon: ShieldWarningIcon },
-  { href: '/client-portal', label: 'Client Portal', icon: HandshakeIcon },
+  { href: '/pointage', label: 'Pointage', icon: RadioButtonIcon },
+  { href: '/vehicles', label: 'Véhicules', icon: CarIcon },
+  { href: '/team', label: 'Équipe', icon: HardHatIcon },
+  { href: '/advances', label: 'Avances', icon: WalletIcon },
+  { href: '/materials', label: 'Matériaux', icon: PackageIcon },
+  { href: '/journal', label: 'Journal', icon: ImageIcon },
+  { href: '/safety', label: 'Sécurité', icon: ShieldWarningIcon },
+  { href: '/client-portal', label: 'Portail client', icon: HandshakeIcon },
   { href: '/collaboration', label: 'Collaboration', icon: UsersThreeIcon },
-  { href: '/reports', label: 'Reports', icon: ChartBarIcon },
-  { href: '/billing', label: 'Billing', icon: ReceiptIcon },
-  { href: '/settings', label: 'Settings', icon: GearIcon },
+  { href: '/reports', label: 'Rapports', icon: ChartBarIcon },
+  { href: '/billing', label: 'Facturation', icon: ReceiptIcon },
+  { href: '/settings', label: 'Paramètres', icon: GearIcon },
 ];
 
 interface SidebarProps {
@@ -101,7 +103,7 @@ export function Sidebar({ organizationName, userName, userAvatarUrl }: SidebarPr
           </div>
           <button
             onClick={handleSignOut}
-            aria-label="Sign out"
+            aria-label="Se déconnecter"
             className="hover:text-danger rounded-full p-2 text-neutral-500 transition-colors hover:bg-neutral-100"
           >
             <SignOutIcon size={18} />

@@ -7,17 +7,17 @@ export default function Page() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
-        eyebrow="Client access"
-        title="Client Portal"
-        description="Give clients a focused view of progress, invoices, reports, and timeline updates."
+        eyebrow="Accès client"
+        title="Portail client"
+        description="Offrez aux clients une vue ciblée sur l’avancement, les factures, les rapports et les mises à jour."
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
         {[
-          ['Open projects', '5'],
-          ['Invoices sent', '12'],
-          ['Payments received', '9'],
-          ['Reports shared', '18'],
+          ['Chantiers ouverts', '5'],
+          ['Factures envoyées', '12'],
+          ['Paiements reçus', '9'],
+          ['Rapports partagés', '18'],
         ].map(([label, value]) => (
           <Card key={label} className="p-5" raised>
             <HandshakeIcon size={22} className="text-accent-700" />
@@ -30,8 +30,8 @@ export default function Page() {
       </div>
 
       <SectionCard
-        title="Project progress"
-        description="Live view for clients across the current portfolio."
+        title="Avancement des chantiers"
+        description="Vue en direct pour les clients sur le portefeuille actuel."
       >
         <div className="space-y-4">
           {[
@@ -51,26 +51,26 @@ export default function Page() {
       </SectionCard>
 
       <SectionCard
-        title="Client updates"
-        description="Shared reports, timeline events, and invoice notes."
+        title="Mises à jour client"
+        description="Rapports partagés, événements de timeline et notes de facturation."
       >
         <TimelineList
           items={[
             {
-              title: 'Monthly progress report shared',
-              description: 'Client received the latest PDF summary.',
+              title: 'Rapport mensuel partagé',
+              description: 'Le client a reçu le dernier résumé PDF.',
               time: 'Yesterday',
               tone: 'success',
             },
             {
-              title: 'Invoice reminder sent',
-              description: 'Two payment reminders are pending acknowledgment.',
+              title: 'Rappel de facture envoyé',
+              description: 'Deux rappels de paiement attendent encore une confirmation.',
               time: 'Today',
               tone: 'warning',
             },
             {
-              title: 'Photo album updated',
-              description: 'Twelve new site photos uploaded for review.',
+              title: 'Album photo mis à jour',
+              description: 'Douze nouvelles photos de chantier ont été ajoutées pour révision.',
               time: 'Today',
               tone: 'accent',
             },

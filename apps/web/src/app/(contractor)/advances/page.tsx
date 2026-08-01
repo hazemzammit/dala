@@ -15,7 +15,7 @@ export default function Page() {
       <EmptyState
         icon={WalletIcon}
         title="Aucune avance pour le moment"
-        description="Les demandes d'avance de vos ouvriers apparaîtront ici."
+        description="Les demandes d’avance de vos ouvriers apparaîtront ici."
       />
     </div>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import type { Material, MaterialStatus, MaterialUrgency, Project } from '@dala/shared-types';
+import type { ApprovalStatus, Material, Project } from '@dala/shared-types';
 import type { CreateMaterialInput, UpdateMaterialInput } from '@dala/validation';
 import { PackageIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
@@ -30,15 +30,18 @@ type DeleteMaterialAction = (input: { id: string }) => Promise<
 
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; material: Material };
 
+type MaterialStatus = ApprovalStatus;
+type MaterialUrgency = Material['urgency'];
+
 type MaterialRow = Material & {
   projectName: string;
   quantityLabel: string;
 };
 
 const STATUS_LABEL: Record<MaterialStatus, string> = {
-  pending: 'Pending',
-  approved: 'Approved',
-  rejected: 'Rejected',
+  pending: 'En attente',
+  approved: 'Approuvé',
+  rejected: 'Rejeté',
 };
 
 const STATUS_VARIANT: Record<MaterialStatus, 'warning' | 'success' | 'danger'> = {
@@ -118,31 +121,31 @@ export function MaterialsView({
   const columns: DataTableColumn<MaterialRow>[] = [
     {
       key: 'item',
-      header: 'Material',
+      header: 'Matériau',
       render: (row) => (
         <div>
           <div className="font-medium text-neutral-900">{row.item}</div>
-          <div className="text-xs text-neutral-500">{row.note ?? 'No note'}</div>
+          <div className="text-xs text-neutral-500">{row.note ?? 'Aucune note'}</div>
         </div>
       ),
       sortValue: (row) => row.item,
     },
     {
       key: 'projectName',
-      header: 'Project',
+      header: 'Chantier',
       render: (row) => row.projectName,
       sortValue: (row) => row.projectName,
     },
     {
       key: 'quantity',
-      header: 'Quantity',
+      header: 'Quantité',
       render: (row) => row.quantityLabel,
       sortValue: (row) => row.quantity ?? 0,
       align: 'right',
     },
     {
       key: 'urgency',
-      header: 'Urgency',
+      header: 'Urgence',
       render: (row) => (
         <StatusBadge variant={URGENCY_VARIANT[row.urgency]}>
           {URGENCY_LABEL[row.urgency]}
@@ -152,7 +155,7 @@ export function MaterialsView({
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Statut',
       render: (row) => (
         <StatusBadge variant={STATUS_VARIANT[row.status]}>{STATUS_LABEL[row.status]}</StatusBadge>
       ),
@@ -160,7 +163,7 @@ export function MaterialsView({
     },
     {
       key: 'created_at',
-      header: 'Created',
+      header: 'Créé le',
       render: (row) => new Date(row.created_at).toLocaleDateString('fr-TN'),
       sortValue: (row) => row.created_at,
     },
@@ -173,13 +176,13 @@ export function MaterialsView({
           <button
             onClick={() => setModalState({ mode: 'edit', material: row })}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modify ${row.item}`}
+            aria-label={`Modifier ${row.item}`}
           >
             <PencilSimpleIcon size={16} />
           </button>
           <button
             onClick={async () => {
-              const confirmed = window.confirm(`Delete ${row.item}?`);
+              const confirmed = window.confirm(`Supprimer ${row.item} ?`);
               if (!confirmed) return;
               const result = await deleteMaterial({ id: row.id });
               if (!result.success) {
@@ -187,10 +190,10 @@ export function MaterialsView({
                 return;
               }
               setRows((current) => current.filter((material) => material.id !== result.materialId));
-              setNotice(`${row.item} removed from materials.`);
+              setNotice(`${row.item} a été retiré des matériaux.`);
             }}
             className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Delete ${row.item}`}
+            aria-label={`Supprimer ${row.item}`}
           >
             <TrashIcon size={16} />
           </button>
@@ -204,15 +207,15 @@ export function MaterialsView({
   return (
     <>
       <PageHeader
-        eyebrow="Inventory"
-        title="Materials"
-        description="Track stock levels, suppliers, and purchase costs across all active projects."
+        eyebrow="Inventaire"
+        title="Matériaux"
+        description="Suivez les stocks, les fournisseurs et les coûts d’achat sur tous les chantiers actifs."
         actions={
           <>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search materials"
+              placeholder="Rechercher un matériau"
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             />
             <select
@@ -220,14 +223,14 @@ export function MaterialsView({
               onChange={(e) => setStatusFilter(e.target.value as MaterialStatus | 'all')}
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             >
-              <option value="all">All statuses</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="rejected">Rejected</option>
+              <option value="all">Tous les statuts</option>
+              <option value="pending">En attente</option>
+              <option value="approved">Approuvé</option>
+              <option value="rejected">Rejeté</option>
             </select>
             <Button onClick={() => setModalState({ mode: 'create' })}>
               <PlusIcon size={16} className="me-1.5 inline" />
-              Add Material
+              Ajouter un matériau
             </Button>
           </>
         }
@@ -246,7 +249,7 @@ export function MaterialsView({
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Materials
+              Matériaux
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {totalCount}
@@ -254,7 +257,7 @@ export function MaterialsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Pending
+              En attente
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((row) => row.status === 'pending').length}
@@ -262,7 +265,7 @@ export function MaterialsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Urgent
+              Urgents
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((row) => row.urgency === 'urgent').length}
@@ -270,7 +273,7 @@ export function MaterialsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Projects linked
+              Chantiers liés
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {new Set(filteredRows.map((row) => row.project_id).filter(Boolean)).size}
@@ -286,9 +289,9 @@ export function MaterialsView({
         {filteredRows.length === 0 ? (
           <EmptyState
             icon={PackageIcon}
-            title="No materials match your filters"
-            description="Clear the search or adjust the status filter to see inventory rows."
-            actionLabel="Clear filters"
+            title="Aucun matériau ne correspond à vos filtres"
+            description="Effacez la recherche ou ajustez le filtre de statut pour voir les lignes d’inventaire."
+            actionLabel="Effacer les filtres"
             onAction={() => {
               setQuery('');
               setStatusFilter('all');
@@ -299,12 +302,15 @@ export function MaterialsView({
         )}
       </SectionCard>
 
-      <SectionCard title="Supplier alerts" description="Priority reminders for replenishment.">
+      <SectionCard
+        title="Alertes fournisseurs"
+        description="Rappels prioritaires pour le réapprovisionnement."
+      >
         <div className="space-y-3">
           {[
-            'Rebar delivery due in 2 days for Coastal Villas',
-            'Cement stock below 25% on School Annex',
-            'Paint order awaiting approval',
+            'Livraison de fer à béton dans 2 jours pour Coastal Villas',
+            'Stock de ciment sous 25 % sur School Annex',
+            'Commande de peinture en attente d’approbation',
           ].map((item) => (
             <div
               key={item}

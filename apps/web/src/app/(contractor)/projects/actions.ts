@@ -3,8 +3,10 @@
 import type { Project } from '@dala/shared-types';
 import {
   createProjectSchema,
+  createProjectExpenseSchema,
   updateProjectSchema,
   type CreateProjectInput,
+  type CreateProjectExpenseInput,
   type UpdateProjectInput,
 } from '@dala/validation';
 import { revalidatePath } from 'next/cache';
@@ -14,6 +16,7 @@ import { createClient } from '@/lib/supabase/server';
 
 type ProjectMutationResult =
   { success: true; project: Project } | { success: false; error: string };
+type ProjectExpenseMutationResult = { success: true } | { success: false; error: string };
 type DeleteProjectResult = { success: true; projectId: string } | { success: false; error: string };
 
 const deleteProjectSchema = z.object({
@@ -127,4 +130,46 @@ export async function deleteProject(input: {
 
   revalidatePath('/projects');
   return { success: true, projectId: parsed.data.id };
+}
+
+export async function createProjectExpense(
+  input: CreateProjectExpenseInput,
+): Promise<ProjectExpenseMutationResult> {
+  const parsed = createProjectExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const { error } = await supabase.from('project_expenses').insert({
+    org_id: profile.active_org_id,
+    project_id: parsed.data.project_id,
+    category: parsed.data.category,
+    amount: parsed.data.amount,
+    description: parsed.data.description ?? null,
+    receipt_photo_url: parsed.data.receipt_photo_url ?? null,
+    expense_date: parsed.data.expense_date,
+    created_by: user.id,
+  });
+
+  if (error) {
+    return { success: false, error: "Impossible d'enregistrer la dépense." };
+  }
+
+  revalidatePath('/projects');
+  return { success: true };
 }

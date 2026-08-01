@@ -10,6 +10,20 @@ export const createDispatchAssignmentSchema = z.object({
 });
 export type CreateDispatchAssignmentInput = z.infer<typeof createDispatchAssignmentSchema>;
 
+/** Doc 03 §3.11 — batch creation for a single vehicle/day with multiple workers. */
+export const createDispatchAssignmentsSchema = z.object({
+  project_id: z.string().uuid(),
+  vehicle_id: z.string().uuid(),
+  worker_ids: z.array(z.string().uuid()).min(1, 'Au moins un ouvrier est requis.'),
+  assignment_date: z.string().date(),
+  departure_time: z.string().optional(),
+  confirmation_channel: z.enum(['app', 'whatsapp']).optional(),
+  ignore_vehicle_maintenance: z.boolean().optional(),
+  ignore_capacity: z.boolean().optional(),
+  ignored_worker_ids: z.array(z.string().uuid()).optional(),
+});
+export type CreateDispatchAssignmentsInput = z.infer<typeof createDispatchAssignmentsSchema>;
+
 /** Doc 01 §1.9 — dispatch is the highest-contention screen; conflicts are
  *  never auto-merged, always surfaced as an explicit keep-mine/use-theirs choice. */
 export const updateDispatchAssignmentSchema = z.object({

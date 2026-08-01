@@ -1,6 +1,6 @@
 'use client';
 
-import type { Project, ProjectStatus } from '@dala/shared-types';
+import type { Project, ProjectExpense, ProjectStatus } from '@dala/shared-types';
 import type { CreateProjectInput, UpdateProjectInput } from '@dala/validation';
 import {
   BuildingsIcon,
@@ -12,6 +12,7 @@ import {
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 
+import { ProjectExpenseFormModal } from './ProjectExpenseFormModal';
 import { ProjectFormModal } from './ProjectFormModal';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
@@ -35,9 +36,9 @@ type DeleteProjectAction = (input: { id: string; version: number }) => Promise<
 >;
 
 const STATUS_LABEL: Record<ProjectStatus, string> = {
-  active: 'Active',
-  completed: 'Completed',
-  archived: 'Archived',
+  active: 'Actif',
+  completed: 'Terminé',
+  archived: 'Archivé',
 };
 
 const STATUS_VARIANT: Record<ProjectStatus, 'success' | 'neutral' | 'info'> = {
@@ -55,6 +56,9 @@ type ProjectRow = Project & {
   endDate: string;
   teamSize: number;
   owner: string;
+  expensesTotal: number;
+  budgetConsumed: number | null;
+  expenses: ProjectExpense[];
 };
 
 function formatBudget(value: number | null): string {
@@ -62,13 +66,24 @@ function formatBudget(value: number | null): string {
   return `${value.toLocaleString('fr-TN')} TND`;
 }
 
+function getBudgetTone(value: number | null): 'success' | 'warning' | 'danger' | 'neutral' {
+  if (value == null) return 'neutral';
+  if (value < 80) return 'success';
+  if (value <= 100) return 'warning';
+  return 'danger';
+}
+
 export function ProjectsView({
   projects,
+  expenses,
+  orgId,
   createProject,
   updateProject,
   deleteProject,
 }: {
   projects: Project[];
+  expenses: ProjectExpense[];
+  orgId: string;
   createProject: CreateProjectAction;
   updateProject: UpdateProjectAction;
   deleteProject: DeleteProjectAction;
@@ -76,6 +91,11 @@ export function ProjectsView({
   const [rows, setRows] = useState(projects);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
   const [detailState, setDetailState] = useState<DetailState>({ mode: 'none' });
+  const [expenseModalState, setExpenseModalState] = useState<{ open: boolean; projectId?: string }>(
+    {
+      open: false,
+    },
+  );
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
@@ -95,6 +115,16 @@ export function ProjectsView({
     setRows((current) => [project, ...current.filter((row) => row.id !== project.id)]);
   }
 
+  const expensesByProject = useMemo(() => {
+    const map = new Map<string, ProjectExpense[]>();
+    for (const expense of expenses) {
+      const list = map.get(expense.project_id) ?? [];
+      list.push(expense);
+      map.set(expense.project_id, list);
+    }
+    return map;
+  }, [expenses]);
+
   const displayRows = useMemo<ProjectRow[]>(() => {
     return rows.map((project, index) => {
       const baseDate = new Date(project.created_at);
@@ -102,17 +132,28 @@ export function ProjectsView({
       startDate.setDate(startDate.getDate() - 21 + index * 3);
       const endDate = new Date(startDate);
       endDate.setDate(endDate.getDate() + 120 + index * 8);
+      const projectExpenses = expensesByProject.get(project.id) ?? [];
+      const expensesTotal = projectExpenses.reduce(
+        (sum, expense) => sum + Number(expense.amount),
+        0,
+      );
 
       return {
         ...project,
         progress: Math.min(96, 24 + index * 12),
-        startDate: startDate.toLocaleDateString('en-GB'),
-        endDate: endDate.toLocaleDateString('en-GB'),
+        startDate: startDate.toLocaleDateString('fr-TN'),
+        endDate: endDate.toLocaleDateString('fr-TN'),
         teamSize: 4 + ((index * 2) % 8),
         owner: ['Nabil', 'Marwa', 'Amine', 'Yasmine'][index % 4]!,
+        expensesTotal,
+        budgetConsumed:
+          project.budget_total && project.budget_total > 0
+            ? (expensesTotal / project.budget_total) * 100
+            : null,
+        expenses: projectExpenses,
       };
     });
-  }, [rows]);
+  }, [rows, expensesByProject]);
 
   const filteredRows = useMemo(() => {
     const lower = query.trim().toLowerCase();
@@ -132,11 +173,11 @@ export function ProjectsView({
   const columns: DataTableColumn<ProjectRow>[] = [
     {
       key: 'name',
-      header: 'Project',
+      header: 'Chantier',
       render: (p) => (
         <div>
           <div className="font-medium text-neutral-900">{p.name}</div>
-          <div className="text-xs text-neutral-500">Owner: {p.owner}</div>
+          <div className="text-xs text-neutral-500">Responsable : {p.owner}</div>
         </div>
       ),
       sortValue: (p) => p.name,
@@ -149,22 +190,33 @@ export function ProjectsView({
     },
     {
       key: 'address',
-      header: 'Address',
+      header: 'Adresse',
       render: (p) => p.address ?? '—',
     },
     {
-      key: 'progress',
-      header: 'Progress',
+      key: 'budget_consumed',
+      header: 'Budget consommé',
       render: (p) => (
-        <div className="min-w-[160px]">
-          <div className="mb-1 flex items-center justify-between text-xs text-neutral-500">
-            <span>{p.progress}%</span>
-            <span>{p.teamSize} people</span>
+        <div className="min-w-[180px]">
+          <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+            <StatusBadge variant={getBudgetTone(p.budgetConsumed)}>
+              {p.budgetConsumed != null ? `${p.budgetConsumed.toFixed(0)}%` : '—'}
+            </StatusBadge>
+            <span>{formatBudget(p.expensesTotal)}</span>
           </div>
-          <ProgressBar value={p.progress} tone={p.progress > 75 ? 'success' : 'accent'} />
+          <ProgressBar
+            value={p.budgetConsumed ?? 0}
+            tone={
+              p.budgetConsumed != null && p.budgetConsumed > 100
+                ? 'danger'
+                : p.budgetConsumed != null && p.budgetConsumed >= 80
+                  ? 'warning'
+                  : 'success'
+            }
+          />
         </div>
       ),
-      sortValue: (p) => p.progress,
+      sortValue: (p) => p.budgetConsumed ?? 0,
     },
     {
       key: 'budget_total',
@@ -175,7 +227,7 @@ export function ProjectsView({
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Statut',
       render: (p) => (
         <StatusBadge variant={STATUS_VARIANT[p.status]}>{STATUS_LABEL[p.status]}</StatusBadge>
       ),
@@ -183,19 +235,19 @@ export function ProjectsView({
     },
     {
       key: 'start_date',
-      header: 'Start Date',
+      header: 'Date de début',
       render: (p) => p.startDate,
       sortValue: (p) => p.startDate,
     },
     {
       key: 'end_date',
-      header: 'End Date',
+      header: 'Date de fin',
       render: (p) => p.endDate,
       sortValue: (p) => p.endDate,
     },
     {
       key: 'team_size',
-      header: 'Team Size',
+      header: 'Taille de l’équipe',
       render: (p) => p.teamSize,
       align: 'right',
       sortValue: (p) => p.teamSize,
@@ -212,7 +264,7 @@ export function ProjectsView({
               setDetailState({ mode: 'project', project: p });
             }}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`View details for ${p.name}`}
+            aria-label={`Voir le détail de ${p.name}`}
           >
             <EyeIcon size={16} />
           </button>
@@ -222,14 +274,14 @@ export function ProjectsView({
               setModalState({ mode: 'edit', project: p });
             }}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modify ${p.name}`}
+            aria-label={`Modifier ${p.name}`}
           >
             <PencilSimpleIcon size={16} />
           </button>
           <button
             onClick={async (e: MouseEvent<HTMLButtonElement>) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Delete ${p.name}?`);
+              const confirmed = window.confirm(`Supprimer ${p.name} ?`);
               if (!confirmed) return;
 
               const result = await deleteProject({ id: p.id, version: p.version });
@@ -242,10 +294,10 @@ export function ProjectsView({
               if (detailState.mode === 'project' && detailState.project.id === result.projectId) {
                 setDetailState({ mode: 'none' });
               }
-              setNotice(`${p.name} removed from the project list.`);
+              setNotice(`${p.name} a été retiré de la liste des chantiers.`);
             }}
             className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Delete ${p.name}`}
+            aria-label={`Supprimer ${p.name}`}
           >
             <TrashIcon size={16} />
           </button>
@@ -265,14 +317,14 @@ export function ProjectsView({
       )}
 
       <SectionCard
-        title="Project pipeline"
-        description="Search, filter, inspect, edit, and track progress across active projects."
+        title="Chantiers"
+        description="Recherchez, filtrez, consultez, modifiez et suivez les chantiers actifs avec leur budget consommé réel."
         actions={
           <>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search projects"
+              placeholder="Rechercher un chantier"
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             />
             <select
@@ -280,14 +332,14 @@ export function ProjectsView({
               onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
+              <option value="all">Tous les statuts</option>
+              <option value="active">Actif</option>
+              <option value="completed">Terminé</option>
+              <option value="archived">Archivé</option>
             </select>
             <Button onClick={() => setModalState({ mode: 'create' })}>
               <PlusIcon size={16} className="me-1.5 inline" />
-              Create Project
+              Nouveau chantier
             </Button>
           </>
         }
@@ -295,7 +347,7 @@ export function ProjectsView({
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Projects
+              Chantiers
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {visibleCount}
@@ -303,7 +355,7 @@ export function ProjectsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Active
+              Actifs
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((row) => row.status === 'active').length}
@@ -311,7 +363,7 @@ export function ProjectsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Average progress
+              Progression moyenne
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {Math.round(
@@ -323,15 +375,15 @@ export function ProjectsView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Budget pipeline
+              Dépenses totales
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {formatBudget(filteredRows.reduce((sum, row) => sum + (row.budget_total ?? 0), 0))}
+              {formatBudget(filteredRows.reduce((sum, row) => sum + row.expensesTotal, 0))}
             </p>
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Team members
+              Ouvriers planifiés
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.reduce((sum, row) => sum + row.teamSize, 0)}
@@ -343,9 +395,9 @@ export function ProjectsView({
           {filteredRows.length === 0 ? (
             <EmptyState
               icon={BuildingsIcon}
-              title="No projects match your filters"
-              description="Adjust the search or status filter to reveal projects."
-              actionLabel="Clear filters"
+              title="Aucun chantier ne correspond à vos filtres"
+              description="Ajustez la recherche ou le filtre de statut pour afficher les chantiers."
+              actionLabel="Effacer les filtres"
               onAction={() => {
                 setQuery('');
                 setStatusFilter('all');
@@ -367,14 +419,14 @@ export function ProjectsView({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Project details
+                Détail du chantier
               </p>
               <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
                 {selectedProject.name}
               </h3>
               <p className="mt-1 text-sm text-neutral-500">
-                {selectedProject.client_name ?? 'No client yet'} ·{' '}
-                {selectedProject.address ?? 'No address'}
+                {selectedProject.client_name ?? 'Aucun client'} ·{' '}
+                {selectedProject.address ?? 'Aucune adresse'}
               </p>
             </div>
             <StatusBadge variant={STATUS_VARIANT[selectedProject.status]}>
@@ -384,7 +436,7 @@ export function ProjectsView({
 
           <div className="mt-6 grid gap-4 md:grid-cols-4">
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Progress</p>
+              <p className="text-xs text-neutral-500">Progression</p>
               <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
                 {selectedProject.progress}%
               </p>
@@ -393,19 +445,19 @@ export function ProjectsView({
               </div>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Budget</p>
+              <p className="text-xs text-neutral-500">Budget total</p>
               <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
                 {formatBudget(selectedProject.budget_total)}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Team size</p>
+              <p className="text-xs text-neutral-500">Taille de l’équipe</p>
               <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
                 {selectedProject.teamSize}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Assigned crew</p>
+              <p className="text-xs text-neutral-500">Équipe affectée</p>
               <div className="mt-3">
                 <AvatarStack
                   people={[
@@ -416,6 +468,90 @@ export function ProjectsView({
                 />
               </div>
             </Card>
+            <Card className="p-4">
+              <p className="text-xs text-neutral-500">Budget consommé</p>
+              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
+                {selectedProject.budgetConsumed != null
+                  ? `${selectedProject.budgetConsumed.toFixed(0)}%`
+                  : '—'}
+              </p>
+              <div className="mt-2">
+                <StatusBadge variant={getBudgetTone(selectedProject.budgetConsumed)}>
+                  {selectedProject.budgetConsumed != null
+                    ? selectedProject.budgetConsumed < 80
+                      ? 'Sous contrôle'
+                      : selectedProject.budgetConsumed <= 100
+                        ? 'À surveiller'
+                        : 'Dépassement'
+                    : '—'}
+                </StatusBadge>
+              </div>
+              <p className="mt-1 text-xs text-neutral-500">
+                {formatBudget(selectedProject.expensesTotal)} dépensés
+              </p>
+            </Card>
+          </div>
+
+          <div className="mt-6">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
+                  Dépenses du chantier
+                </p>
+                <p className="mt-1 text-sm text-neutral-500">
+                  Matériaux, carburant, sous-traitance et autres frais liés au projet.
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => setExpenseModalState({ open: true, projectId: selectedProject.id })}
+              >
+                <PlusIcon size={16} className="me-1.5 inline" />
+                Ajouter une dépense
+              </Button>
+            </div>
+
+            {selectedProject.expenses.length === 0 ? (
+              <EmptyState
+                icon={BuildingsIcon}
+                title="Aucune dépense enregistrée"
+                description="Ajoutez un premier frais pour faire apparaître le budget consommé réel."
+                actionLabel="Ajouter une dépense"
+                onAction={() => setExpenseModalState({ open: true, projectId: selectedProject.id })}
+              />
+            ) : (
+              <div className="space-y-3">
+                {selectedProject.expenses.map((expense) => (
+                  <Card key={expense.id} className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-neutral-900">
+                          {expense.category === 'materiaux'
+                            ? 'Matériaux'
+                            : expense.category === 'carburant'
+                              ? 'Carburant'
+                              : expense.category === 'sous_traitance'
+                                ? 'Sous-traitance'
+                                : 'Autre'}
+                        </p>
+                        <p className="mt-1 text-sm text-neutral-500">
+                          {expense.description ?? 'Aucune description'}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-400">{expense.expense_date}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-display text-xl font-semibold text-neutral-900">
+                          {formatBudget(Number(expense.amount))}
+                        </p>
+                        {expense.receipt_photo_url && (
+                          <p className="text-success mt-1 text-xs">Justificatif joint</p>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-5 flex flex-wrap gap-3">
@@ -424,10 +560,10 @@ export function ProjectsView({
               onClick={() => setModalState({ mode: 'edit', project: selectedProject })}
             >
               <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Edit project
+              Modifier le chantier
             </Button>
             <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Close details
+              Fermer le détail
             </Button>
           </div>
         </Card>
@@ -440,6 +576,16 @@ export function ProjectsView({
           updateProject={updateProject}
           onSaved={upsertProject}
           onClose={() => setModalState({ mode: 'closed' })}
+        />
+      )}
+
+      {expenseModalState.open && (
+        <ProjectExpenseFormModal
+          orgId={orgId}
+          projects={projects.map((project) => ({ id: project.id, name: project.name }))}
+          defaultProjectId={expenseModalState.projectId}
+          onClose={() => setExpenseModalState({ open: false })}
+          onSaved={() => setNotice('Dépense enregistrée et budget recalculé.')}
         />
       )}
     </>

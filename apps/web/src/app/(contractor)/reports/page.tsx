@@ -9,18 +9,18 @@ export default function Page() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
-        eyebrow="Analytics"
-        title="Reports"
-        description="Review expenses, revenue, profit, budget, attendance, materials, and vehicle costs."
+        eyebrow="Analytique"
+        title="Rapports"
+        description="Consultez les dépenses, le chiffre d’affaires, le bénéfice, le budget, la présence, les matériaux et les coûts véhicules."
         actions={<ReportsActions />}
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
-          ['Revenue', '246,800 TND'],
-          ['Profit', '61,250 TND'],
-          ['Expenses', '185,550 TND'],
-          ['Budget used', '68%'],
+          ['Chiffre d’affaires', '246 800 TND'],
+          ['Bénéfice', '61 250 TND'],
+          ['Dépenses', '185 550 TND'],
+          ['Budget utilisé', '68%'],
         ].map(([label, value]) => (
           <Card key={label} className="p-5" raised>
             <ChartBarIcon size={22} className="text-accent-700" />
@@ -32,7 +32,10 @@ export default function Page() {
         ))}
       </div>
 
-      <SectionCard title="Report trend" description="Seven day performance snapshot.">
+      <SectionCard
+        title="Tendance des rapports"
+        description="Aperçu des performances sur sept jours."
+      >
         <MiniBarChart
           values={[45, 58, 52, 70, 63, 82, 75]}
           labels={['M', 'T', 'W', 'T', 'F', 'S', 'S']}
@@ -40,8 +43,8 @@ export default function Page() {
       </SectionCard>
 
       <SectionCard
-        title="Operational metrics"
-        description="Grouped KPIs for the reporting dashboard."
+        title="Indicateurs opérationnels"
+        description="KPI regroupés pour le tableau de bord des rapports."
       >
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {[
@@ -51,14 +54,16 @@ export default function Page() {
             'Budget',
             'Attendance',
             'Materials',
-            'Vehicle Costs',
+            'Coûts véhicules',
           ].map((item) => (
             <div
               key={item}
               className="bg-neutral-25 rounded-2xl border border-neutral-100 px-4 py-5"
             >
               <p className="font-medium text-neutral-900">{item}</p>
-              <p className="mt-1 text-sm text-neutral-500">Open chart and performance summaries.</p>
+              <p className="mt-1 text-sm text-neutral-500">
+                Ouvrir le graphique et les résumés de performance.
+              </p>
             </div>
           ))}
         </div>

@@ -94,7 +94,7 @@ export function TopBar({
               <div className="truncate text-sm font-semibold text-neutral-900">
                 {activeOrganization}
               </div>
-              <div className="truncate text-xs text-neutral-500">Organization switcher</div>
+              <div className="truncate text-xs text-neutral-500">Changement d’organisation</div>
             </div>
             <CaretDownIcon size={16} className="text-neutral-500" />
           </button>
@@ -102,7 +102,7 @@ export function TopBar({
           {orgOpen && (
             <div className="bg-neutral-0 absolute left-0 top-[76px] z-40 w-[320px] rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
               <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Switch organization
+                Changer d’organisation
               </div>
               <div className="space-y-1">
                 {orgOptions.map((option) => (
@@ -120,7 +120,7 @@ export function TopBar({
                   >
                     <span className="font-medium">{option}</span>
                     {option === activeOrganization && (
-                      <span className="text-xs font-semibold">Current</span>
+                      <span className="text-xs font-semibold">Actuelle</span>
                     )}
                   </button>
                 ))}
@@ -138,7 +138,7 @@ export function TopBar({
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search projects, workers, vehicles, invoices..."
+            placeholder="Rechercher des chantiers, ouvriers, véhicules, factures..."
             className="bg-neutral-0 focus:border-accent-500 w-full rounded-2xl border border-neutral-200 py-3 pe-4 ps-10 text-sm shadow-[0_4px_14px_rgba(17,19,24,0.04)] outline-none transition-colors"
           />
         </div>
@@ -200,7 +200,7 @@ export function TopBar({
             {profileOpen && (
               <div className="bg-neutral-0 absolute end-0 top-[58px] z-40 w-[272px] rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
                 <div className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                  Account
+                  Compte
                 </div>
                 <button
                   type="button"
@@ -211,7 +211,7 @@ export function TopBar({
                   className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors"
                 >
                   <UserCircleIcon size={18} className="text-neutral-500" />
-                  Profile settings
+                  Paramètres du profil
                 </button>
                 <button
                   type="button"
@@ -222,7 +222,7 @@ export function TopBar({
                   className="hover:bg-neutral-25 flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left text-sm text-neutral-900 transition-colors"
                 >
                   <NotepadIcon size={18} className="text-neutral-500" />
-                  Shortcuts
+                  Raccourcis
                 </button>
                 <Button
                   variant="text"
@@ -230,7 +230,7 @@ export function TopBar({
                   className="text-danger hover:bg-danger/5 mt-1 flex w-full items-center justify-start gap-3 rounded-2xl px-3 py-3"
                 >
                   <SignOutIcon size={18} />
-                  Sign out
+                  Se déconnecter
                 </Button>
               </div>
             )}

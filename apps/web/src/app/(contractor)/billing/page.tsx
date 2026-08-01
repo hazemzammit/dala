@@ -8,16 +8,16 @@ export default function Page() {
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
         eyebrow="Finance"
-        title="Billing"
-        description="Track invoices, payments, subscriptions, and transaction history."
+        title="Facturation"
+        description="Suivez les factures, les paiements, les abonnements et l’historique des transactions."
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
         {[
-          ['Invoices', '28'],
-          ['Payments', '22'],
-          ['Subscriptions', 'Active'],
-          ['Overdue balance', '12,600 TND'],
+          ['Factures', '28'],
+          ['Paiements', '22'],
+          ['Abonnements', 'Actif'],
+          ['Solde en retard', '12 600 TND'],
         ].map(([label, value]) => (
           <Card key={label} className="p-5" raised>
             <ReceiptIcon size={22} className="text-accent-700" />
@@ -29,24 +29,27 @@ export default function Page() {
         ))}
       </div>
 
-      <SectionCard title="Transactions" description="Recent invoice and payment history.">
+      <SectionCard
+        title="Transactions"
+        description="Historique récent des factures et des paiements."
+      >
         <TimelineList
           items={[
             {
-              title: 'Invoice #1042 paid',
-              description: 'El Baraka Residence settled the 3rd progress payment.',
+              title: 'Facture n°1042 réglée',
+              description: 'El Baraka Residence a réglé le 3e paiement d’avancement.',
               time: '09:20',
               tone: 'success',
             },
             {
-              title: 'Invoice #1043 sent',
-              description: 'Coastal Villas client billing email delivered.',
+              title: 'Facture n°1043 envoyée',
+              description: 'L’email de facturation client pour Coastal Villas a bien été délivré.',
               time: '11:10',
               tone: 'accent',
             },
             {
-              title: 'Overdue reminder',
-              description: 'School Annex payment reminder scheduled for tomorrow.',
+              title: 'Rappel de retard',
+              description: 'Le rappel de paiement pour School Annex est programmé pour demain.',
               time: '16:40',
               tone: 'warning',
             },

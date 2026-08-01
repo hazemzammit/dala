@@ -66,19 +66,19 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       brand: ['Toyota', 'Renault', 'Ford', 'Isuzu'][index % 4]!,
       model: ['Hilux', 'Master', 'Transit', 'NPR'][index % 4]!,
       driver: ['Sami', 'Nour', 'Rami', 'Meriem'][index % 4]!,
-      currentProject: ['El Baraka Towers', 'Villa Sfax', 'Port Renovation', 'School Annex'][
+      currentProject: ['El Baraka Towers', 'Villa Sfax', 'Rénovation du port', 'Annexe scolaire'][
         index % 4
       ]!,
       mileage: 32000 + index * 4200,
       fuelCost: 180 + index * 35,
       maintenanceStatus:
-        index % 3 === 0 ? 'Due soon' : index % 2 === 0 ? 'Healthy' : 'Inspection pending',
+        index % 3 === 0 ? 'Bientôt due' : index % 2 === 0 ? 'État sain' : 'Inspection en attente',
       availability:
         vehicle.status === 'available'
-          ? 'Ready'
+          ? 'Prêt'
           : vehicle.status === 'in_use'
-            ? 'Assigned'
-            : 'Offline',
+            ? 'Affecté'
+            : 'Hors ligne',
     }));
   }, [rows]);
 
@@ -100,7 +100,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
   const columns: DataTableColumn<VehicleRow>[] = [
     {
       key: 'name',
-      header: 'Vehicle',
+      header: 'Véhicule',
       render: (v) => (
         <div>
           <div className="font-medium text-neutral-900">{v.name}</div>
@@ -113,46 +113,46 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     },
     {
       key: 'plate',
-      header: 'Registration',
+      header: 'Immatriculation',
       render: (v) => v.plate ?? '—',
       sortValue: (v) => v.plate ?? '',
     },
     {
       key: 'driver',
-      header: 'Current Driver',
+      header: 'Conducteur actuel',
       render: (v) => v.driver,
       sortValue: (v) => v.driver,
     },
     {
       key: 'currentProject',
-      header: 'Current Project',
+      header: 'Chantier actuel',
       render: (v) => v.currentProject,
       sortValue: (v) => v.currentProject,
     },
     {
       key: 'capacity',
-      header: 'Capacity',
-      render: (v) => `${v.capacity} workers`,
+      header: 'Capacité',
+      render: (v) => `${v.capacity} ouvriers`,
       sortValue: (v) => v.capacity,
       align: 'right',
     },
     {
       key: 'mileage',
-      header: 'Mileage',
+      header: 'Kilométrage',
       render: (v) => `${v.mileage.toLocaleString('fr-TN')} km`,
       sortValue: (v) => v.mileage,
       align: 'right',
     },
     {
       key: 'fuelCost',
-      header: 'Fuel Cost',
+      header: 'Coût carburant',
       render: (v) => formatMoney(v.fuelCost),
       sortValue: (v) => v.fuelCost,
       align: 'right',
     },
     {
       key: 'status',
-      header: 'Availability',
+      header: 'Disponibilité',
       render: (v) => (
         <StatusBadge variant={STATUS_VARIANT[v.status]}>{STATUS_LABEL[v.status]}</StatusBadge>
       ),
@@ -160,7 +160,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     },
     {
       key: 'maintenanceStatus',
-      header: 'Maintenance Status',
+      header: 'État de maintenance',
       render: (v) => v.maintenanceStatus,
       sortValue: (v) => v.maintenanceStatus,
     },
@@ -176,7 +176,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               setDetailState({ mode: 'vehicle', vehicle: v });
             }}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`View details for ${v.name}`}
+            aria-label={`Voir le détail de ${v.name}`}
           >
             <EyeIcon size={16} />
           </button>
@@ -193,13 +193,13 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Delete ${v.name}?`);
+              const confirmed = window.confirm(`Supprimer ${v.name} ?`);
               if (!confirmed) return;
               setRows((current) => current.filter((row) => row.id !== v.id));
-              setNotice(`${v.name} removed from the fleet.`);
+              setNotice(`${v.name} a été retiré du parc.`);
             }}
             className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Delete ${v.name}`}
+            aria-label={`Supprimer ${v.name}`}
           >
             <TrashIcon size={16} />
           </button>
@@ -219,14 +219,14 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       )}
 
       <SectionCard
-        title="Fleet management"
-        description="Track vehicles, assignments, maintenance, and availability in one view."
+        title="Gestion du parc"
+        description="Suivez les véhicules, les affectations, la maintenance et la disponibilité dans une seule vue."
         actions={
           <>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search vehicles"
+              placeholder="Rechercher un véhicule"
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             />
             <select
@@ -234,14 +234,14 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               onChange={(e) => setStatusFilter(e.target.value as VehicleStatus | 'all')}
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             >
-              <option value="all">All statuses</option>
-              <option value="available">Available</option>
-              <option value="in_use">In use</option>
+              <option value="all">Tous les statuts</option>
+              <option value="available">Disponible</option>
+              <option value="in_use">En service</option>
               <option value="maintenance">Maintenance</option>
             </select>
             <Button onClick={() => setModalState({ mode: 'create' })}>
               <PlusIcon size={16} className="me-1.5 inline" />
-              Add Vehicle
+              Ajouter un véhicule
             </Button>
           </>
         }
@@ -249,7 +249,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Fleet size
+              Taille du parc
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.length}
@@ -257,7 +257,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Available
+              Disponibles
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {availableCount}
@@ -265,7 +265,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Assigned
+              Affectés
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((vehicle) => vehicle.status === 'in_use').length}
@@ -273,7 +273,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Needs service
+              À réviser
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((vehicle) => vehicle.status === 'maintenance').length}
@@ -285,9 +285,9 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           {filteredRows.length === 0 ? (
             <EmptyState
               icon={CarIcon}
-              title="No vehicles match your filters"
-              description="Clear the search or switch status filters to see fleet records."
-              actionLabel="Clear filters"
+              title="Aucun véhicule ne correspond à vos filtres"
+              description="Effacez la recherche ou changez de statut pour voir les véhicules du parc."
+              actionLabel="Effacer les filtres"
               onAction={() => {
                 setQuery('');
                 setStatusFilter('all');
@@ -309,14 +309,14 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Vehicle overview
+                Vue du véhicule
               </p>
               <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
                 {selectedVehicle.name}
               </h3>
               <p className="mt-1 text-sm text-neutral-500">
                 {selectedVehicle.brand} {selectedVehicle.model} ·{' '}
-                {selectedVehicle.plate ?? 'No registration'}
+                {selectedVehicle.plate ?? 'Aucune immatriculation'}
               </p>
             </div>
             <StatusBadge variant={STATUS_VARIANT[selectedVehicle.status]}>
@@ -332,13 +332,13 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Current project</p>
+              <p className="text-xs text-neutral-500">Chantier actuel</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {selectedVehicle.currentProject}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Fuel cost</p>
+              <p className="text-xs text-neutral-500">Coût carburant</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {formatMoney(selectedVehicle.fuelCost)}
               </p>
@@ -353,7 +353,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
 
           <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Mileage</p>
+              <p className="text-xs text-neutral-500">Kilométrage</p>
               <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
                 {selectedVehicle.mileage.toLocaleString('fr-TN')} km
               </p>
@@ -365,7 +365,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               </div>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Crew capacity</p>
+              <p className="text-xs text-neutral-500">Capacité d’équipage</p>
               <div className="mt-3">
                 <AvatarStack
                   people={[{ name: 'Youssef' }, { name: 'Aymen' }, { name: 'Meriem' }]}
@@ -380,10 +380,10 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               onClick={() => setModalState({ mode: 'edit', vehicle: selectedVehicle })}
             >
               <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Edit vehicle
+              Modifier le véhicule
             </Button>
             <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Close details
+              Fermer le détail
             </Button>
           </div>
         </Card>

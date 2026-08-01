@@ -20,9 +20,9 @@ type ModalState = { mode: 'closed' } | { mode: 'invite' } | { mode: 'edit'; work
 type DetailState = { mode: 'none' } | { mode: 'worker'; worker: WorkerRow };
 
 const STATUS_LABEL: Record<InvitationStatus, string> = {
-  pending: 'Invitation sent',
-  accepted: 'Active',
-  expired: 'Invitation expired',
+  pending: 'Invitation envoyée',
+  accepted: 'Actif',
+  expired: 'Invitation expirée',
 };
 
 const STATUS_VARIANT: Record<InvitationStatus, 'success' | 'warning' | 'neutral'> = {
@@ -71,16 +71,16 @@ export function TeamView({
     return rows.map((worker, index) => {
       const invitation = latestInvitationByWorker.get(worker.id);
       const statusLabel = worker.user_id
-        ? 'Active'
+        ? 'Actif'
         : invitation?.status === 'pending'
-          ? 'Invitation sent'
+          ? 'Invitation envoyée'
           : invitation?.status === 'expired'
-            ? 'Invitation expired'
-            : 'No invitation';
+            ? 'Invitation expirée'
+            : 'Aucune invitation';
 
       return {
         ...worker,
-        profession: worker.trade ?? 'General labor',
+        profession: worker.trade ?? 'Main-d’œuvre générale',
         attendance: 72 + ((index * 7) % 25),
         currentProject: ['El Baraka Towers', 'Downtown Offices', 'Coastal Villas', 'Road Works'][
           index % 4
@@ -109,7 +109,7 @@ export function TeamView({
   const columns: DataTableColumn<WorkerRow>[] = [
     {
       key: 'name',
-      header: 'Worker',
+      header: 'Ouvrier',
       render: (w) => (
         <div className="flex items-center gap-3">
           <Avatar name={w.full_name} />
@@ -123,13 +123,13 @@ export function TeamView({
     },
     {
       key: 'phone',
-      header: 'Phone',
+      header: 'Téléphone',
       render: (w) => w.phone ?? '—',
       sortValue: (w) => w.phone ?? '',
     },
     {
       key: 'attendance',
-      header: 'Attendance',
+      header: 'Présence',
       render: (w) => (
         <div className="min-w-[150px]">
           <div className="mb-1 flex items-center justify-between text-xs text-neutral-500">
@@ -143,28 +143,28 @@ export function TeamView({
     },
     {
       key: 'daily_rate',
-      header: 'Daily Rate',
+      header: 'Taux journalier',
       render: (w) => (w.daily_rate != null ? `${w.daily_rate} TND` : '—'),
       sortValue: (w) => w.daily_rate ?? 0,
       align: 'right',
     },
     {
       key: 'salaryAdvance',
-      header: 'Salary Advance',
+      header: 'Avance',
       render: (w) => `${w.salaryAdvance.toLocaleString('fr-TN')} TND`,
       sortValue: (w) => w.salaryAdvance,
       align: 'right',
     },
     {
       key: 'status',
-      header: 'Status',
+      header: 'Statut',
       render: (w) => {
         if (w.user_id) {
-          return <StatusBadge variant="success">Active</StatusBadge>;
+          return <StatusBadge variant="success">Actif</StatusBadge>;
         }
         const invitation = latestInvitationByWorker.get(w.id);
         if (!invitation) {
-          return <StatusBadge variant="neutral">No invitation</StatusBadge>;
+          return <StatusBadge variant="neutral">Aucune invitation</StatusBadge>;
         }
         return (
           <StatusBadge variant={STATUS_VARIANT[invitation.status]}>
@@ -185,7 +185,7 @@ export function TeamView({
               setDetailState({ mode: 'worker', worker: w });
             }}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`View details for ${w.full_name}`}
+            aria-label={`Voir le détail de ${w.full_name}`}
           >
             <EyeIcon size={16} />
           </button>
@@ -195,20 +195,20 @@ export function TeamView({
               setModalState({ mode: 'edit', worker: w });
             }}
             className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Edit ${w.full_name}`}
+            aria-label={`Modifier ${w.full_name}`}
           >
             <PencilSimpleIcon size={16} />
           </button>
           <button
             onClick={(e) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Remove ${w.full_name} from the team?`);
+              const confirmed = window.confirm(`Retirer ${w.full_name} de l’équipe ?`);
               if (!confirmed) return;
               setRows((current) => current.filter((row) => row.id !== w.id));
-              setNotice(`${w.full_name} removed from the roster.`);
+              setNotice(`${w.full_name} a été retiré du registre.`);
             }}
             className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Delete ${w.full_name}`}
+            aria-label={`Supprimer ${w.full_name}`}
           >
             <TrashIcon size={16} />
           </button>
@@ -226,14 +226,14 @@ export function TeamView({
       )}
 
       <SectionCard
-        title="Team management"
-        description="Monitor workers, attendance, salary advances, and project allocation."
+        title="Gestion de l’équipe"
+        description="Suivez les ouvriers, la présence, les avances sur salaire et l’affectation aux chantiers."
         actions={
           <>
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search workers"
+              placeholder="Rechercher un ouvrier"
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             />
             <select
@@ -241,7 +241,7 @@ export function TeamView({
               onChange={(e) => setTradeFilter(e.target.value)}
               className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
             >
-              <option value="all">All professions</option>
+              <option value="all">Toutes les professions</option>
               {Array.from(new Set(displayRows.map((worker) => worker.profession))).map(
                 (profession) => (
                   <option key={profession} value={profession}>
@@ -252,7 +252,7 @@ export function TeamView({
             </select>
             <Button onClick={() => setModalState({ mode: 'invite' })}>
               <PlusIcon size={16} className="me-1.5 inline" />
-              Invite Worker
+              Inviter un ouvrier
             </Button>
           </>
         }
@@ -260,7 +260,7 @@ export function TeamView({
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Workers
+              Ouvriers
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.length}
@@ -268,7 +268,7 @@ export function TeamView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Active
+              Actifs
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows.filter((worker) => worker.user_id).length}
@@ -276,7 +276,7 @@ export function TeamView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Attendance
+              Présence
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {Math.round(
@@ -288,7 +288,7 @@ export function TeamView({
           </Card>
           <Card className="p-4">
             <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Advances
+              Avances
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {filteredRows
@@ -303,9 +303,9 @@ export function TeamView({
           {filteredRows.length === 0 ? (
             <EmptyState
               icon={HardHatIcon}
-              title="No workers match your filters"
-              description="Search less specifically or clear the profession filter."
-              actionLabel="Clear filters"
+              title="Aucun ouvrier ne correspond à vos filtres"
+              description="Affinez moins la recherche ou effacez le filtre de profession."
+              actionLabel="Effacer les filtres"
               onAction={() => {
                 setQuery('');
                 setTradeFilter('all');
@@ -327,31 +327,31 @@ export function TeamView({
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Worker profile
+                Profil de l’ouvrier
               </p>
               <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
                 {selectedWorker.full_name}
               </h3>
               <p className="mt-1 text-sm text-neutral-500">
-                {selectedWorker.profession} · {selectedWorker.phone ?? 'No phone'}
+                {selectedWorker.profession} · {selectedWorker.phone ?? 'Aucun téléphone'}
               </p>
             </div>
             {selectedWorker.user_id ? (
-              <StatusBadge variant="success">Active</StatusBadge>
+              <StatusBadge variant="success">Actif</StatusBadge>
             ) : (
-              <StatusBadge variant="warning">Pending</StatusBadge>
+              <StatusBadge variant="warning">En attente</StatusBadge>
             )}
           </div>
 
           <div className="mt-6 grid gap-4 md:grid-cols-4">
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Current project</p>
+              <p className="text-xs text-neutral-500">Chantier actuel</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {selectedWorker.currentProject}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Attendance</p>
+              <p className="text-xs text-neutral-500">Présence</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {selectedWorker.attendance}%
               </p>
@@ -363,13 +363,13 @@ export function TeamView({
               </div>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Daily rate</p>
+              <p className="text-xs text-neutral-500">Taux journalier</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {selectedWorker.daily_rate != null ? `${selectedWorker.daily_rate} TND` : '—'}
               </p>
             </Card>
             <Card className="p-4">
-              <p className="text-xs text-neutral-500">Salary advance</p>
+              <p className="text-xs text-neutral-500">Avance</p>
               <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
                 {selectedWorker.salaryAdvance} TND
               </p>
@@ -382,10 +382,10 @@ export function TeamView({
               onClick={() => setModalState({ mode: 'edit', worker: selectedWorker })}
             >
               <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Edit worker
+              Modifier l’ouvrier
             </Button>
             <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Close details
+              Fermer le détail
             </Button>
           </div>
         </Card>
