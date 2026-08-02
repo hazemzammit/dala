@@ -1,22 +1,37 @@
-import { WalletIcon } from '@phosphor-icons/react/ssr';
+import { redirect } from 'next/navigation';
 
-import { EmptyState } from '@/components/ui/EmptyState';
+import { AdvancesView } from './AdvancesView';
 
-/**
- * Placeholder — full screen spec in
- * docs/spec/04-screens-web-contractor-and-admin.md. Icon imported from the
- * /ssr submodule since this is a Server Component (Doc: phosphor-icons
- * README "React Server Components and SSR" — the default export relies on
- * React Context, which RSC does not support).
- */
-export default function Page() {
-  return (
-    <div className="p-8">
-      <EmptyState
-        icon={WalletIcon}
-        title="Aucune avance pour le moment"
-        description="Les demandes d’avance de vos ouvriers apparaîtront ici."
-      />
-    </div>
-  );
+import { createClient } from '@/lib/supabase/server';
+
+
+export default async function Page() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) redirect('/login');
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) redirect('/create-organization');
+
+  const orgId = profile.active_org_id;
+
+  const { data: advances } = await supabase
+    .from('advances')
+    .select('id, worker_id, amount, reason, status, created_at')
+    .eq('org_id', orgId)
+    .order('created_at', { ascending: false });
+
+  const { data: workers } = await supabase
+    .from('workers')
+    .select('id, full_name')
+    .eq('org_id', orgId)
+    .order('full_name');
+
+  return <AdvancesView advances={advances ?? []} workers={workers ?? []} />;
 }
