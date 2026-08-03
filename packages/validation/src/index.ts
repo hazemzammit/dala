@@ -22,3 +22,4 @@ export * from './money';
 export * from './site-logs';
 export * from './project-invitations';
 export * from './safety';
+export * from './invoices';
