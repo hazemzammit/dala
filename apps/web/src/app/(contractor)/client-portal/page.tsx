@@ -1,4 +1,5 @@
 import { HandshakeIcon } from '@phosphor-icons/react/ssr';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
 import { PageHeader, ProgressBar, SectionCard } from '@/components/contractor/Screen';
@@ -6,15 +7,13 @@ import { Card } from '@/components/ui/Card';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * Doc 06 §6.8 — "vue client filtrée". Aucune table invoices/payments/
- * client_reports n'existe en base, et aucun système d'authentification
+ * Doc 06 §6.8 — "vue client filtrée". Aucun système d'authentification
  * client externe n'est en place (project_memberships.role='client' sert
  * pour une AUTRE organisation invitée, pas un client individuel externe).
- * Cet écran affiche donc un récapitulatif interne réel (chantiers actifs +
- * % budget consommé, déjà calculé pour l'écran Chantiers) plutôt qu'un vrai
- * portail accessible par le client — Factures/Paiements/Rapports partagés
- * restent "Bientôt disponible" jusqu'à ce que ces tables et un système
- * d'accès externe existent. Flagged for Hazem.
+ * Cet écran affiche donc un récapitulatif interne réel (chantiers actifs,
+ * factures, paiements) plutôt qu'un vrai portail accessible par le client
+ * lui-même — "Rapports partagés" reste "Bientôt disponible" (aucune table
+ * pour ça). Flagged for Hazem pour le vrai accès externe.
  */
 export default async function Page() {
   const supabase = await createClient();
@@ -49,6 +48,14 @@ export default async function Page() {
         .in('project_id', projectIds)
     : { data: [] };
 
+  const { data: invoices } = await supabase
+    .from('invoices')
+    .select('id, status')
+    .eq('org_id', orgId);
+
+  const invoiceCount = (invoices ?? []).length;
+  const paidCount = (invoices ?? []).filter((inv) => inv.status === 'paid').length;
+
   const spentByProject = new Map<string, number>();
   for (const exp of expenses ?? []) {
     spentByProject.set(exp.project_id, (spentByProject.get(exp.project_id) ?? 0) + exp.amount);
@@ -72,28 +79,47 @@ export default async function Page() {
       />
 
       <div className="grid gap-4 lg:grid-cols-4">
-        <Card className="p-5" raised>
-          <HandshakeIcon size={22} className="text-accent-700" />
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Chantiers ouverts
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {projectsWithProgress.length}
-          </p>
-        </Card>
-        {[
-          ['Factures envoyées', 'Bientôt disponible'],
-          ['Paiements reçus', 'Bientôt disponible'],
-          ['Rapports partagés', 'Bientôt disponible'],
-        ].map(([label, value]) => (
-          <Card key={label} className="p-5 opacity-60" raised>
-            <HandshakeIcon size={22} className="text-neutral-400" />
+        <Link href="/projects">
+          <Card className="hover:border-accent-300 p-5 transition-colors" raised>
+            <HandshakeIcon size={22} className="text-accent-700" />
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              {label}
+              Chantiers ouverts
             </p>
-            <p className="mt-2 text-sm text-neutral-500">{value}</p>
+            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
+              {projectsWithProgress.length}
+            </p>
           </Card>
-        ))}
+        </Link>
+
+        <Link href="/billing">
+          <Card className="hover:border-accent-300 p-5 transition-colors" raised>
+            <HandshakeIcon size={22} className="text-accent-700" />
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+              Factures envoyées
+            </p>
+            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
+              {invoiceCount}
+            </p>
+          </Card>
+        </Link>
+
+        <Link href="/billing">
+          <Card className="hover:border-accent-300 p-5 transition-colors" raised>
+            <HandshakeIcon size={22} className="text-accent-700" />
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+              Paiements reçus
+            </p>
+            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">{paidCount}</p>
+          </Card>
+        </Link>
+
+        <Card className="p-5 opacity-60" raised>
+          <HandshakeIcon size={22} className="text-neutral-400" />
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+            Rapports partagés
+          </p>
+          <p className="mt-2 text-sm text-neutral-500">Bientôt disponible</p>
+        </Card>
       </div>
 
       <SectionCard
@@ -105,7 +131,7 @@ export default async function Page() {
         ) : (
           <div className="space-y-4">
             {projectsWithProgress.map((item) => (
-              <div key={item.id}>
+              <Link key={item.id} href="/projects" className="block hover:opacity-80">
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="font-medium text-neutral-900">
                     {item.name}
@@ -119,7 +145,7 @@ export default async function Page() {
                   value={item.progress}
                   tone={item.progress > 80 ? 'success' : 'accent'}
                 />
-              </div>
+              </Link>
             ))}
           </div>
         )}
@@ -130,8 +156,8 @@ export default async function Page() {
         description="Rapports partagés, événements de timeline et notes de facturation."
       >
         <p className="text-sm text-neutral-500">
-          Bientôt disponible — nécessite un système de rapports partagés et de facturation, pas
-          encore présent dans la base de données.
+          Bientôt disponible — nécessite un système de rapports partagés, pas encore présent dans la
+          base de données.
         </p>
       </SectionCard>
     </div>
