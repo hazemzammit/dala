@@ -12,6 +12,7 @@ import {
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState, type MouseEvent } from 'react';
 
+import { getProjectDashboard, type ProjectDashboardData } from './getProjectDashboard';
 import { ProjectExpenseFormModal } from './ProjectExpenseFormModal';
 import { ProjectFormModal } from './ProjectFormModal';
 
@@ -100,7 +101,8 @@ export function ProjectsView({
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
   const searchParams = useSearchParams();
-
+  const [dashboardData, setDashboardData] = useState<ProjectDashboardData | null>(null);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
   useEffect(() => {
     setRows(projects);
   }, [projects]);
@@ -110,6 +112,16 @@ export function ProjectsView({
       setModalState({ mode: 'create' });
     }
   }, [searchParams]);
+  useEffect(() => {
+    if (detailState.mode !== 'project') {
+      setDashboardData(null);
+      return;
+    }
+    setDashboardLoading(true);
+    getProjectDashboard(detailState.project.id, detailState.project.budget_total)
+      .then(setDashboardData)
+      .finally(() => setDashboardLoading(false));
+  }, [detailState]);
 
   function upsertProject(project: Project) {
     setRows((current) => [project, ...current.filter((row) => row.id !== project.id)]);

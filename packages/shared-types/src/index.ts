@@ -198,15 +198,18 @@ export interface SalaryCycle {
   created_at: string;
 }
 
+export type MaterialUrgency = 'normal' | 'urgent';
+export type MaterialStatus = ApprovalStatus;
+
 export interface Material {
   id: string;
   org_id: string;
   project_id: string | null;
   item: string;
   quantity: number | null;
-  urgency: 'normal' | 'urgent';
+  urgency: MaterialUrgency;
   note: string | null;
-  status: ApprovalStatus;
+  status: MaterialStatus;
   rejection_reason: string | null;
   created_by: string | null;
   approved_by: string | null;
