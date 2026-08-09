@@ -3,37 +3,138 @@
 import Link from 'next/link';
 import { useState } from 'react';
 
-import {
-  dashboardStats,
-  quickActions,
-  recentActivities,
-  weeklyCalendar,
-  weeklyCashflow,
-  weeklyCashflowLabels,
-} from '@/components/contractor/mock-data';
+import { quickActions } from '@/components/contractor/mock-data';
 import {
   CalendarGrid,
   MetricCard,
-  MiniBarChart,
   PageHeader,
   ProgressBar,
   SectionCard,
   TimelineList,
 } from '@/components/contractor/Screen';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { LinkButton } from '@/components/ui/LinkButton';
 
-export function DashboardView() {
-  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+type DashboardStats = {
+  activeProjectsCount: number;
+  workersPresentToday: number;
+  availableVehiclesCount: number;
+  todayExpensesTotal: number;
+  monthlyRevenue: number;
+  budgetConsumedPercent: number;
+};
+
+type RecentLog = { caption: string | null; created_at: string; projects: { name: string } | null };
+type RecentInvoice = { invoice_number: string; client_name: string; paid_at: string | null };
+type RecentDispatch = {
+  assignment_date: string;
+  created_at: string;
+  projects: { name: string } | null;
+};
+type CalendarDay = {
+  day: string;
+  date: string;
+  count: number;
+  label: string;
+  tone: 'accent' | 'success' | 'warning';
+};
+
+function formatTND(value: number): string {
+  return value.toLocaleString('fr-TN') + ' TND';
+}
+
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString('fr-TN', { hour: '2-digit', minute: '2-digit' });
+}
+
+export function DashboardView({
+  stats,
+  recentLogs,
+  recentPaidInvoices,
+  recentDispatch,
+  calendarDays,
+}: {
+  stats: DashboardStats;
+  recentLogs: RecentLog[];
+  recentPaidInvoices: RecentInvoice[];
+  recentDispatch: RecentDispatch[];
+  calendarDays: CalendarDay[];
+}) {
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  const dashboardStats = [
+    {
+      label: 'Chantiers actifs',
+      value: stats.activeProjectsCount.toString(),
+      tone: 'success' as const,
+    },
+    {
+      label: 'Ouvriers presents aujourd hui',
+      value: stats.workersPresentToday.toString(),
+      tone: 'success' as const,
+    },
+    {
+      label: 'Vehicules disponibles',
+      value: stats.availableVehiclesCount.toString(),
+      tone: 'success' as const,
+    },
+    {
+      label: 'Depenses du jour',
+      value: formatTND(stats.todayExpensesTotal),
+      tone: 'warning' as const,
+    },
+    {
+      label: 'Revenu du mois',
+      value: formatTND(stats.monthlyRevenue),
+      tone: 'success' as const,
+    },
+    {
+      label: 'Budget consomme',
+      value: stats.budgetConsumedPercent + '%',
+      tone:
+        stats.budgetConsumedPercent >= 100
+          ? ('danger' as const)
+          : stats.budgetConsumedPercent >= 80
+            ? ('warning' as const)
+            : ('success' as const),
+    },
+  ];
+
+  const activities = [
+    ...recentLogs.map((log) => ({
+      title: 'Journal - ' + (log.projects?.name ?? 'Chantier'),
+      description: log.caption ?? 'Photo ajoutee sans description.',
+      time: formatTime(log.created_at),
+      tone: 'accent' as const,
+      sortDate: log.created_at,
+    })),
+    ...recentPaidInvoices.map((inv) => ({
+      title: 'Facture payee',
+      description: inv.client_name + ' - facture ' + inv.invoice_number,
+      time: inv.paid_at ? formatTime(inv.paid_at) : '',
+      tone: 'success' as const,
+      sortDate: inv.paid_at ?? '',
+    })),
+    ...recentDispatch.map((d) => ({
+      title: 'Dispatch - ' + (d.projects?.name ?? 'Chantier'),
+      description: 'Affectation pour le ' + new Date(d.assignment_date).toLocaleDateString('fr-TN'),
+      time: formatTime(d.created_at),
+      tone: 'warning' as const,
+      sortDate: d.created_at,
+    })),
+  ]
+    .sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime())
+    .slice(0, 6);
+
+  const selectedCalendarDay = calendarDays.find((d) => d.day === selectedDay) ?? null;
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHeader
         eyebrow="Centre de commande"
         title="Tunisia Construction OS"
-        description="Gérez les chantiers, le dispatch, l’équipe, les véhicules, les matériaux, la facturation et le reporting client depuis un seul tableau de bord."
+        description="Gerez les chantiers, le dispatch, l equipe, les vehicules, les materiaux, la facturation et le reporting client depuis un seul tableau de bord."
         actions={
           <>
             <LinkButton variant="secondary" href="/reports">
@@ -62,83 +163,38 @@ export function DashboardView() {
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {dashboardStats.map((stat) => (
-          <MetricCard
-            key={stat.label}
-            label={stat.label}
-            value={stat.value}
-            delta={stat.delta}
-            tone={stat.tone}
-            footnote={stat.footnote}
-          />
+          <MetricCard key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} />
         ))}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <SectionCard
-          title="Consommation du budget"
-          description="Flux de trésorerie hebdomadaire et pression budgétaire sur les chantiers actifs."
-          actions={
-            <LinkButton variant="text" href="/reports">
-              Ouvrir l’analytique
-            </LinkButton>
-          }
+          title="Budget des chantiers actifs"
+          description="Pourcentage du budget total deja consomme sur les chantiers en cours."
         >
-          <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="bg-neutral-25 rounded-[20px] border border-neutral-100 p-5">
-              <div className="mb-5 flex items-center justify-between">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                    Tendance hebdomadaire du chiffre d’affaires
-                  </p>
-                  <p className="mt-1 text-sm text-neutral-500">
-                    TND générés par les jalons terminés.
-                  </p>
-                </div>
-                <div className="text-right">
-                  <div className="font-display text-2xl font-semibold text-neutral-900">246.8k</div>
-                  <div className="text-success text-xs">+14% vs last month</div>
-                </div>
-              </div>
-              <MiniBarChart values={weeklyCashflow} labels={weeklyCashflowLabels} />
+          <div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium text-neutral-900">Budget consomme</span>
+              <span className="text-neutral-500">{stats.budgetConsumedPercent}%</span>
             </div>
-
-            <Card className="p-5">
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-neutral-900">Budget consommé</span>
-                    <span className="text-neutral-500">68%</span>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar value={68} tone="warning" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-neutral-900">Paie allouée</span>
-                    <span className="text-neutral-500">54%</span>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar value={54} tone="success" />
-                  </div>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-neutral-900">Matériaux engagés</span>
-                    <span className="text-neutral-500">81%</span>
-                  </div>
-                  <div className="mt-2">
-                    <ProgressBar value={81} tone="danger" />
-                  </div>
-                </div>
-              </div>
-            </Card>
+            <div className="mt-2">
+              <ProgressBar
+                value={stats.budgetConsumedPercent}
+                tone={
+                  stats.budgetConsumedPercent >= 100
+                    ? 'danger'
+                    : stats.budgetConsumedPercent >= 80
+                      ? 'warning'
+                      : 'success'
+                }
+              />
+            </div>
           </div>
         </SectionCard>
 
         <SectionCard
           title="Actions rapides"
-          description="Raccourcis opérationnels les plus utilisés."
+          description="Raccourcis operationnels les plus utilises."
         >
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map((action) => (
@@ -156,54 +212,39 @@ export function DashboardView() {
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard
-          title="Activités récentes"
-          description="Les derniers événements opérationnels de la plateforme."
+          title="Activites recentes"
+          description="Les derniers evenements operationnels de votre organisation."
         >
-          <TimelineList items={recentActivities} />
+          {activities.length === 0 ? (
+            <p className="text-sm text-neutral-500">Aucune activite recente pour le moment.</p>
+          ) : (
+            <TimelineList items={activities} />
+          )}
         </SectionCard>
 
-        <div className="grid gap-6">
-          <SectionCard
-            title="Calendrier"
-            description="Fenêtre de planification pour la semaine en cours."
-          >
-            <CalendarGrid
-              days={weeklyCalendar}
-              selectedDay={selectedDay}
-              onDayClick={(day) => setSelectedDay(day)}
-            />
-            {selectedDay && (
-              <p className="mt-3 text-sm text-neutral-500">
-                Sélectionné :{' '}
-                <span className="font-medium text-neutral-900">
-                  {weeklyCalendar.find((d) => d.day === selectedDay)?.label ?? selectedDay}
-                </span>
-              </p>
-            )}
-          </SectionCard>
-
-          <SectionCard
-            title="Priorités du jour"
-            description="Rappels à fort signal pour l’équipe chantier."
-          >
-            <div className="space-y-3">
-              {[
-                'Confirmer l’affectation des véhicules avant 08:30',
-                'Téléverser les photos d’avancement pour les chantiers 2 et 4',
-                'Approuver les dépenses de carburant envoyées hier',
-                'Envoyer des rappels de facture à deux clients en retard',
-              ].map((item) => (
-                <div
-                  key={item}
-                  className="bg-neutral-25 flex items-start gap-3 rounded-2xl px-4 py-3"
-                >
-                  <span className="bg-accent-600 mt-1 h-2.5 w-2.5 rounded-full" />
-                  <p className="text-sm leading-6 text-neutral-900">{item}</p>
-                </div>
-              ))}
-            </div>
-          </SectionCard>
-        </div>
+        <SectionCard
+          title="Calendrier de dispatch"
+          description="Nombre d'affectations planifiees cette semaine, par jour."
+        >
+          <CalendarGrid
+            days={calendarDays}
+            selectedDay={selectedDay}
+            onDayClick={(day) => setSelectedDay(day === selectedDay ? null : day)}
+          />
+          {selectedCalendarDay && (
+            <p className="mt-3 text-sm text-neutral-500">
+              <span className="font-medium text-neutral-900">
+                {new Date(selectedCalendarDay.date).toLocaleDateString('fr-TN', {
+                  weekday: 'long',
+                  day: '2-digit',
+                  month: 'long',
+                })}
+              </span>
+              {' - '}
+              {selectedCalendarDay.label}
+            </p>
+          )}
+        </SectionCard>
       </div>
     </div>
   );

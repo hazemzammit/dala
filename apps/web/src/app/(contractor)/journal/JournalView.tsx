@@ -348,6 +348,18 @@ export function JournalView({ orgId, projects, siteLogs, selectedDate }: Journal
       <SectionCard
         title="Timeline du journal"
         description={`Entrées du ${selectedDateLabel} (${scopeLabel.toLowerCase()}).`}
+        actions={
+          selectedProjectId && (
+            <a
+              href={`/api/journal/${selectedProjectId}/report?date=${selectedDate}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-accent-600 text-sm font-medium hover:underline"
+            >
+              Générer le compte rendu (PDF)
+            </a>
+          )
+        }
       >
         {visibleLogs.length === 0 ? (
           <EmptyState
