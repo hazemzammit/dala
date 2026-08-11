@@ -4,13 +4,6 @@ import { useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 
-const REPORT_ROWS = [
-  ['Revenue', '246,800 TND'],
-  ['Profit', '61,250 TND'],
-  ['Expenses', '185,550 TND'],
-  ['Budget used', '68%'],
-];
-
 function downloadFile(filename: string, content: string, mimeType: string) {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -21,25 +14,30 @@ function downloadFile(filename: string, content: string, mimeType: string) {
   URL.revokeObjectURL(url);
 }
 
-export function ReportsActions() {
+export function ReportsActions({
+  revenue,
+  expenses,
+  profit,
+  budgetUsedPercent,
+}: {
+  revenue: number;
+  expenses: number;
+  profit: number;
+  budgetUsedPercent: number;
+}) {
   const [notice, setNotice] = useState<string | null>(null);
 
   function exportExcel() {
-    const header = 'Metric,Value\n';
-    const body = REPORT_ROWS.map(([label, value]) => `${label},${value}`).join('\n');
-    downloadFile('dala-report.csv', header + body, 'text/csv;charset=utf-8');
-    setNotice('Excel export downloaded as CSV.');
-  }
-
-  function downloadPdf() {
-    const lines = [
-      'Dala — Operational Report',
-      'Generated: ' + new Date().toLocaleString('en-GB'),
-      '',
-      ...REPORT_ROWS.map(([label, value]) => `${label}: ${value}`),
+    const rows = [
+      ['Chiffre d\u2019affaires', revenue.toString()],
+      ['Bénéfice', profit.toString()],
+      ['Dépenses', expenses.toString()],
+      ['Budget utilisé (%)', budgetUsedPercent.toString()],
     ];
-    downloadFile('dala-report.txt', lines.join('\n'), 'text/plain;charset=utf-8');
-    setNotice('PDF export downloaded (text summary until PDF engine is wired).');
+    const header = 'Indicateur,Valeur (TND)\n';
+    const body = rows.map(([label, value]) => `${label},${value}`).join('\n');
+    downloadFile('dala-rapport.csv', header + body, 'text/csv;charset=utf-8');
+    setNotice('Export CSV téléchargé.');
   }
 
   return (
@@ -50,10 +48,10 @@ export function ReportsActions() {
         </div>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="secondary" onClick={downloadPdf}>
-          Download PDF
-        </Button>
-        <Button onClick={exportExcel}>Export Excel</Button>
+        <a href="/api/reports/summary" target="_blank" rel="noopener noreferrer">
+          <Button variant="secondary">Télécharger PDF</Button>
+        </a>
+        <Button onClick={exportExcel}>Exporter CSV</Button>
       </div>
     </div>
   );
