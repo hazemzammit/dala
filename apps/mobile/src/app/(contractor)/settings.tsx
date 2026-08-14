@@ -128,7 +128,7 @@ export default function SettingsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <YStack paddingTop={56} paddingHorizontal="$4" paddingBottom="$3">
+      <YStack paddingHorizontal="$4" paddingBottom="$3">
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Paramètres
         </Text>

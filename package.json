@@ -47,7 +47,8 @@
   },
   "pnpm": {
     "overrides": {
-      "@babel/runtime": "^7.25.0"
+      "@babel/runtime": "^7.29.7",
+      "expo-constants": "18.0.13"
     }
   }
 }

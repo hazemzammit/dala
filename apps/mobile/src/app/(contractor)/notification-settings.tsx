@@ -17,13 +17,20 @@ import { supabase } from '@/lib/supabase';
  * §2.9a's digest opt-in, backed by migration 0025's
  * `profiles.notification_prefs`.
  *
- * settings.tsx (Doc 03 §3.22) is itself still an unbuilt empty-state stub —
- * confirmed before writing this file. Rather than building out the entire
- * Settings screen (profile, organization, security, language, team members,
- * billing, sign-out, delete-account — none of that is Phase 5 scope), this
- * adds ONE new route for the one sub-section this phase actually needs, and
- * settings.tsx gets a single link added to it. The rest of Settings is
- * still future work, not silently expanded here.
+ * settings.tsx (Doc 03 §3.22) was still an unbuilt empty-state stub when
+ * this file was first written (Phase 5) — confirmed at the time, but
+ * stale by Phase 7, which built it out for real. This comment was found
+ * still claiming otherwise during Phase 14's re-read of every screen
+ * before scoping that phase's work — corrected here rather than left to
+ * mislead a future phase, same "stale cross-file status comment" pattern
+ * flagged in portfolio.tsx and trash.tsx. Rather than building out the
+ * entire Settings screen at the time (profile, organization, security,
+ * language, team members, billing, sign-out, delete-account — none of
+ * that was Phase 5 scope), this added ONE new route for the one
+ * sub-section that phase actually needed, and settings.tsx got a single
+ * link added to it — that part of the reasoning still holds; only the
+ * "still a stub" claim about settings.tsx itself was wrong by the time
+ * anyone re-read it.
  *
  * Kebab-case flat file, matching this app's existing routing convention
  * (client-portal.tsx, accept-org-invite.tsx, material-request.tsx) rather
@@ -111,6 +118,13 @@ export default function NotificationSettingsScreen() {
           'Aperçu limité',
           "Les notifications push nécessitent une build de développement — vos préférences sont bien enregistrées, mais les alertes ne s'afficheront pas dans Expo Go.",
         );
+      } else if ('error' in result && result.error === 'token_unavailable') {
+        // Push credentials (FCM/APNs) aren't configured for this build yet
+        // — see pushNotifications.ts's own header. Preferences below still
+        // save normally; this just means push delivery itself won't work
+        // until that's set up, which is expected on a dev build and not
+        // worth alarming the person with an Alert over every time they
+        // toggle a category.
       }
     }
 
@@ -132,13 +146,7 @@ export default function NotificationSettingsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <XStack
-        alignItems="center"
-        gap="$3"
-        paddingTop={56}
-        paddingHorizontal="$4"
-        paddingBottom="$3"
-      >
+      <XStack alignItems="center" gap="$3" paddingHorizontal="$4" paddingBottom="$3">
         <XStack
           onPress={() => router.back()}
           accessibilityRole="button"

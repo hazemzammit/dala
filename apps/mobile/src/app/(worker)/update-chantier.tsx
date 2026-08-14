@@ -18,6 +18,10 @@ import { Image, Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { SkeletonHero } from '@/components/ui/Skeleton';
+import { database } from '@/db';
+import { createWithClientId } from '@/db/createWithClientId';
+import SiteLog from '@/db/models/SiteLog';
+import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
 import { processPhoto } from '@/lib/photoPipeline';
@@ -38,6 +42,26 @@ import { supabase } from '@/lib/supabase';
  * submitSiteLogSchema's `.refine`, mirrored here client-side before that
  * even runs so the error shows immediately on submit rather than after a
  * round trip).
+ *
+ * PHASE 19 — SCOPE DECISION, disclosed rather than silently drawn: photo/
+ * voice uploads (`uploadOrgFile` below) still require connectivity — you
+ * cannot upload bytes to Supabase Storage while offline, full stop. A
+ * genuinely offline-capable media flow needs a dedicated local upload
+ * queue (persist the local file, retry the actual upload on reconnect,
+ * PATCH the site_logs row's photo_url/voice_note_url once it succeeds) —
+ * that's real, separate engineering (Doc 03 §4.2's "upload queue" phrase
+ * is describing exactly this), not something to fold into this screen's
+ * pass. What DID change: the site_logs RECORD creation itself is now
+ * local-first (`createWithClientId` + `runSync()`, same pattern as every
+ * other screen this phase), submitted through the SAME idempotency-keyed
+ * RPC path as before (`pushChanges.ts`'s `pushSiteLogs()`, not called
+ * directly from here anymore). Net effect: a TEXT-ONLY update (no photo/
+ * voice) now genuinely works with zero connectivity, since it has no
+ * upload step at all — that's the one case fully fixed this pass. A photo/
+ * voice update still needs connectivity to reach the upload calls before
+ * the local record write is ever attempted; if that's the more common
+ * real-world case in practice, the actual media-queue work is the next
+ * thing to scope, not this pass's remaining time.
  *
  * ** expo-audio caveat, flagged rather than glossed over **: expo-audio is
  * one of the newer Expo SDK packages (replacing expo-av's recording API)
@@ -61,6 +85,7 @@ const MAX_RECORDING_SECONDS = 120;
 export default function UpdateChantierScreen() {
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
 
@@ -102,6 +127,7 @@ export default function UpdateChantierScreen() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) return;
+      setUserId(session.user.id);
 
       const { data: worker } = await supabase
         .from('workers')
@@ -239,17 +265,28 @@ export default function UpdateChantierScreen() {
         return;
       }
 
-      const { error: rpcError } = await supabase.rpc('submit_site_log_entry', {
-        p_project_id: parsed.data.project_id,
-        p_photo_url: parsed.data.photo_url ?? null,
-        p_voice_note_url: parsed.data.voice_note_url ?? null,
-        p_note_text: parsed.data.note_text ?? null,
-        p_thumbnail_url: parsed.data.thumbnail_url ?? null,
-        p_location_lat: parsed.data.location_lat ?? null,
-        p_location_lng: parsed.data.location_lng ?? null,
-        p_idempotency_key: parsed.data.idempotency_key,
-      });
-      if (rpcError) throw rpcError;
+      if (!userId) {
+        setError('Session expirée. Reconnectez-vous.');
+        haptics.error();
+        return;
+      }
+
+      await database.write(() =>
+        createWithClientId(database.get<SiteLog>('site_logs'), (record) => {
+          record.orgId = orgId;
+          record.projectId = parsed.data.project_id;
+          record.photoUrl = parsed.data.photo_url ?? null;
+          record.thumbnailUrl = parsed.data.thumbnail_url ?? null;
+          record.voiceNoteUrl = parsed.data.voice_note_url ?? null;
+          record.noteText = parsed.data.note_text ?? null;
+          record.locationLat = parsed.data.location_lat ?? null;
+          record.locationLng = parsed.data.location_lng ?? null;
+          record.idempotencyKey = parsed.data.idempotency_key;
+          record.caption = null;
+          record.loggedBy = userId;
+        }),
+      );
+      void runSync();
 
       haptics.confirm();
       setSubmitted(true);

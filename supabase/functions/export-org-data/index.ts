@@ -24,6 +24,24 @@
 //     enough to actually use, not as polished as separate files.
 //   - Any UI for scheduling a recurring export, or emailing the file — this
 //     is an on-demand pull only.
+//
+// Admin-remediation-phase addition: apps/admin's Organizations screen
+// (Doc 04 §4.3.3 "Export as JSON") needed to call this same function, but
+// a platform admin is never an owner/manager of the target org — the
+// owner/manager membership check below would 403 every admin-initiated
+// call. Rather than duplicate the export logic in a second function, this
+// now recognizes a second, distinct caller shape: a request whose
+// Authorization header carries the PROJECT's own service-role key exactly
+// (not a forwarded user JWT) is treated as a trusted internal call from
+// apps/admin's own server-side route handler — which already re-verified
+// the calling platform admin's session and role, and already audit-logs
+// the export, before ever reaching this function. This is the same trust
+// boundary every other admin-app→Edge-Function call in this repo already
+// crosses (apps/admin holds the service-role key server-side only, never
+// exposed to a browser) — not a new or broader one. A service-role call
+// skips the owner/manager membership check (a platform admin has
+// cross-tenant access by design, Doc 04 §4.3 intro) but still runs the
+// same free-tier gate below.
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
@@ -62,45 +80,61 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Champs requis manquants.' }, 400);
     }
 
-    // Caller-scoped client (anon key + forwarded JWT) — used only to
-    // resolve identity and role, never to read the export data itself, so
-    // this respects RLS exactly like every other authenticated request.
-    const callerClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const isTrustedAdminCall = authHeader === `Bearer ${serviceRoleKey}`;
 
-    const {
-      data: { user },
-    } = await callerClient.auth.getUser();
-    if (!user) {
-      return jsonResponse({ error: 'Session invalide.' }, 401);
+    const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey);
+
+    if (!isTrustedAdminCall) {
+      // Caller-scoped client (anon key + forwarded JWT) — used only to
+      // resolve identity and role, never to read the export data itself,
+      // so this respects RLS exactly like every other authenticated
+      // request from apps/web.
+      const callerClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
+
+      const {
+        data: { user },
+      } = await callerClient.auth.getUser();
+      if (!user) {
+        return jsonResponse({ error: 'Session invalide.' }, 401);
+      }
+
+      const { data: membership } = await callerClient
+        .from('organization_members')
+        .select('role')
+        .eq('org_id', org_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (!membership || !['owner', 'manager'].includes(membership.role)) {
+        // Export includes financial data (advances, project_expenses) — a
+        // stricter bar than plain org-membership, matching the pattern used
+        // elsewhere in this repo for financial fields (Doc 03 §3.22.2's
+        // owner-only Matricule Fiscal / Numéro RC).
+        return jsonResponse({ error: 'Réservé au propriétaire ou gestionnaire.' }, 403);
+      }
     }
 
-    const { data: membership } = await callerClient
-      .from('organization_members')
-      .select('role')
-      .eq('org_id', org_id)
-      .eq('user_id', user.id)
+    // 0044 — no reports/export on the free tier. For a normal caller this
+    // reused the RLS-scoped callerClient; a trusted admin call has no
+    // callerClient (no forwarded user JWT to scope one to), so it reads
+    // the same single column via the already-created admin client instead
+    // — no broader read than the check itself needs either way.
+    const { data: org } = await admin
+      .from('organizations')
+      .select('subscription_status')
+      .eq('id', org_id)
       .maybeSingle();
-
-    if (!membership || !['owner', 'manager'].includes(membership.role)) {
-      // Export includes financial data (advances, project_expenses) — a
-      // stricter bar than plain org-membership, matching the pattern used
-      // elsewhere in this repo for financial fields (Doc 03 §3.22.2's
-      // owner-only Matricule Fiscal / Numéro RC).
-      return jsonResponse({ error: 'Réservé au propriétaire ou gestionnaire.' }, 403);
+    if (org?.subscription_status === 'past_due') {
+      return jsonResponse(
+        { error: "L'export de données n'est pas disponible sur l'offre gratuite." },
+        403,
+      );
     }
-
-    // Service role from here on, purely to read across all export tables in
-    // one pass without N separate RLS-scoped round trips — org_id is
-    // already verified above via the caller's own membership row, so this
-    // is not a broader trust boundary than the check just performed.
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
 
     const tables: Record<string, unknown[]> = {};
     for (const table of EXPORTABLE_TABLES) {

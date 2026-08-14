@@ -9,6 +9,11 @@ import { AvatarStack } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonHero } from '@/components/ui/Skeleton';
+import { database } from '@/db';
+import { createWithClientId } from '@/db/createWithClientId';
+import AttendanceRecord from '@/db/models/AttendanceRecord';
+import DispatchAssignment from '@/db/models/DispatchAssignment';
+import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
 import { cycleStartISO, todayISO } from '@/lib/salaryCycle';
 import { supabase } from '@/lib/supabase';
@@ -30,17 +35,36 @@ import { supabase } from '@/lib/supabase';
  * This also means the state survives an app restart/re-login without any
  * extra local persistence — it's always read straight from the two tables
  * that already exist for this purpose.
+ *
+ * PHASE 19 — SCOPE DECISION, disclosed rather than silently drawn: `load()`
+ * below still reads live from Supabase, not from local WatermelonDB. Doing
+ * a fully offline mission READ would need project name/address and vehicle
+ * name available locally too (the `projects(name, address), vehicles(name)`
+ * join below) — but `projects`/`vehicles` were never part of the 5-table
+ * mobile sync scope (dispatch, attendance, advances, materials, site logs)
+ * and aren't cached locally at all. Expanding the sync engine to cover them
+ * is real, separate work, not something to fold silently into this screen.
+ * What DID move local-first: both action buttons
+ * (`handleDeparted`/`handleArrived`) now write to WatermelonDB first, then
+ * sync in the background — matching the realistic pattern this screen
+ * actually needs to survive (mission loads while there's still signal
+ * getting to the site; the two taps that matter often happen once signal
+ * is already gone at the site itself).
  */
 type MissionState = 'no_assignment' | 'not_departed' | 'departed' | 'arrived';
 
 interface Mission {
   assignmentId: string;
+  version: number;
   actualDepartureTime: string | null;
   projectId: string | null;
   projectName: string | null;
   address: string | null;
+  vehicleId: string | null;
   vehicleName: string | null;
   departureTime: string | null;
+  assignmentDate: string;
+  confirmationChannel: string | null;
   teammates: string[];
 }
 
@@ -89,7 +113,7 @@ export default function WorkerHomeScreen() {
       const { data: assignment } = await supabase
         .from('dispatch_assignments')
         .select(
-          'id, actual_departure_time, departure_time, project_id, vehicle_id, projects(name, address), vehicles(name)',
+          'id, version, actual_departure_time, departure_time, confirmation_channel, project_id, vehicle_id, projects(name, address), vehicles(name)',
         )
         .eq('worker_id', worker.id)
         .eq('assignment_date', today)
@@ -108,12 +132,16 @@ export default function WorkerHomeScreen() {
       } else {
         setMission({
           assignmentId: assignment.id,
+          version: assignment.version,
           actualDepartureTime: assignment.actual_departure_time,
           projectId: assignment.project_id,
           projectName: (assignment as any).projects?.name ?? null,
           address: (assignment as any).projects?.address ?? null,
+          vehicleId: assignment.vehicle_id,
           vehicleName: (assignment as any).vehicles?.name ?? null,
           departureTime: assignment.departure_time,
+          assignmentDate: today,
+          confirmationChannel: assignment.confirmation_channel,
           teammates: [], // Doc 03 §4.1 lists teammates — needs a same-day/vehicle
           // co-assignment query; deferred, not required for the check-in
           // state machine itself.
@@ -166,15 +194,49 @@ export default function WorkerHomeScreen() {
     }
   }
 
+  /**
+   * The local WatermelonDB copy of today's assignment may not exist yet if
+   * this device hasn't synced since the contractor created it (the more
+   * common case: it already does, pulled down by AutoSync). Either way,
+   * this always returns a local record to write the departure time onto —
+   * seeding one from what `load()` already fetched live if there's no
+   * local copy yet, since the write below needs to happen locally
+   * regardless of sync timing.
+   */
+  async function ensureLocalDispatchAssignment(m: Mission): Promise<DispatchAssignment> {
+    const collection = database.get<DispatchAssignment>('dispatch_assignments');
+    try {
+      return await collection.find(m.assignmentId);
+    } catch {
+      return database.write(() =>
+        collection.create((record) => {
+          record._raw.id = m.assignmentId;
+          record.orgId = orgId!;
+          record.projectId = m.projectId;
+          record.vehicleId = m.vehicleId;
+          record.workerId = workerId!;
+          record.assignmentDate = m.assignmentDate;
+          record.departureTime = m.departureTime;
+          record.confirmationChannel = m.confirmationChannel;
+          record.actualDepartureTime = m.actualDepartureTime;
+          record.version = m.version;
+        }),
+      );
+    }
+  }
+
   async function handleDeparted() {
     if (!mission || busy) return;
     setBusy(true);
     try {
-      const { error } = await supabase
-        .from('dispatch_assignments')
-        .update({ actual_departure_time: new Date().toISOString(), confirmation_channel: 'app' })
-        .eq('id', mission.assignmentId);
-      if (error) throw error;
+      const localRecord = await ensureLocalDispatchAssignment(mission);
+      await database.write(() =>
+        localRecord.update((record) => {
+          record.actualDepartureTime = new Date().toISOString();
+          record.confirmationChannel = 'app';
+        }),
+      );
+      void runSync();
       haptics.confirm();
       setState('departed');
     } catch {
@@ -191,17 +253,24 @@ export default function WorkerHomeScreen() {
     try {
       // Doc 01 §1.14.3 — this insert IS the attendance ledger write; a manual
       // Pointage entry for the same worker/day, if one already exists, is
-      // never overwritten by this (read side prefers manual_pointage on
-      // conflict — this screen only ever inserts, never updates/deletes).
-      const { error } = await supabase.from('attendance_records').insert({
-        org_id: orgId,
-        worker_id: workerId,
-        project_id: mission.projectId,
-        record_date: todayISO(),
-        status: 'present',
-        source: 'dispatch_checkin',
-      });
-      if (error) throw error;
+      // never overwritten by this (append-only table, insert-only policy —
+      // this screen only ever inserts, never updates/deletes). The read
+      // side's preference for the manual row on conflict is implemented by
+      // the attendance_effective view (migration 0036), not by anything in
+      // this screen — this insert doesn't need to know or care whether a
+      // manual row already exists for today.
+      await database.write(() =>
+        createWithClientId(database.get<AttendanceRecord>('attendance_records'), (record) => {
+          record.orgId = orgId;
+          record.workerId = workerId;
+          record.projectId = mission.projectId;
+          record.recordDate = todayISO();
+          record.status = 'present';
+          record.source = 'dispatch_checkin';
+          record.recordedBy = null;
+        }),
+      );
+      void runSync();
       haptics.confirm();
       setState('arrived');
     } catch {

@@ -42,9 +42,23 @@ module.exports = {
       type: 'android.apk',
       binaryPath: 'android/app/build/outputs/apk/debug/app-debug.apk',
       testBinaryPath: 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk',
-      build:
-        'cd android && ./gradlew assembleDebug assembleAndroidTest ' +
-        '-DtestBuildType=debug && cd ..',
+      // Windows fix, corrected: the ONLY real problem was `./gradlew` —
+      // cmd.exe (what Detox's exec spawns on Windows regardless of
+      // PowerShell being the interactive shell) can't parse a `./`-prefixed
+      // script invocation, which is what actually produced "'.' is not
+      // recognized...". cmd.exe handles `&&` chaining just fine — an
+      // earlier version of this fix incorrectly dropped `cd android &&`
+      // entirely, which broke the build a different way: gradlew.bat does
+      // NOT change its own working directory to wherever it lives, it
+      // only uses its own location to find the wrapper jar — Gradle still
+      // resolves the PROJECT directory (where it looks for
+      // settings.gradle) from the process's actual working directory. So
+      // running `android\gradlew.bat` from a cwd of apps/mobile made
+      // Gradle look for a build in apps/mobile itself, not apps/mobile/
+      // android — "Directory '...\apps\mobile' does not contain a Gradle
+      // build". `cd android` is genuinely required; only swap `./gradlew`
+      // for `gradlew.bat` for Windows.
+      build: 'cd android && gradlew.bat assembleDebug assembleAndroidTest -DtestBuildType=debug',
     },
   },
   devices: {
@@ -54,7 +68,12 @@ module.exports = {
     },
     emulator: {
       type: 'android.emulator',
-      device: { avdName: 'Pixel_7_API_34' },
+      // avdName must match `emulator -list-avds` exactly — confirmed as
+      // 'Pixel_7' on this machine, not 'Pixel_7_API_34' as originally
+      // guessed (Android Studio doesn't always append the API level to
+      // the AVD id the way the device-creation dialog's display name
+      // suggests it will).
+      device: { avdName: 'Pixel_7' },
     },
   },
   configurations: {

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { useAdminSession } from '@/lib/use-admin-session';
 
 interface ApprovalRequest {
   id: string;
@@ -15,6 +16,14 @@ interface ApprovalRequest {
 }
 
 export function PendingApprovals() {
+  // Doc 04 §4.3.5 / §4.3 intro — approving a pending write requires the
+  // same Super-Admin-only role the direct execute path requires
+  // (api/admin/db-explorer/approvals/[requestId]/route.ts). Support/Admin
+  // never see this panel at all, rather than seeing it and having every
+  // decide() call 403.
+  const { data: session } = useAdminSession();
+  const isSuperAdmin = session?.admin.role === 'super_admin';
+
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -44,7 +53,7 @@ export function PendingApprovals() {
     await load();
   }
 
-  if (loading || requests.length === 0) return null;
+  if (!isSuperAdmin || loading || requests.length === 0) return null;
 
   return (
     <Card className="border-warning space-y-3 p-6">

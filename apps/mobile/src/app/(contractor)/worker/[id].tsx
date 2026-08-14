@@ -9,6 +9,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { getActiveOrgId } from '@/lib/activeOrg';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -29,6 +30,19 @@ import { supabase } from '@/lib/supabase';
  * the Tier 0 pattern card. A fuller Worker Detail (edit, history tabs) is
  * future work, not invented here to look more finished than the spec
  * actually asks for.
+ *
+ * DEFENSE-IN-DEPTH FILTER — added Phase 15 (Doc 00 §0.5 #29's own flagged
+ * follow-up): this screen originally queried `active_workers` by `.eq('id',
+ * id)` alone, unlike every other caller of that view (team.tsx,
+ * project-roster.tsx, generate-report), which all defensively filter by
+ * `.eq('org_id', orgId)` too. Migration 0037 (`security_invoker = true`)
+ * already closes the actual exposure at the schema level — RLS now runs as
+ * the querying user regardless of this screen's own filter, so a worker id
+ * from another org correctly resolves to nothing even without the change
+ * below. This is belt-and-suspenders, not the fix itself: mirrors
+ * team.tsx's exact `.eq('org_id', ...)` pattern, sourcing `orgId` from
+ * `getActiveOrgId()` the same way, so this screen no longer stands out as
+ * the one caller relying solely on the schema-level guarantee.
  */
 const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
@@ -48,8 +62,16 @@ export default function WorkerDetailScreen() {
     if (!id) return;
     setLoading(true);
 
+    const orgId = await getActiveOrgId();
+    if (!orgId) {
+      setWorker(null);
+      setPatterns([]);
+      setLoading(false);
+      return;
+    }
+
     const [{ data: workerRow }, { data: latenessRows }] = await Promise.all([
-      supabase.from('active_workers').select('*').eq('id', id).maybeSingle(),
+      supabase.from('active_workers').select('*').eq('id', id).eq('org_id', orgId).maybeSingle(),
       supabase.rpc('get_worker_lateness_pattern', { p_worker_id: id }),
     ]);
 

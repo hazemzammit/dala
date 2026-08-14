@@ -10,6 +10,10 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { database } from '@/db';
+import { createWithClientId } from '@/db/createWithClientId';
+import AttendanceRecord from '@/db/models/AttendanceRecord';
+import { runSync } from '@/db/sync';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -23,13 +27,29 @@ import { supabase } from '@/lib/supabase';
  *
  * Doc 01 §1.14.3 — a manual entry here is NEVER silently overwritten by a
  * later dispatch check-in for the same worker/day: attendance_records is
- * append-only (no unique constraint on worker_id+record_date), and the read
- * side is responsible for preferring the manual_pointage row over a
- * dispatch_checkin one on the same day, not this screen. What this screen
- * DOES guard against is stomping on itself: if a manual row for today
- * already exists for a worker, tapping a new status here inserts another
- * row rather than updating the old one (same append-only reasoning) — the
- * UI shows whichever was recorded most recently.
+ * append-only (no unique constraint on worker_id+record_date). The read
+ * side's preference for manual_pointage on conflict is implemented once,
+ * server-side, by the `attendance_effective` view (migration 0036) — this
+ * screen prefills its toggle from that view, not from a raw, latest-wins
+ * read over attendance_records. Writes still insert a new row here rather
+ * than updating an old one (same append-only reasoning as ever) — the
+ * view, not this screen's own ordering, is what decides which row wins on
+ * a conflict day.
+ *
+ * PHASE 19 — `handleSave` writes locally first (one `attendance_records`
+ * row per selected worker, via `createWithClientId`), then fires
+ * `runSync()` in the background. The `attendance_effective` prefill read
+ * in `load()` stays live — a contractor doing pointage is doing office/
+ * end-of-day admin work, not a field action in a dead zone the way the
+ * worker's own check-in is, so the read side wasn't a priority for this
+ * pass. Same scope-boundary reasoning as `(worker)/home.tsx`.
+ *
+ * Phase 13 correction, stated plainly: before this migration, this screen's
+ * own read WAS the latest-inserted row regardless of source, which could
+ * show a dispatch check-in's status as "current" even on a day with an
+ * earlier manual entry — the opposite of the intent this same comment
+ * described. See 0036's header for the full audit of every screen this
+ * affected, not just this one.
  */
 const STATUS_OPTIONS: { value: AttendanceStatus; label: string; color: string }[] = [
   { value: 'present', label: 'Présent', color: '$success' },
@@ -71,19 +91,19 @@ export default function PointageScreen() {
       .order('full_name');
     setWorkers(workerRows ?? []);
 
+    // attendance_effective (0036) already resolves manual-vs-dispatch
+    // conflicts server-side — one row per (worker_id, record_date), so no
+    // client-side sort/dedup is needed here at all anymore.
     const { data: records } = await supabase
-      .from('attendance_records')
-      .select('worker_id, status, created_at')
+      .from('attendance_effective')
+      .select('worker_id, status')
       .eq('org_id', org)
       .eq('record_date', date);
 
     const latestByWorker: Record<string, AttendanceStatus> = {};
-    (records ?? [])
-      .slice()
-      .sort((a, b) => (a.created_at < b.created_at ? -1 : 1))
-      .forEach((r) => {
-        latestByWorker[r.worker_id] = r.status as AttendanceStatus;
-      });
+    (records ?? []).forEach((r) => {
+      latestByWorker[r.worker_id] = r.status as AttendanceStatus;
+    });
     setStatuses(latestByWorker);
     setLoading(false);
   }
@@ -103,17 +123,25 @@ export default function PointageScreen() {
 
     setSaving(true);
     try {
-      const rows = entries.map(([workerId, status]) => ({
-        org_id: orgId,
-        worker_id: workerId,
-        record_date: date,
-        status,
-        source: 'manual_pointage' as const,
-      }));
-      const { error } = await supabase.from('attendance_records').insert(rows);
-      if (error) throw error;
+      await database.write(async () => {
+        for (const [workerId, status] of entries) {
+          await createWithClientId(
+            database.get<AttendanceRecord>('attendance_records'),
+            (record) => {
+              record.orgId = orgId;
+              record.workerId = workerId;
+              record.projectId = null;
+              record.recordDate = date;
+              record.status = status as AttendanceStatus;
+              record.source = 'manual_pointage';
+              record.recordedBy = null;
+            },
+          );
+        }
+      });
+      void runSync();
       haptics.confirm();
-      Alert.alert('Pointage enregistré', `${rows.length} travailleur(s) mis à jour.`);
+      Alert.alert('Pointage enregistré', `${entries.length} travailleur(s) mis à jour.`);
       router.back();
     } catch (e: any) {
       haptics.error();

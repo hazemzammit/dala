@@ -3,17 +3,19 @@ import { createVehicleSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CarIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
+import { PlateInput } from '@/components/ui/PlateInput';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -43,7 +45,17 @@ const STATUS_OPTIONS: { value: VehicleStatus; label: string; color: string }[] =
   { value: 'maintenance', label: 'Maintenance', color: '$neutral500' },
 ];
 
+/** Per-field validation errors keyed by form field name — replaces the
+ * previous single `error` string that only ever showed `issues[0]`,
+ * silently hiding every other invalid field until the next submit. */
+interface FieldErrors {
+  name?: string;
+  plate?: string;
+  capacity?: string;
+}
+
 export default function VehiclesScreen() {
+  const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,7 +66,8 @@ export default function VehiclesScreen() {
   const [plate, setPlate] = useState('');
   const [capacity, setCapacity] = useState('1');
   const [status, setStatus] = useState<VehicleStatus>('available');
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useFocusEffect(
@@ -82,7 +95,8 @@ export default function VehiclesScreen() {
     setPlate('');
     setCapacity('1');
     setStatus('available');
-    setError(null);
+    setFieldErrors({});
+    setFormError(null);
     setSheetOpen(true);
   }
 
@@ -92,12 +106,14 @@ export default function VehiclesScreen() {
     setPlate(vehicle.plate ?? '');
     setCapacity(String(vehicle.capacity));
     setStatus(vehicle.status);
-    setError(null);
+    setFieldErrors({});
+    setFormError(null);
     setSheetOpen(true);
   }
 
   async function handleSave() {
-    setError(null);
+    setFieldErrors({});
+    setFormError(null);
     if (!orgId) return;
 
     const parsed = createVehicleSchema.safeParse({
@@ -106,7 +122,18 @@ export default function VehiclesScreen() {
       capacity: Number(capacity),
     });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      // Phase 25 — map every failing field to its own FormField/PlateInput
+      // `error` prop, not just `issues[0]` at the bottom of the sheet, so a
+      // form with 2+ invalid fields shows both at once instead of only the
+      // first one until the next submit attempt.
+      const errors: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0];
+        if (key === 'name' || key === 'plate' || key === 'capacity') {
+          errors[key] = issue.message;
+        }
+      }
+      setFieldErrors(errors);
       haptics.error();
       return;
     }
@@ -125,6 +152,10 @@ export default function VehiclesScreen() {
         // assignable list; surface that consequence here rather than
         // silently, since the contractor is acting from this screen, not
         // the dispatch board, and might not otherwise notice the effect.
+        // Phase 25 — this is advisory info, not a decision the contractor
+        // needs to confirm before proceeding (the update already
+        // happened), so it's a longer-lived info toast rather than a
+        // blocking Alert/ConfirmDialog.
         if (status === 'maintenance' && !wasMaintenance) {
           const { count } = await supabase
             .from('dispatch_assignments')
@@ -132,22 +163,24 @@ export default function VehiclesScreen() {
             .eq('vehicle_id', editing.id)
             .gte('assignment_date', new Date().toISOString().slice(0, 10));
           if (count && count > 0) {
-            Alert.alert(
-              'Conflit possible',
-              `Ce véhicule a ${count} affectation(s) à venir. Vérifiez le tableau de dispatch.`,
+            toast.info(
+              `Attention : ce véhicule a ${count} affectation(s) à venir. Vérifiez le tableau de dispatch.`,
             );
           }
         }
+        toast.success('Véhicule mis à jour.');
       } else {
         const { error: insertError } = await supabase
           .from('vehicles')
           .insert({ ...parsed.data, org_id: orgId, status });
         if (insertError) throw insertError;
+        toast.success('Véhicule ajouté.');
       }
+      haptics.confirm();
       setSheetOpen(false);
       await load();
     } catch (e: any) {
-      setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      setFormError(e?.message ?? 'Une erreur est survenue. Réessayez.');
       haptics.error();
     } finally {
       setSaving(false);
@@ -229,13 +262,17 @@ export default function VehiclesScreen() {
             value={name}
             onChangeText={setName}
             placeholder="Ex: Camionnette 1"
+            error={fieldErrors.name}
           />
-          <FormField label="Plaque d'immatriculation" value={plate} onChangeText={setPlate} />
+          {/* Phase 26 — Tunisia-specific plate entry (two numeric groups +
+              fixed "TUN" chip) replacing the previous free-text field. */}
+          <PlateInput value={plate} onChangeText={setPlate} error={fieldErrors.plate} />
           <FormField
             label="Capacité"
             value={capacity}
             onChangeText={setCapacity}
             keyboardType="numeric"
+            error={fieldErrors.capacity}
           />
 
           <YStack gap="$1.5">
@@ -245,7 +282,7 @@ export default function VehiclesScreen() {
             <SegmentedControl value={status} options={STATUS_OPTIONS} onChange={setStatus} />
           </YStack>
 
-          {error && <Text color="$danger">{error}</Text>}
+          {formError && <Text color="$danger">{formError}</Text>}
 
           <Button onPress={handleSave} loading={saving}>
             {editing ? 'Enregistrer' : 'Ajouter'}

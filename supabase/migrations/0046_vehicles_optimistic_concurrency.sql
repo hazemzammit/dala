@@ -1,0 +1,54 @@
+-- =============================================================================
+-- 0046_vehicles_optimistic_concurrency.sql
+-- Ref: docs/spec/01-data-model-security-and-architecture.md §1.9
+--
+-- PHASE 18 REDO — this migration previously shipped as
+-- `0046_field_level_merge_tracking.sql`, adding a `field_versions jsonb` +
+-- trigger to all 5 offline-synced tables to implement per-field
+-- last-write-wins merging. That was built against a STALE docx snapshot of
+-- the cahier des charges, not this repo's own living spec in `docs/spec/`
+-- (confirmed authoritative — docx is older). Read directly, §1.9 specifies
+-- something fundamentally different:
+--
+--   "Append-only tables (advances, attendance/check-in events, site log
+--   entries, material requests): an offline write is always an INSERT of a
+--   new row, never an UPDATE of an existing one... there is no conflict to
+--   resolve, by construction."
+--
+--   "Editable-record tables (dispatch_assignments, projects, vehicles,
+--   worker profile fields): these genuinely can be edited by two people...
+--   so they need real conflict detection — optimistic concurrency via a
+--   version column."
+--
+-- And `docs/spec/03-screens-mobile-contractor-and-worker.md` on the
+-- dispatch board specifically: "This is the one place in the app where an
+-- automatic merge is deliberately avoided." Field-level auto-merge is
+-- explicitly the WRONG mechanism for dispatch_assignments, and unnecessary
+-- for the 4 append-only tables (their real conflict-avoidance mechanism is
+-- the idempotency-keyed RPCs already built in migration 0019/0020 —
+-- create_advance/request_advance/approve_advance/submit_site_log_entry —
+-- which always INSERT, never UPDATE, under an offline-safe idempotency
+-- key). Since the field_versions migration never shipped to any real
+-- environment (confirmed same-conversation as the migration that added
+-- it — this sandbox has never run `supabase db reset` against a live
+-- project), replacing this file's own content is correcting a mistake
+-- before it ever went anywhere, not amending applied history.
+--
+-- What this migration actually does: `dispatch_assignments` and `projects`
+-- already have `version integer not null default 1` (migration 0006,
+-- explicitly commented "-- optimistic concurrency, Doc 01 §1.9" — a
+-- comment I read past in Phase 17/18 without recognizing what it was
+-- for). `vehicles` is the one editable-record table §1.9 names that's
+-- MISSING that column — a real, separate schema gap the spec calls for,
+-- closed here. `workers` (also implied by "worker profile fields" in
+-- §1.9's prose) is NOT touched — `workers` was never part of the 5-table
+-- mobile offline-sync scope (dispatch, attendance, advances, materials,
+-- site logs) this phase covers, so adding it here would be scope creep
+-- beyond what's actually needed right now; flagged for whoever picks up
+-- worker-profile offline editing later.
+-- =============================================================================
+
+alter table vehicles add column version integer not null default 1;
+
+comment on column vehicles.version is
+  'Doc 01 §1.9 optimistic concurrency — same mechanism as dispatch_assignments.version/projects.version (migration 0006). Every UPDATE must include the version last read and increment it (`... SET version = version + 1 WHERE id = $1 AND version = $2`); zero rows affected means a stale write, surfaced as a conflict rather than silently applied.';

@@ -184,7 +184,7 @@ export default function ReportsScreen() {
   }
 
   return (
-    <YStack flex={1} backgroundColor="$neutral25" paddingTop={56} paddingHorizontal="$4">
+    <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
       <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
         Rapports
       </Text>

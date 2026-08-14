@@ -7,6 +7,11 @@
  * jest-expo's React Native jsdom-like environment. Mixing the two into one
  * config is the most common way teams accidentally break both.
  */
+
+require('dotenv').config({
+  path: '.env.e2e',
+});
+
 module.exports = {
   rootDir: '..',
   testMatch: ['<rootDir>/e2e/**/*.e2e.ts'],
@@ -18,6 +23,12 @@ module.exports = {
   testEnvironment: 'detox/runners/jest/testEnvironment',
   verbose: true,
   transform: {
-    '^.+\\.ts$': ['babel-jest', { configFile: require.resolve('../babel.config.js') }],
+    '^.+\\.[jt]sx?$': [
+      'babel-jest',
+      {
+        configFile: require.resolve('../babel.config.js'),
+      },
+    ],
   },
+  transformIgnorePatterns: ['node_modules/(?!(?:@scure|@noble|otplib|@otplib)/)'],
 };

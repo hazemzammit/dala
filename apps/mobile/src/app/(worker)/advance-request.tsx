@@ -9,6 +9,10 @@ import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonHero } from '@/components/ui/Skeleton';
+import { database } from '@/db';
+import { createWithClientId } from '@/db/createWithClientId';
+import Advance from '@/db/models/Advance';
+import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
 import { cycleStartISO } from '@/lib/salaryCycle';
@@ -19,10 +23,26 @@ import { supabase } from '@/lib/supabase';
  *
  * Doc 03 §4.4 — new route, didn't exist before this pass. Live balance
  * (gross so far / advances received / estimated net) above a two-field
- * form. Calls request_advance() (migration 0019) rather than inserting
- * into `advances` directly — that RPC is the only path that resolves the
- * calling worker server-side and records the Doc 01 §1.11 idempotency
- * entry.
+ * form.
+ *
+ * PHASE 19 — `handleSubmit` no longer calls `request_advance()` directly.
+ * It writes a local WatermelonDB `advances` record first (works offline,
+ * instant), then fires `runSync()` in the background (not awaited — the
+ * screen doesn't block on network) to push it via the RPC as soon as
+ * there's connectivity. `status: 'pending'` and `requestedBy` set (not
+ * `approvedBy`) are exactly the two fields `pushChanges.ts`'s `pushAdvances()`
+ * inspects to route this row to `request_advance()` rather than
+ * `create_advance()` at push time — see that file's header. `id` is
+ * generated client-side (via `createWithClientId()`) and reused as the
+ * RPC's `p_id` argument at push time (migration 0047), so the local record
+ * and the eventual server row are the same UUID throughout, online or
+ * offline.
+ *
+ * The "Demande envoyée" confirmation now means "saved locally and queued,"
+ * not "confirmed by the server" — the copy below already only ever said
+ * "votre responsable a été notifié," which was already describing an
+ * eventual, not immediate, server-side effect, so no wording change is
+ * needed for this to remain accurate offline.
  *
  * Doc 03 §4.4 also describes a push notification on contractor approval
  * updating the balance live. That needs a server-side trigger dispatching
@@ -30,6 +50,15 @@ import { supabase } from '@/lib/supabase';
  * infrastructure that doesn't exist yet for any screen in this app, not
  * something to bolt on as a one-off for this screen. Deferred; noted in
  * the delivery guide.
+ *
+ * Phase 13 fix: `gross` below now reads `attendance_effective` (migration
+ * 0036) instead of raw `attendance_records`. Before this, every row for
+ * the cycle was summed with NO dedup by date at all — a worker with both a
+ * manual and dispatch row on the same day had that day counted TWICE in
+ * the live-balance estimate shown here. This number isn't submitted
+ * anywhere (request_advance() doesn't take it as an argument), but showing
+ * an inflated estimate to a worker deciding whether to request an advance
+ * is a real trust/UX bug, not a cosmetic one.
  */
 export default function AdvanceRequestScreen() {
   const [loading, setLoading] = useState(true);
@@ -40,6 +69,7 @@ export default function AdvanceRequestScreen() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [worker, setWorker] = useState<{ id: string; orgId: string; userId: string } | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -55,24 +85,25 @@ export default function AdvanceRequestScreen() {
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: worker } = await supabase
+      const { data: workerRow } = await supabase
         .from('workers')
-        .select('id, daily_rate')
+        .select('id, org_id, daily_rate')
         .eq('user_id', session.user.id)
         .single();
-      if (!worker) return;
+      if (!workerRow) return;
+      setWorker({ id: workerRow.id, orgId: workerRow.org_id, userId: session.user.id });
 
       const cycleStart = cycleStartISO();
       const [{ data: attendance }, { data: advances }] = await Promise.all([
         supabase
-          .from('attendance_records')
+          .from('attendance_effective')
           .select('status')
-          .eq('worker_id', worker.id)
+          .eq('worker_id', workerRow.id)
           .gte('record_date', cycleStart),
         supabase
           .from('advances')
           .select('amount')
-          .eq('worker_id', worker.id)
+          .eq('worker_id', workerRow.id)
           .eq('status', 'approved')
           .gte('created_at', cycleStart),
       ]);
@@ -80,7 +111,7 @@ export default function AdvanceRequestScreen() {
       const dayValue = (status: string) =>
         status === 'half_day' ? 0.5 : status === 'present' ? 1 : 0;
       const days = (attendance ?? []).reduce((sum, r) => sum + dayValue(r.status), 0);
-      setGross(days * (worker.daily_rate ?? 0));
+      setGross(days * (workerRow.daily_rate ?? 0));
       setAdvancesReceived((advances ?? []).reduce((sum, a) => sum + Number(a.amount), 0));
     } finally {
       setLoading(false);
@@ -91,6 +122,11 @@ export default function AdvanceRequestScreen() {
 
   async function handleSubmit() {
     setError(null);
+    if (!worker) {
+      setError('Une erreur est survenue. Réessayez.');
+      return;
+    }
+
     // Fresh idempotency key generated at tap-time, not on screen mount —
     // a worker could sit on this form for a while before submitting.
     const idempotencyKey = newIdempotencyKey();
@@ -108,17 +144,32 @@ export default function AdvanceRequestScreen() {
 
     setSubmitting(true);
     try {
-      const { error: rpcError } = await supabase.rpc('request_advance', {
-        p_amount: parsed.data.amount,
-        p_reason: parsed.data.reason ?? null,
-        p_idempotency_key: parsed.data.idempotency_key,
-      });
-      if (rpcError) throw rpcError;
+      await database.write(() =>
+        createWithClientId(database.get<Advance>('advances'), (record) => {
+          record.orgId = worker.orgId;
+          record.workerId = worker.id;
+          record.amount = parsed.data.amount;
+          record.reason = parsed.data.reason ?? null;
+          record.status = 'pending';
+          record.requestedBy = worker.userId;
+          record.approvedBy = null;
+          record.idempotencyKey = parsed.data.idempotency_key;
+        }),
+      );
+
+      // Best-effort, not awaited by the UI transition below — the local
+      // write above is what makes this screen work offline; sync is a
+      // background concern from here on. Errors are handled inside
+      // runSync() itself (logged + reported to Sentry), not here.
+      void runSync();
+
       // Judgment call (flagged per the brief): treating a successfully
-      // *submitted* request as its own confirm-worthy moment, distinct
+      // *saved* request as its own confirm-worthy moment, distinct
       // from the money actually moving on approval — the tap itself
       // (form validated, write succeeded, nothing left for the worker to
       // do but wait) is the "meaningful moment" from the worker's side.
+      // This now holds true offline too: "saved" is accurate the instant
+      // the local write above completes, without waiting on the network.
       haptics.confirm();
       setSubmitted(true);
     } catch (e: any) {

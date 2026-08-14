@@ -22,6 +22,17 @@
 // contribution rates, filing format) this pass does not attempt to
 // replicate; the report gives the underlying worker-days and amounts an
 // accountant would need, not a filing-ready document.
+//
+// PHASE 13 FIX: all three "jours travaillés"/"jours présents" counts below
+// now read `attendance_effective` (migration 0036) instead of raw
+// `attendance_records`. Before this, a worker with both a manual_pointage
+// row and a dispatch_checkin row on the same day had that day counted
+// TWICE in every one of these reports — including the payroll and CNSS
+// ones, where that's a real inflated-figure bug, not a cosmetic one. See
+// 0036's migration header for the full cross-codebase audit this came out
+// of. export-org-data/index.ts was deliberately left reading raw
+// attendance_records — a full data export should return every underlying
+// row, not a resolved/collapsed one.
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1.17.1';
 
@@ -76,6 +87,21 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!membership)
       return jsonResponse({ error: "Vous n'êtes pas membre de cette organisation." }, 403);
+
+    // 0044 — no reports/export on the free tier. Same callerClient (RLS-
+    // scoped) used for the membership check just above, kept before the
+    // service-role client below is created.
+    const { data: org } = await callerClient
+      .from('organizations')
+      .select('subscription_status')
+      .eq('id', org_id)
+      .maybeSingle();
+    if (org?.subscription_status === 'past_due') {
+      return jsonResponse(
+        { error: "La génération de rapports n'est pas disponible sur l'offre gratuite." },
+        403,
+      );
+    }
 
     const admin = createClient(
       Deno.env.get('SUPABASE_URL')!,
@@ -167,7 +193,7 @@ async function progressionReport(
       0,
     );
     const { count: workerDays } = await admin
-      .from('attendance_records')
+      .from('attendance_effective')
       .select('id', { count: 'exact', head: true })
       .eq('project_id', project.id)
       .eq('status', 'present')
@@ -186,7 +212,7 @@ async function payrollSummaryReport(admin: any, orgId: string, from: string, to:
   ];
   for (const worker of workers ?? []) {
     const { count: presentDays } = await admin
-      .from('attendance_records')
+      .from('attendance_effective')
       .select('id', { count: 'exact', head: true })
       .eq('worker_id', worker.id)
       .eq('status', 'present')
@@ -218,7 +244,7 @@ async function cnssDeclarationReport(admin: any, orgId: string, from: string, to
   const rows = ['Travailleur,Métier,Taux journalier (TND),Jours travaillés'];
   for (const worker of workers ?? []) {
     const { count: presentDays } = await admin
-      .from('attendance_records')
+      .from('attendance_effective')
       .select('id', { count: 'exact', head: true })
       .eq('worker_id', worker.id)
       .eq('status', 'present')

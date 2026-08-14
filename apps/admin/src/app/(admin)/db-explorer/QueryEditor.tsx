@@ -4,6 +4,7 @@ import { useId, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { useAdminSession } from '@/lib/use-admin-session';
 
 interface QueryResult {
   rows: Record<string, unknown>[];
@@ -12,6 +13,13 @@ interface QueryResult {
 }
 
 export function QueryEditor() {
+  // Doc 04 §4.3 intro — raw-SQL writes are Super-Admin-only server-side
+  // (api/admin/db-explorer/execute/route.ts). Support and Admin still get
+  // the read-only path below; the danger-zone toggle itself is simply not
+  // offered to them, rather than being enabled and then 403ing on submit.
+  const { data: session } = useAdminSession();
+  const canWrite = session?.admin.role === 'super_admin';
+
   const [sql, setSql] = useState('');
   const [dangerZone, setDangerZone] = useState(false);
   const [reason, setReason] = useState('');
@@ -72,14 +80,16 @@ export function QueryEditor() {
       />
 
       <div className="flex items-center gap-3">
-        <label className="flex items-center gap-1.5 text-sm text-neutral-900">
-          <input
-            type="checkbox"
-            checked={dangerZone}
-            onChange={(e) => setDangerZone(e.target.checked)}
-          />
-          Zone dangereuse (INSERT / UPDATE / DELETE)
-        </label>
+        {canWrite && (
+          <label className="flex items-center gap-1.5 text-sm text-neutral-900">
+            <input
+              type="checkbox"
+              checked={dangerZone}
+              onChange={(e) => setDangerZone(e.target.checked)}
+            />
+            Zone dangereuse (INSERT / UPDATE / DELETE)
+          </label>
+        )}
         <Button
           variant={dangerZone ? 'danger' : 'primary'}
           onClick={run}

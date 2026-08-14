@@ -19,6 +19,24 @@ import { supabase } from './supabase';
  * Path convention: `{org_id}/{category}/{uuid}.{ext}` — the first segment
  * is what migration 0020's `org_files_*` storage.objects policies check
  * against org membership (contractor) or a linked workers row (worker).
+ *
+ * PHASE 18 REDO — this file briefly (same conversation) carried a TUS
+ * resumable-upload rewrite (`tus-js-client`, 64KB-then-6MB chunking),
+ * built against a stale docx requirement ("64KB chunks... resume
+ * individually on drop") that doesn't exist anywhere in this repo's own
+ * authoritative spec (`docs/spec/`, confirmed the living/current version —
+ * grepped the whole spec tree for "resumable," "TUS," "chunk," "background
+ * upload": zero matches). The real spec
+ * (`docs/spec/03-screens-mobile-contractor-and-worker.md` §4.2) just says
+ * a compressed photo goes into "the upload queue" — no chunking/resumable
+ * protocol specified. Reverted to the original single-shot upload rather
+ * than keeping an unrequested dependency and a genuinely mismatched
+ * mechanism (Supabase's real TUS chunk size is server-fixed at 6MB, which
+ * doesn't correspond to anything meaningful for a ~1-2MB compressed
+ * photo either — see the removed code's own now-deleted header for that
+ * dead end). If real resumable-upload resilience becomes a stated
+ * requirement later, revisit `tus-js-client` then, spec in hand — not
+ * preemptively re-added here.
  */
 const BUCKET = 'org-files';
 

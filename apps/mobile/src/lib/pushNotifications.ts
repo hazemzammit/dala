@@ -55,7 +55,30 @@ export async function registerForPushNotifications(): Promise<PushResult> {
     });
   }
 
-  const { data } = await Notifications.getExpoPushTokenAsync();
+  let token: string;
+  try {
+    const { data } = await Notifications.getExpoPushTokenAsync();
+    token = data;
+  } catch {
+    // Minting a real push token needs FCM actually configured for this
+    // build — a genuine `google-services.json` from a real Firebase
+    // project (referenced via `android.googleServicesFile` in app.json)
+    // plus FCM V1 credentials uploaded to the EAS project; see
+    // https://docs.expo.dev/push-notifications/fcm-credentials/. Neither
+    // exists in this repo yet, so `getExpoPushTokenAsync()` throws. That's
+    // a real infra/credentials setup step this function can't do anything
+    // about at runtime — but every OTHER failure path here already
+    // degrades to a graceful `{ error }` instead of throwing
+    // (permission_denied, unsupported_in_expo_go, no_session), and this
+    // one previously didn't. The uncaught throw is exactly what showed up
+    // as "Uncaught (in promise, id: 0)... Default FirebaseApp is not
+    // initialized" and — worse — it happened before the caller ever got
+    // to save the person's actual notification-preference toggle, so
+    // their preference silently failed to save too. Catching it here lets
+    // prefs still save; the caller decides how (or whether) to surface
+    // the missing-push-credentials state.
+    return { error: 'token_unavailable' };
+  }
 
   const {
     data: { session },
@@ -64,10 +87,10 @@ export async function registerForPushNotifications(): Promise<PushResult> {
 
   const { error } = await supabase
     .from('profiles')
-    .update({ expo_push_token: data })
+    .update({ expo_push_token: token })
     .eq('id', session.user.id);
 
   if (error) return { error: error.message };
 
-  return { token: data };
+  return { token };
 }

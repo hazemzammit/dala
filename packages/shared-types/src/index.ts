@@ -163,6 +163,24 @@ export interface WorkerInvitation {
   accepted_at: string | null;
 }
 
+// migration 0030 — Doc 03 §3.22 invite-by-email pipeline for
+// organization_members (manager/viewer only, never 'owner' — see 0030's
+// header for why ownership transfer isn't part of this pipeline). Added
+// here in Phase 10; the table/RPCs shipped in Phase 9 without a shared
+// type, so team-members.tsx was carrying its own local interface.
+export interface OrganizationMemberInvitation {
+  id: string;
+  org_id: string;
+  invited_email: string;
+  role: Extract<OrgRole, 'manager' | 'viewer'>;
+  token: string;
+  status: InvitationStatus;
+  created_by: string;
+  sent_at: string;
+  expires_at: string;
+  accepted_at: string | null;
+}
+
 export interface Project {
   id: string;
   lead_org_id: string;
@@ -218,6 +236,11 @@ export interface Vehicle {
   capacity: number;
   status: VehicleStatus;
   created_at: string;
+  // migration 0046 — Doc 01 §1.9 optimistic concurrency. Same mechanism as
+  // DispatchAssignment.version/Project.version (both migration 0006) —
+  // vehicles was the one editable-record table §1.9 names that was
+  // missing this column until this migration closed that gap.
+  version: number;
 }
 
 export interface DispatchAssignment {
@@ -232,6 +255,8 @@ export interface DispatchAssignment {
   actual_departure_time: string | null;
   version: number;
   created_at: string;
+  // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
+  updated_at: string;
 }
 
 export interface AttendanceRecord {
@@ -244,6 +269,8 @@ export interface AttendanceRecord {
   source: AttendanceSource;
   recorded_by: string | null;
   created_at: string;
+  // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
+  updated_at: string;
 }
 
 export interface Advance {
@@ -257,6 +284,8 @@ export interface Advance {
   approved_by: string | null;
   idempotency_key: string | null;
   created_at: string;
+  // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
+  updated_at: string;
 }
 
 export interface ProjectExpense {
@@ -270,6 +299,27 @@ export interface ProjectExpense {
   expense_date: string;
   created_by: string;
   created_at: string;
+}
+
+/**
+ * migration 0034 — Doc 03 §3.10.2 Équipe tab. Durable per-project staffing
+ * roster, distinct from `DispatchAssignment` (scheduling) — see that
+ * migration's header for why the two are separate concepts. Auto-seeded
+ * from dispatch assignments (`added_by` is then the user who created the
+ * dispatch assignment, not necessarily who's viewing the roster), also
+ * directly manageable via the Équipe screen. `removed_at`/`removed_by` are
+ * a soft-delete pair, not a hard row delete — a worker "removed" from a
+ * project keeps their historical row.
+ */
+export interface ProjectWorker {
+  id: string;
+  project_id: string;
+  worker_id: string;
+  org_id: string;
+  added_at: string;
+  added_by: string | null;
+  removed_at: string | null;
+  removed_by: string | null;
 }
 
 export interface SalaryCycle {
@@ -300,6 +350,8 @@ export interface Material {
   // routed to, independent of created_by (who originally asked).
   assigned_worker_id: string | null;
   created_at: string;
+  // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
+  updated_at: string;
 }
 
 export interface SiteLog {
@@ -318,6 +370,8 @@ export interface SiteLog {
   caption: string | null;
   logged_by: string | null;
   created_at: string;
+  // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
+  updated_at: string;
 }
 
 export interface SafetyIncident {

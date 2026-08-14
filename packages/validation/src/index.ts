@@ -16,6 +16,7 @@
 export * from './auth';
 export * from './organizations';
 export * from './projects';
+export * from './projectWorkers';
 export * from './dispatch';
 export * from './money';
 export * from './fieldOps';

@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 
 import { logAdminAction } from '@/lib/audit-log';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
+import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 type TargetType = 'all_users' | 'owners_only' | 'by_plan' | 'by_trade_type' | 'inactive_30d';
@@ -105,6 +106,11 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  // Doc 04 §4.3 intro — publishing/scheduling a broadcast is a data
+  // change Support doesn't get.
+  const roleError = requireRole(ctx, ['super_admin', 'admin']);
+  if (roleError) return roleError;
 
   const body = await request.json().catch(() => null);
   const message = typeof body?.message === 'string' ? body.message.trim() : '';

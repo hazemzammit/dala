@@ -1,10 +1,18 @@
 import { color } from '@dala/design-tokens';
+import type { OrganizationMemberInvitation } from '@dala/shared-types';
 import {
   inviteOrganizationMemberSchema,
   updateOrganizationMemberRoleSchema,
 } from '@dala/validation';
+import * as Clipboard from 'expo-clipboard';
 import { router, useFocusEffect } from 'expo-router';
-import { ArrowLeftIcon, PlusIcon, UsersThreeIcon } from 'phosphor-react-native';
+import {
+  ArrowLeftIcon,
+  ArrowsClockwiseIcon,
+  CopyIcon,
+  PlusIcon,
+  UsersThreeIcon,
+} from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Alert, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -24,8 +32,12 @@ import { supabase } from '@/lib/supabase';
 /**
  * apps/mobile/src/app/(contractor)/team-members.tsx
  *
- * Phase 7 — Doc 03 §3.22 "Membres de l'équipe." Phase 9 adds the
- * invite-by-email pipeline (migration 0030) that Phase 7 deliberately cut.
+ * Phase 7 — Doc 03 §3.22 "Membres de l'équipe." Phase 9 added the
+ * invite-by-email pipeline (migration 0030, table + RPCs) that Phase 7
+ * deliberately cut. Phase 10 closes the gap Phase 9 itself left open —
+ * the invitation row existed but nothing sent it — by wiring actual
+ * delivery through send-organization-invitation-email (Resend), plus
+ * resend and copy-link actions on each pending row.
  *
  * Deliberately a DIFFERENT screen from the existing team.tsx (Doc 03
  * §3.13), which manages this org's WORKERS (field employees — the
@@ -43,13 +55,14 @@ interface MemberRow {
   full_name: string;
 }
 
-interface InvitationRow {
-  id: string;
-  invited_email: string;
-  role: 'manager' | 'viewer';
-  status: 'pending' | 'accepted' | 'expired';
-  expires_at: string;
-}
+// Phase 10: the local InvitationRow interface that used to live here is
+// gone — @dala/shared-types now has OrganizationMemberInvitation (added
+// this phase; the table/RPCs shipped in Phase 9 without a shared type).
+// This screen only ever needs a subset of its columns, hence the Pick.
+type InvitationRow = Pick<
+  OrganizationMemberInvitation,
+  'id' | 'invited_email' | 'role' | 'status' | 'expires_at' | 'token'
+>;
 
 const ROLE_LABEL: Record<MemberRow['role'], string> = {
   owner: 'Propriétaire',
@@ -72,6 +85,12 @@ export default function TeamMembersScreen() {
   const [inviteRole, setInviteRole] = useState<'manager' | 'viewer'>('viewer');
   const [inviteError, setInviteError] = useState<string | null>(null);
   const [inviteSubmitting, setInviteSubmitting] = useState(false);
+  const [emailSendWarning, setEmailSendWarning] = useState<string | null>(null);
+
+  // Per-invitation-row transient UI state — id-keyed since several
+  // invitations can be pending at once and each row acts independently.
+  const [resendingId, setResendingId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -122,7 +141,7 @@ export default function TeamMembersScreen() {
     // noise once a new invite has been (re)sent to the same address.
     const { data: invitationRows } = await supabase
       .from('organization_member_invitations')
-      .select('id, invited_email, role, status, expires_at')
+      .select('id, invited_email, role, status, expires_at, token')
       .eq('org_id', activeOrgId)
       .eq('status', 'pending')
       .order('sent_at', { ascending: false });
@@ -131,8 +150,25 @@ export default function TeamMembersScreen() {
     setLoading(false);
   }
 
+  // Fire-and-report, never fire-and-throw: a failed email send shouldn't
+  // undo the invitation row that already exists (same reasoning
+  // accept-organization-invitation's own non-fatal status-update failure
+  // uses) — the invite is still valid and the invitations list still shows
+  // it. The caller surfaces the returned message as a soft warning, not a
+  // blocking error.
+  async function sendInvitationEmail(invitationId: string): Promise<string | null> {
+    const { data, error } = await supabase.functions.invoke('send-organization-invitation-email', {
+      body: { invitation_id: invitationId },
+    });
+    if (error || !data?.success) {
+      return "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé. Utilisez \"Copier le lien\" pour le partager vous-même.";
+    }
+    return null;
+  }
+
   async function handleInvite() {
     setInviteError(null);
+    setEmailSendWarning(null);
     const parsed = inviteOrganizationMemberSchema.safeParse({
       org_id: orgId,
       email: inviteEmail,
@@ -146,24 +182,69 @@ export default function TeamMembersScreen() {
 
     setInviteSubmitting(true);
     try {
-      const { error } = await supabase.rpc('invite_organization_member', {
+      const { data: invitationId, error } = await supabase.rpc('invite_organization_member', {
         p_org_id: parsed.data.org_id,
         p_email: parsed.data.email,
         p_role: parsed.data.role,
       });
-      if (error) {
+      if (error || !invitationId) {
         setInviteError('Impossible d’envoyer l’invitation.');
         haptics.error();
         return;
       }
+
+      const warning = await sendInvitationEmail(invitationId);
       haptics.confirm();
       setInviteSheetOpen(false);
       setInviteEmail('');
       setInviteRole('viewer');
       await load();
+      if (warning) {
+        // Still a confirm(), not error() — the invitation itself succeeded,
+        // matching the haptics table's "meaningful moment" gate (§1.4a):
+        // this is a degraded-but-successful outcome, not a failure.
+        setEmailSendWarning(warning);
+      }
     } finally {
       setInviteSubmitting(false);
     }
+  }
+
+  async function handleResendInvite(inv: InvitationRow) {
+    setResendingId(inv.id);
+    try {
+      const { data: invitationId, error } = await supabase.rpc('invite_organization_member', {
+        p_org_id: orgId,
+        p_email: inv.invited_email,
+        p_role: inv.role,
+      });
+      if (error || !invitationId) {
+        Alert.alert('Erreur', "Impossible de renvoyer l'invitation.");
+        haptics.error();
+        return;
+      }
+      const warning = await sendInvitationEmail(invitationId);
+      if (warning) {
+        Alert.alert('Invitation renvoyée', warning);
+      } else {
+        Alert.alert('Invitation renvoyée', `Un nouvel e-mail a été envoyé à ${inv.invited_email}.`);
+      }
+      haptics.confirm();
+      await load();
+    } finally {
+      setResendingId(null);
+    }
+  }
+
+  async function handleCopyInviteLink(inv: InvitationRow) {
+    // Mobile-only deep link, matching what
+    // send-organization-invitation-email's own copy sends — see that
+    // function's header for why there's no web fallback URL here.
+    const url = `dala://accept-organization-invite?token=${inv.token}`;
+    await Clipboard.setStringAsync(url);
+    setCopiedId(inv.id);
+    haptics.confirm();
+    setTimeout(() => setCopiedId((current) => (current === inv.id ? null : current)), 2000);
   }
 
   async function handleRoleChange(member: MemberRow, newRole: MemberRow['role']) {
@@ -226,7 +307,7 @@ export default function TeamMembersScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+      <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonList rows={4} />
       </YStack>
     );
@@ -234,13 +315,7 @@ export default function TeamMembersScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <XStack
-        paddingTop={56}
-        paddingHorizontal="$4"
-        paddingBottom="$3"
-        alignItems="center"
-        gap="$3"
-      >
+      <XStack paddingHorizontal="$4" paddingBottom="$3" alignItems="center" gap="$3">
         <XStack
           onPress={() => router.back()}
           accessibilityRole="button"
@@ -295,22 +370,44 @@ export default function TeamMembersScreen() {
                 INVITATIONS EN ATTENTE
               </Text>
               {invitations.map((inv) => (
-                <XStack
+                <YStack
                   key={inv.id}
                   backgroundColor="$neutral0"
                   borderRadius="$card"
                   padding="$4"
-                  alignItems="center"
                   gap="$3"
                 >
-                  <Avatar name={inv.invited_email} size={40} />
-                  <YStack flex={1}>
-                    <Text fontSize={15} fontWeight="600">
-                      {inv.invited_email}
-                    </Text>
-                  </YStack>
-                  <StatusBadge variant="warning">{ROLE_LABEL[inv.role]}</StatusBadge>
-                </XStack>
+                  <XStack alignItems="center" gap="$3">
+                    <Avatar name={inv.invited_email} size={40} />
+                    <YStack flex={1}>
+                      <Text fontSize={15} fontWeight="600">
+                        {inv.invited_email}
+                      </Text>
+                    </YStack>
+                    <StatusBadge variant="warning">{ROLE_LABEL[inv.role]}</StatusBadge>
+                  </XStack>
+                  {isOwner && (
+                    <XStack gap="$4">
+                      <Button
+                        variant="text"
+                        fullWidth={false}
+                        icon={ArrowsClockwiseIcon}
+                        loading={resendingId === inv.id}
+                        onPress={() => void handleResendInvite(inv)}
+                      >
+                        Renvoyer
+                      </Button>
+                      <Button
+                        variant="text"
+                        fullWidth={false}
+                        icon={CopyIcon}
+                        onPress={() => void handleCopyInviteLink(inv)}
+                      >
+                        {copiedId === inv.id ? 'Copié !' : 'Copier le lien'}
+                      </Button>
+                    </XStack>
+                  )}
+                </YStack>
               ))}
             </YStack>
           )}
@@ -410,16 +507,28 @@ export default function TeamMembersScreen() {
             Envoyer l&apos;invitation
           </Button>
 
-          {/* Sending the actual e-mail carrying the accept-organization-invite
-              link is a backend/notification-service concern (same disclosed
-              scope boundary as team.tsx's worker-invite WhatsApp/SMS
-              delivery) — the invitation row existing is what the accept
-              screen and this list's "en attente" section both depend on
-              today. */}
+          {/* Phase 10: the e-mail is now actually sent (see
+              send-organization-invitation-email, via the existing Resend
+              helper) — the stale "not connected yet" note that lived here
+              through Phase 9 no longer applies. If delivery fails, the
+              invitation row still exists and "Copier le lien" on each
+              pending row remains the manual fallback, same as before. */}
           <Text fontSize={12.5} color="$neutral500" textAlign="center">
-            L&apos;envoi automatique de l&apos;e-mail d&apos;invitation n&apos;est pas encore
-            connecté — partagez le lien manuellement pour l&apos;instant.
+            Un e-mail avec le lien d&apos;invitation sera envoyé automatiquement.
           </Text>
+        </YStack>
+      </Sheet>
+
+      <Sheet
+        visible={emailSendWarning !== null}
+        onClose={() => setEmailSendWarning(null)}
+        title="Invitation créée"
+      >
+        <YStack gap="$3">
+          <Text fontSize={14.5} color="$neutral700">
+            {emailSendWarning}
+          </Text>
+          <Button onPress={() => setEmailSendWarning(null)}>Compris</Button>
         </YStack>
       </Sheet>
     </YStack>

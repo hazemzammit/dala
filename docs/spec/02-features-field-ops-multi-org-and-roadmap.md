@@ -389,8 +389,15 @@ weekly digest notifications (Doc 01 §1.19), self-service data export
 and the project/worker Trash screen (Doc 01 §1.16).
 
 **Phase 6+ — Tier 1/2 AI, professional features**: legal contract
-templates (pending legal review), multi-project rollup dashboards,
-seat-based pricing.
+templates (pending legal review — still deferred, needs an actual
+lawyer, not a product/engineering decision), multi-project rollup
+dashboards, ~~seat-based pricing~~ **seat-based pricing: decided and
+built** (Doc 01 §1.20, migrations 0043–0044) — a seat is an
+owner/manager account, Konnect integration stands behind a
+payment-provider abstraction (Stripe test mode until Konnect's merchant
+KYC clears), past-due orgs downgrade to a capped free tier rather than
+being locked out. Tier 1 AI remains genuinely blocked — not on a
+decision, but on real accumulated usage data existing at all.
 
 **Honest cost note**: shipping every contractor module on two clients
 in the same phase, rather than staggering web behind mobile, increases
@@ -414,24 +421,76 @@ built twice.
 | Offline conflicts          | Detox test simulating two concurrent edits to one dispatch cell, one offline                                                                                          | Asserts a `409` surfaces the explicit keep-mine/use-theirs choice (Doc 01 §1.9) rather than silently merging.                                                                                                                                                                                   |
 | App version gate           | Unit test on the Splash routing logic with a mocked stale `build` number                                                                                              | Asserts routing to Forced Update happens before any session check runs (Doc 01 §1.8).                                                                                                                                                                                                           |
 | Admin                      | Playwright, separate suite                                                                                                                                            | Runs against the isolated Admin deployment only. Includes a dedicated impersonation test asserting scope is limited to the target user's own permissions and that every impersonated action is tagged in `audit_log` (Doc 04 §4.3.3a).                                                          |
-| Attendance reconciliation  | Integration test writing a manual attendance record, then a dispatch check-in for the same worker/day                                                                 | Asserts the manual entry is preserved, not silently overwritten (Doc 01 §1.14.3).                                                                                                                                                                                                               |
+| Attendance reconciliation  | Integration test writing a manual attendance record, then a dispatch check-in for the same worker/day                                                                 | Asserts the manual entry is preserved, not silently overwritten (Doc 01 §1.14.3) — and, as of Phase 13, that the `attendance_effective` view (migration 0036) actually resolves the conflict in favor of the manual row, regardless of insert order.                                            |
 | Expense/budget calculation | Unit test on the consumed-% formula                                                                                                                                   | Asserts advances are never included in the sum (Doc 01 §1.14.2) — the specific double-counting bug this design avoids.                                                                                                                                                                          |
-| Cross-org rollup isolation | Integration test asserting the rollup screen's per-org data never appears in a query that spans both orgs at the database layer                                       | Directly guards the "no super-owner" constraint (Doc 01 §1.17.1) — this is a regression test for a principle, not just a feature.                                                                                                                                                               |
-| Soft-delete / restore      | Integration test: delete a project, assert it's excluded from normal queries but restorable within 30 days, then assert `purge_soft_deleted_records` removes it after | Doc 01 §1.16.2.                                                                                                                                                                                                                                                                                 |
+| Cross-org rollup isolation | Integration test asserting the rollup screen's per-org data never appears in a query that spans both orgs at the database layer                                       | Directly guards the "no super-owner" constraint (Doc 01 §1.17.1) — this is a regression test for a principle, not just a feature. **Built Phase 13** (`apps/mobile/src/test/rollup/`).                                                                                                          |
+| Soft-delete / restore      | Integration test: delete a project, assert it's excluded from normal queries but restorable within 30 days, then assert `purge_soft_deleted_records` removes it after | Doc 01 §1.16.2. **Built Phase 13** (`apps/mobile/src/test/soft-delete/`).                                                                                                                                                                                                                       |
 | 2FA enrollment/login       | Detox + Playwright test covering the full opt-in enroll → logout → login-with-TOTP cycle                                                                              | Doc 01 §1.15 — since this is opt-in, also asserts a non-enrolled account's login is entirely unaffected.                                                                                                                                                                                        |
 
-**Mobile implementation status (as of Phase 9)** — this table is the
+**Mobile implementation status (as of Phase 12)** — this table is the
 target strategy; for what's actually built in `apps/mobile` against it,
-see `docs/MOBILE_IMPLEMENTATION_STATUS.md`'s Phase 9 section rather than
-duplicating a status tracker here. Short version: Jest and Detox
-infrastructure exist for the first time as of Phase 9 (previously
-neither was wired up at all, despite `detox` sitting in `package.json`).
-Built this phase: Jest unit coverage for the expense consumed-% formula
-row above and the app-version-gate row above, and a real Detox spec for
-the 2FA enrollment/login row above. Not yet built: the RLS/security row,
-the idempotency row, the offline-conflicts row, and the attendance-
-reconciliation row — each needs seeded test-data infrastructure that
-doesn't exist yet, scoped as its own follow-up phase rather than rushed
-alongside Phase 9's other work. The Playwright/web and Admin rows are
-out of scope for this document entirely (web/admin are separate
-branches/apps).
+see `docs/MOBILE_IMPLEMENTATION_STATUS.md`'s Phase 9/11/12 sections
+rather than duplicating a status tracker here. Short version: Jest and
+Detox infrastructure exist since Phase 9 (unit coverage for the expense
+consumed-% formula row and the app-version-gate row, a real Detox spec
+for the 2FA row). Phase 9 flagged the RLS/security, idempotency,
+offline-conflicts, and attendance-reconciliation rows as blocked on
+fixture infrastructure that didn't exist. Phase 11 built that
+infrastructure and the RLS/security row (`apps/mobile/src/test/rls/`,
+run via `pnpm test:rls`), stopping there deliberately.
+
+Phase 12 adds the idempotency and attendance-reconciliation rows, each
+with its own fixture module rather than reusing `rls/fixtures.ts` (that
+module's 3-org/4-user graph is sized for cross-org isolation, not
+needed here) — `apps/mobile/src/test/idempotency/` (targets
+`create_advance`, migration 0019; confirmed by reading the mobile code
+first that `advances.tsx` has real idempotency wiring and `expenses.tsx`
+has none, so advances — not expenses — is the correct target for this
+row) and `apps/mobile/src/test/attendance/` (writes a manual
+`attendance_records` row, then a `dispatch_checkin` one, for the same
+worker/day). Both now run via the same `pnpm test:rls` script (the
+underlying Jest config's `testMatch` was widened; the script name
+itself was left unchanged deliberately). Same disclosed limitation as
+Phase 11's RLS suite: written and checked against the actual schema,
+but not executed against a live instance — no local Supabase available
+in that session either.
+
+One honest scope note on the attendance-reconciliation row specifically:
+reading `pointage.tsx` and `(worker)/home.tsx` before writing this
+test surfaced that "the read side prefers manual_pointage over
+dispatch_checkin on conflict" is stated as intent in both screens' own
+comments, but no shared resolver function implementing that preference
+actually exists anywhere in the codebase — each screen just reads/writes
+its own rows independently. The Phase 12 test therefore verifies what's
+actually true and testable today (the DB-level guarantee: a later
+dispatch check-in can never mutate or delete an earlier manual row,
+since `attendance_records` has no UPDATE/DELETE policy at all — it's
+append-only by design, migration 0007), not a UI-level resolution
+behavior that was never built. That gap — no actual resolver — is real
+and still open; it wasn't invented for this note.
+
+**Phase 13 closes that gap** — see decision #25 (Doc 00 §0.5) for the
+full account. Short version: `attendance_effective` (migration 0036)
+implements the preference server-side as a view; five mobile screens and
+one shared Edge Function (three report types) were switched to read it,
+three of which had a genuine double-count bug beyond what the "no
+resolver" note above described (worst case: `advances.tsx`'s payroll
+figure, `generate-report`'s payroll/CNSS reports). The
+attendance-reconciliation suite's fixture module gained a second
+describe block asserting the view itself, alongside the original
+append-only-guarantee block from Phase 12 (kept, still true, still worth
+asserting directly). Phase 13 also built the two remaining rows from
+this table that had no attempt yet — soft-delete/restore
+(`apps/mobile/src/test/soft-delete/`) and cross-org rollup isolation
+(`apps/mobile/src/test/rollup/`) — each its own minimal fixture module,
+same pattern as every suite since Phase 12. All five DB-integration
+suites now run via the same `pnpm test:rls` script; NONE has been
+executed against a live instance in any session yet — same disclosed
+limitation as always, not glossed over for having grown to five.
+
+Offline-conflicts remains not yet built — it needs this same fixture
+foundation but is explicitly blocked behind Detox itself being confirmed
+to run at all first (still unconfirmed as of Phase 13; see
+`docs/MOBILE_IMPLEMENTATION_STATUS.md`). The Playwright/web and Admin
+rows are out of scope for this document entirely (web/admin are
+separate branches/apps).

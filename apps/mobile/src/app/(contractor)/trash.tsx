@@ -3,12 +3,13 @@ import type { TrashItem } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
 import { BuildingsIcon, HardHatIcon, TrashIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -24,20 +25,30 @@ import { supabase } from '@/lib/supabase';
  * and restores soft-deleted rows for BOTH entity types the roadmap names —
  * projects (migration 0013/0006) and workers (migration 0025, this phase).
  * Worker deletion is fully wired end-to-end this phase (team.tsx's new
- * delete action). Project deletion has NO entry point anywhere in mobile
- * yet, because apps/mobile/(contractor)/projects.tsx is still an unbuilt
- * empty-state stub (confirmed by reading it before writing this file) —
- * that's a pre-existing Phase 1/3 gap, not something this phase's scope
- * covers rebuilding. This screen will correctly show and restore a
- * soft-deleted project if one exists (e.g. deleted via web, Platform Admin,
- * or a future mobile Projects screen); it just can't be the thing that
- * puts one there from mobile today.
+ * delete action). Project deletion had NO entry point anywhere in mobile
+ * at the time this file was written (Phase 5), because
+ * apps/mobile/(contractor)/projects.tsx was still an unbuilt empty-state
+ * stub (confirmed by reading it before writing this file) — that was a
+ * pre-existing Phase 1/3 gap, not something Phase 5's scope covered
+ * rebuilding.
+ *
+ * STALE BY PHASE 7, CORRECTED PHASE 14: projects.tsx was built out for
+ * real in Phase 7, including a working `soft_delete_project` call from its
+ * own delete flow — this file's claim above about "NO entry point
+ * anywhere" stopped being true then, but nobody updated this comment until
+ * Phase 14's re-read of every screen's own status claims turned it up
+ * (same pattern as portfolio.tsx and notification-settings.tsx's stale
+ * comments, found the same pass). This screen's actual behavior needs no
+ * code change either way — it always correctly showed and restored any
+ * soft-deleted project regardless of which surface deleted it — only this
+ * comment was out of date.
  *
  * 30-day window and purge_soft_deleted_records() are both server-side
  * (migrations 0013/0025) — this screen only shows what's already
  * recoverable, it doesn't compute the window itself.
  */
 export default function TrashScreen() {
+  const toast = useToast();
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -100,17 +111,18 @@ export default function TrashScreen() {
 
     const { error } = await supabase.rpc(rpcName, { [paramName]: item.id });
     if (error) {
-      Alert.alert('Erreur', 'Impossible de restaurer cet élément.');
+      toast.error('Impossible de restaurer cet élément.');
       haptics.error();
       return;
     }
     haptics.confirm();
+    toast.success(`${item.label} restauré.`);
     await load();
   }
 
   if (loading) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+      <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonList rows={4} />
       </YStack>
     );
@@ -131,7 +143,7 @@ export default function TrashScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <YStack paddingTop={56} paddingHorizontal="$4" paddingBottom="$3">
+      <YStack paddingHorizontal="$4" paddingBottom="$3">
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Corbeille
         </Text>

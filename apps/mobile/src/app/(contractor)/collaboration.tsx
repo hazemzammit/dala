@@ -3,7 +3,7 @@ import { inviteOrgToProjectSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { HandshakeIcon, PlusIcon, UsersThreeIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, Switch } from 'react-native';
+import { ScrollView, Switch } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -15,6 +15,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -58,6 +59,7 @@ interface TradeProjectRow {
 }
 
 export default function CollaborationScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [ledProjects, setLedProjects] = useState<LedProjectRow[]>([]);
   const [tradeProjects, setTradeProjects] = useState<TradeProjectRow[]>([]);
@@ -185,7 +187,7 @@ export default function CollaborationScreen() {
 
     setSaving(true);
     try {
-      const { error: rpcError } = await supabase.rpc('invite_org_to_project', {
+      const { data: invitationId, error: rpcError } = await supabase.rpc('invite_org_to_project', {
         p_project_id: parsed.data.project_id,
         p_invited_phone: parsed.data.invited_phone ?? null,
         p_invited_email: parsed.data.invited_email ?? null,
@@ -194,13 +196,32 @@ export default function CollaborationScreen() {
       });
       if (rpcError) throw rpcError;
 
-      // Same division of labor as invite_worker (Phase 1): the row existing
-      // is what the accept-org-invite screen depends on; actually sending
-      // the WhatsApp/SMS/email carrying the `dala://accept-org-invite?
-      // token=...` link is a notification-dispatch concern, not built in
-      // this pass (identical scope boundary to team.tsx's own invite flow).
+      // Division of labor unchanged for whatsapp/sms (still a
+      // notification-dispatch gap, still no provider decided — identical
+      // scope boundary to team.tsx's own worker-invite flow). For email,
+      // this phase closes the gap: send-project-invitation-email actually
+      // delivers the `dala://accept-org-invite?token=...` link via Resend,
+      // same pattern as team-members.tsx's own org-member invite call.
+      // Non-fatal if it fails — the invitation row already exists and is
+      // valid; only the notification attempt failed.
+      let emailWarning: string | null = null;
+      if (parsed.data.sent_via === 'email' && invitationId) {
+        const { data: fnData, error: fnError } = await supabase.functions.invoke(
+          'send-project-invitation-email',
+          { body: { invitation_id: invitationId } },
+        );
+        if (fnError || !fnData?.success) {
+          emailWarning = "L'invitation a été créée, mais l'e-mail n'a pas pu être envoyé.";
+        }
+      }
+
       haptics.confirm();
       setSheetOpen(false);
+      if (emailWarning) {
+        toast.info(emailWarning);
+      } else {
+        toast.success('Invitation envoyée.');
+      }
       await load();
     } catch (e: any) {
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
@@ -222,7 +243,7 @@ export default function CollaborationScreen() {
 
     if (updateError) {
       haptics.error();
-      Alert.alert('Erreur', 'Impossible de mettre à jour ce réglage.');
+      toast.error('Impossible de mettre à jour ce réglage.');
       return;
     }
     haptics.confirm();

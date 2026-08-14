@@ -9,17 +9,20 @@ import {
   PlusIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView, TextInput } from 'react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { ScrollView, TextInput } from 'react-native';
+import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
+import { ProgressBar } from '@/components/ui/Progress';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -37,24 +40,26 @@ import { supabase } from '@/lib/supabase';
  * SCOPE NOTES, stated plainly rather than silently built around:
  *   - Doc 03 §3.10.2 "Project detail" describes a tab-bar hub (Aperçu /
  *     Dispatch / Dépenses / Matériaux / Journal / Sécurité / Équipe).
- *     expenses.tsx, materials.tsx, journal.tsx, safety.tsx, dispatch.tsx
- *     were all built in earlier phases as STANDALONE screens with their
- *     own project picker, deliberately not nested under a Project Detail
- *     hub that doesn't exist (see expenses.tsx's own header). Rebuilding
- *     all five of those into tabs of one hub is a much larger undertaking
- *     than "build the list + create/edit screen" and isn't attempted here
- *     — tapping a project below opens a lightweight detail SHEET (name,
- *     client, address, budget-consumed, edit, delete, and plain links out
- *     to those five existing screens), not the full tab-bar hub §3.10.2
- *     describes. None of those five screens accept a project_id param
- *     today, so the links land on each screen's own picker rather than
- *     pre-filtered — noted honestly rather than claimed as deep-linked.
+ *     Phase 10 adds project/[id].tsx, a real hub — but only Aperçu,
+ *     Dépenses, and Journal are wired as genuine pre-filtered tabs this
+ *     phase (expenses.tsx and journal.tsx now accept a project_id
+ *     deep-link param and lock to it). Dispatch, Matériaux, and Sécurité
+ *     are listed in the hub's "Autres modules" section as plain links —
+ *     honestly unfiltered, landing on each screen's own picker, same as
+ *     before — rather than claimed as deep-linked when they aren't.
+ *     Retrofitting those three (and Équipe) is real remaining work, not
+ *     done here. Tapping a project card now opens the hub directly;
+ *     long-pressing still opens this file's lightweight sheet, trimmed
+ *     down to just Modifier/Supprimer now that quick-access links live
+ *     in the hub instead.
  *   - Progress % / progress ring (mentioned in §3.10.1/§3.10.2) has no
  *     backing data model anywhere in this schema (no milestones/tasks
  *     table, confirmed by grepping every migration) — building actual
  *     progress tracking is new speculative ground, exactly what this
  *     phase was scoped to avoid. Only the budget-consumed bar (real,
- *     computable from project_expenses) is shown.
+ *     computable from project_expenses) is shown, and only on the
+ *     Dépenses tab / this list — deliberately not duplicated into the
+ *     hub's header, which stays name/client/address/type only.
  *   - Search (§3.10.1) filters client-side over the already-fetched list
  *     rather than calling the `search_rpc` (migration 0012) — simpler,
  *     and fine at the list sizes one org actually has.
@@ -109,6 +114,7 @@ const EMPTY_FORM: ProjectFormState = {
 };
 
 export default function ProjectsScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>('tous');
@@ -122,6 +128,10 @@ export default function ProjectsScreen() {
   const [saving, setSaving] = useState(false);
 
   const [detailProject, setDetailProject] = useState<ProjectRow | null>(null);
+  // Phase 27 — themed ConfirmDialog replacing Alert.alert's destructive
+  // two-button variant for "Supprimer ce chantier ?".
+  const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -188,20 +198,37 @@ export default function ProjectsScreen() {
       }, {});
     }
 
-    const merged: ProjectRow[] = [
-      ...(leadProjects ?? []).map((p) => ({
+    // `leadProjects` (lead_org_id = orgId) and `memberProjects`
+    // (project_memberships.org_id = orgId) are meant to be disjoint — a
+    // lead org's own projects should never also carry a project_memberships
+    // row for that same org (see migration 0034's comment on
+    // is_project_participant()). But that invariant lives in seed/app data,
+    // not in a DB constraint, so a bad row (or a future bug) can violate it
+    // silently. When it does, the same project.id shows up in both arrays,
+    // gets pushed into `merged` twice, and crashes the list's `key={project.id}`
+    // render with React's "two children with the same key" error. De-duping
+    // by id here makes the list robust to that regardless of why it happened,
+    // on top of fixing the bad seed row itself (see supabase/seed.sql).
+    const byId = new Map<string, ProjectRow>();
+    for (const p of leadProjects ?? []) {
+      byId.set(p.id, {
         ...p,
         isLead: true,
         leadOrgName: null,
         consumedTotal: consumedById[p.id] ?? 0,
-      })),
-      ...memberProjects.map((p) => ({
-        ...p,
-        isLead: false,
-        leadOrgName: orgNameById[p.lead_org_id] ?? null,
-        consumedTotal: consumedById[p.id] ?? 0,
-      })),
-    ].sort((a, b) => a.name.localeCompare(b.name));
+      });
+    }
+    for (const p of memberProjects) {
+      if (!byId.has(p.id)) {
+        byId.set(p.id, {
+          ...p,
+          isLead: false,
+          leadOrgName: orgNameById[p.lead_org_id] ?? null,
+          consumedTotal: consumedById[p.id] ?? 0,
+        });
+      }
+    }
+    const merged = [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
 
     setProjects(merged);
     setLoading(false);
@@ -284,6 +311,7 @@ export default function ProjectsScreen() {
         setSaving(false);
         return;
       }
+      toast.success('Chantier mis à jour.');
     } else {
       const {
         data: { session },
@@ -300,6 +328,7 @@ export default function ProjectsScreen() {
         setSaving(false);
         return;
       }
+      toast.success('Chantier créé.');
     }
 
     haptics.confirm();
@@ -310,34 +339,28 @@ export default function ProjectsScreen() {
 
   function confirmDelete(project: ProjectRow) {
     setDetailProject(null);
-    Alert.alert(
-      'Supprimer ce chantier ?',
-      `${project.name} sera déplacé vers la corbeille et restaurable pendant 30 jours.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => void handleDelete(project),
-        },
-      ],
-    );
+    setDeleteTarget(project);
   }
 
-  async function handleDelete(project: ProjectRow) {
-    const { error } = await supabase.rpc('soft_delete_project', { p_project_id: project.id });
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    const { error } = await supabase.rpc('soft_delete_project', { p_project_id: deleteTarget.id });
+    setDeleting(false);
     if (error) {
-      Alert.alert('Erreur', 'Impossible de supprimer ce chantier.');
+      toast.error('Impossible de supprimer ce chantier.');
       haptics.error();
       return;
     }
     haptics.confirm();
+    toast.success('Chantier déplacé vers la corbeille.');
+    setDeleteTarget(null);
     await load();
   }
 
   if (loading) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56} paddingHorizontal="$4">
+      <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
         <SkeletonCardList cards={3} />
       </YStack>
     );
@@ -345,7 +368,7 @@ export default function ProjectsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <YStack paddingTop={56} paddingHorizontal="$4" paddingBottom="$3" gap="$3">
+      <YStack paddingHorizontal="$4" paddingBottom="$3" gap="$3">
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Chantiers
         </Text>
@@ -424,7 +447,8 @@ export default function ProjectsScreen() {
                   borderRadius="$card"
                   padding="$4"
                   gap="$2"
-                  onPress={() => setDetailProject(project)}
+                  onPress={() => router.push(`/project/${project.id}` as never)}
+                  onLongPress={() => setDetailProject(project)}
                   accessibilityRole="button"
                   accessibilityLabel={project.name}
                 >
@@ -473,19 +497,13 @@ export default function ProjectsScreen() {
                           {consumedPercent}%
                         </NumericText>
                       </XStack>
-                      <View
-                        height={6}
-                        borderRadius={999}
-                        backgroundColor="$neutral100"
-                        overflow="hidden"
-                      >
-                        <View
-                          height={6}
-                          borderRadius={999}
-                          width={`${consumedPercent}%` as `${number}%`}
-                          backgroundColor={consumedPercent >= 90 ? '$danger' : '$accent600'}
-                        />
-                      </View>
+                      {/* Phase 27 — refactored onto the shared ProgressBar
+                          (components/ui/Progress.tsx) instead of a
+                          hand-rolled View — picks up Doc 05 §3.3's full
+                          green/amber(80%)/red(100%) threshold instead of
+                          this card's previous two-step accent/red-at-90%
+                          logic. */}
+                      <ProgressBar value={consumedPercent} />
                     </YStack>
                   )}
                 </YStack>
@@ -499,8 +517,10 @@ export default function ProjectsScreen() {
         <FAB icon={PlusIcon} accessibilityLabel="Nouveau chantier" onPress={openCreateSheet} />
       )}
 
-      {/* Project detail sheet — lightweight stand-in for Doc 03 §3.10.2's
-          full tab-bar hub, see this file's header. */}
+      {/* Project detail sheet — Phase 10: trimmed down to Modifier/
+          Supprimer only now that project/[id].tsx is the real hub
+          (Doc 03 §3.10.2). Reached via long-press; a normal tap opens
+          the hub directly. */}
       <Sheet
         visible={detailProject !== null}
         onClose={() => setDetailProject(null)}
@@ -536,34 +556,15 @@ export default function ProjectsScreen() {
               )}
             </YStack>
 
-            <YStack gap="$2">
-              <Text fontSize={13} fontWeight="600" color="$neutral500">
-                ACCÈS RAPIDE
-              </Text>
-              {[
-                { href: '/dispatch', label: 'Dispatch' },
-                { href: '/expenses', label: 'Dépenses' },
-                { href: '/materials', label: 'Matériaux' },
-                { href: '/journal', label: 'Journal' },
-                { href: '/safety', label: 'Sécurité' },
-              ].map((link) => (
-                <XStack
-                  key={link.href}
-                  justifyContent="space-between"
-                  alignItems="center"
-                  paddingVertical={10}
-                  onPress={() => {
-                    setDetailProject(null);
-                    router.push(link.href as never);
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={link.label}
-                >
-                  <Text fontSize={15}>{link.label}</Text>
-                  <CaretRightIcon size={16} color={color.neutral[500]} />
-                </XStack>
-              ))}
-            </YStack>
+            <Button
+              variant="secondary"
+              onPress={() => {
+                setDetailProject(null);
+                router.push(`/project/${detailProject.id}` as never);
+              }}
+            >
+              Ouvrir le chantier
+            </Button>
 
             {detailProject.isLead && canWrite && (
               <YStack gap="$2">
@@ -657,6 +658,20 @@ export default function ProjectsScreen() {
           </Button>
         </YStack>
       </Sheet>
+
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="Supprimer ce chantier ?"
+        description={
+          deleteTarget
+            ? `${deleteTarget.name} sera déplacé vers la corbeille et restaurable pendant 30 jours.`
+            : undefined
+        }
+        confirmLabel="Supprimer"
+        loading={deleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </YStack>
   );
 }

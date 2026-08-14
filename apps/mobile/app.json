@@ -47,7 +47,18 @@
         {
           "locationWhenInUsePermission": "Dala peut associer un repère de localisation à une photo de chantier, uniquement avec votre autorisation."
         }
-      ]
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "packagingOptions": {
+              "pickFirst": ["**/libc++_shared.so"]
+            }
+          }
+        }
+      ],
+      "@morrowdigital/watermelondb-expo-plugin"
     ],
     "extra": {
       "eas": {

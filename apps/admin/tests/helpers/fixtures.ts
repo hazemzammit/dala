@@ -15,6 +15,7 @@ const FIXTURES_PATH = path.resolve(__dirname, '../.e2e-fixtures.json');
 export interface E2eFixtures {
   adminA: { email: string; password: string; role: string; totpSecret: string };
   adminB: { email: string; password: string; role: string; totpSecret: string };
+  adminSupport: { email: string; password: string; role: string; totpSecret: string };
   orgOwner: { email: string; password: string };
   targetWorker: { email: string; password: string };
   orgName: string;

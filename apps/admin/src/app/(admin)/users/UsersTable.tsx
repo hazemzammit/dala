@@ -7,6 +7,7 @@ import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useAdminSession } from '@/lib/use-admin-session';
 
 interface UserRow {
   id: string;
@@ -20,6 +21,13 @@ interface UserRow {
 }
 
 export function UsersTable() {
+  // Doc 04 §4.3 intro — Support only gets "reset_password" server-side
+  // (api/admin/users/[userId]/route.ts); every other action here is
+  // hidden for Support so the UI doesn't dangle a button that 403s.
+  const { data: session } = useAdminSession();
+  const role = session?.admin.role;
+  const canMutate = role === 'super_admin' || role === 'admin';
+
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
@@ -99,18 +107,28 @@ export function UsersTable() {
           >
             Réinitialiser
           </button>
-          <button
-            onClick={() => action(u, u.suspended_at ? 'unsuspend' : 'suspend')}
-            className="text-warning text-xs font-medium hover:underline"
-          >
-            {u.suspended_at ? 'Réactiver' : 'Suspendre'}
-          </button>
-          <button
-            onClick={() => setDeleteTarget(u)}
-            className="text-danger text-xs font-medium hover:underline"
-          >
-            Supprimer
-          </button>
+          {canMutate && (
+            <>
+              <button
+                onClick={() => action(u, 'revoke_sessions')}
+                className="text-accent-600 text-xs font-medium hover:underline"
+              >
+                Révoquer les sessions
+              </button>
+              <button
+                onClick={() => action(u, u.suspended_at ? 'unsuspend' : 'suspend')}
+                className="text-warning text-xs font-medium hover:underline"
+              >
+                {u.suspended_at ? 'Réactiver' : 'Suspendre'}
+              </button>
+              <button
+                onClick={() => setDeleteTarget(u)}
+                className="text-danger text-xs font-medium hover:underline"
+              >
+                Supprimer
+              </button>
+            </>
+          )}
         </div>
       ),
     },

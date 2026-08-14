@@ -97,6 +97,9 @@ CREATE TABLE organizations (
   matricule_fiscal  text,                 -- Tunisian tax ID — nullable, collected post-signup (§1.3.12)
   rc_number         text,                 -- Registre de Commerce number — nullable, same as above
   plan              text NOT NULL DEFAULT 'free',
+  -- subscription_status, billing_cycle_start, seat_price_millimes added
+  -- by migration 0043 — see §1.20 for the full seat-billing schema and
+  -- free-tier downgrade mechanics, not duplicated here.
   created_by        uuid NOT NULL REFERENCES profiles(id),
   created_at        timestamptz NOT NULL DEFAULT now(),
   updated_at        timestamptz NOT NULL DEFAULT now()
@@ -754,14 +757,27 @@ A worker can be marked present two ways: an automatic check-in
 generated when a dispatch assignment starts (Doc 02 §2.1), or a manual
 entry a contractor makes directly in Pointage (Doc 03 §3.12). These are
 both rows in `attendance_records`, distinguished by a `source` column
-(`'dispatch'` | `'manual'`). When both exist for the same worker+date,
-the `'manual'` row is what the UI displays and what payroll reads —
-never silently overwritten by a later-arriving dispatch check-in sync.
-Rationale: a contractor correcting attendance by hand (a worker who
-showed up despite no dispatch record, or left early despite one) is
-asserting ground truth over an automated inference, and Doc 01 §1.9's
-offline-sync model must never let a stale automated write clobber that
-correction after the fact.
+(`'dispatch_checkin'` | `'manual_pointage'` — corrected Phase 13; this
+section previously said `'dispatch'` | `'manual'`, a doc-prose-vs-schema
+mismatch against migration 0007's actual `check` constraint that had
+gone uncaught since the section was written). When both exist for the
+same worker+date, the `'manual_pointage'` row is what the UI displays
+and what payroll reads — never silently overwritten by a later-arriving
+dispatch check-in sync. Rationale: a contractor correcting attendance by
+hand (a worker who showed up despite no dispatch record, or left early
+despite one) is asserting ground truth over an automated inference, and
+Doc 01 §1.9's offline-sync model must never let a stale automated write
+clobber that correction after the fact.
+
+**Implementation, Phase 13 (decision #25):** this preference is resolved
+by a Postgres view, `attendance_effective` (migration 0036) —
+`distinct on (worker_id, record_date)` ordered to prefer
+`manual_pointage`, else the latest row. `attendance_records` itself
+stays exactly as described above (append-only, no unique constraint,
+no update/delete policy) — the view is a read-side addition only. Every
+screen or Edge Function report that computes a day-count or day-status
+from attendance reads this view, not the raw table; see migration
+0036's own header for the full list of what that turned out to include.
 
 ---
 
@@ -871,45 +887,39 @@ silently working around.
 
 ## 1.17 Cross-org rollup mechanics
 
-Two distinct rollup surfaces exist and must not be confused with each
-other:
+**Corrected, Phase 14.** This section previously described two distinct
+rollup surfaces — `portfolio.tsx` framed as _cross-organization_ and
+`project-rollup.tsx` as _single-organization_ — as a deliberate design
+split. That framing was checked against the actual code while
+consolidating the two screens (Doc 00 §0.5 #27) and found to be wrong,
+not just outdated: `portfolio.tsx` never aggregated across
+organizations at all. It has only ever called `getActiveOrgId()` and
+filtered `projects` by `.eq('lead_org_id', orgId)` — the exact same
+single-active-org scope `project-rollup.tsx` used. There was no
+cross-org variant anywhere in the mobile app; the _actual_ cross-org
+rollup is `vue-ensemble.tsx` (Doc 02 §2.8a / Doc 03 §3.9a), which this
+section's own text never mentions. This confirms the two screens were
+genuine functional duplicates, not merely two names for a documented
+distinction — and that this section was itself the stale artifact, not
+just the two code files.
 
-- **`portfolio.tsx`** ("Portefeuille", Phase 4) — a _cross-organization_
-  view: every project this user's organizations are either the lead on
-  or a trade participant on, aggregated across however many
-  organizations that user belongs to.
-- **`project-rollup.tsx`** (Phase 6, reached via dashboard.tsx's
-  "Chantiers" row) — a _single-organization, multi-project_ view: every
-  project the current active org leads, aggregated within just that one
-  org.
+`portfolio.tsx` and `project-rollup.tsx` are now one screen
+(`portfolio.tsx`) — see Doc 00 §0.5 #27 for the consolidation decision
+and `apps/mobile/src/app/(contractor)/portfolio.tsx`'s own header for
+the current scope (budget-consumed %, worker-days this month, workers
+dispatched today, pending materials — one query set per project the
+active org leads, no cross-org aggregation).
 
-### 1.17.1 No "super-owner" constraint
+**Note, Phase 15**: `project-rollup.tsx` as a _file_ was still present
+in the repo despite the above having said "deleted" since Phase 14 — a
+zip delivery adds/modifies files but can't delete them on its own, and
+that manual step was missed. Actually removed this phase (Doc 00 §0.5
+#31); this section's own text was accurate the whole time; only the
+repo's file tree had lagged behind it.
 
-Doc 02 §2.8 places no cap on how many organizations a user can belong
-to (§3.22.2a already documents this for org creation), which means
-there is no notion of one privileged "super-owner" role across
-organizations — cross-org rollup aggregates strictly by _membership_
-(`organization_members` rows for the current user), never by any global
-role. A user who is a `viewer` in one org and `owner` in another sees
-both in `portfolio.tsx`, each still governed by that org's own role for
-any write action.
+### 1.17.1 Owned-projects-only exclusion
 
-### 1.17.2 Client-side sum, not a cross-tenant query
-
-Both rollup screens fetch each org/project's own numbers through the
-normal per-org RLS-scoped queries (one query per org the user belongs
-to, or one query for the active org's projects) and sum client-side —
-there is no single SQL query that reaches across `organizations` rows
-the way a naive "rollup view" might. This is a direct consequence of
-Doc 01 §1.5's RLS model: a predicate function like `is_org_member()`
-is evaluated per-row against the _current_ org context, so a genuine
-cross-tenant aggregate query would need a different, weaker RLS
-posture than the rest of this schema uses. Client-side summation keeps
-every underlying read exactly as tenant-isolated as any other screen.
-
-### 1.17.3 Owned-projects-only exclusion in `project-rollup.tsx`
-
-`project-rollup.tsx` sums only projects where the active org is
+`portfolio.tsx` sums only projects where the active org is
 `lead_org_id` — projects this org is merely a trade participant on
 (via `project_memberships`) are excluded from its budget/progress
 aggregates, even though they're visible elsewhere (collaboration.tsx,
@@ -919,6 +929,22 @@ sees the shared/Private-layer subset of another org's project data
 someone else's project budget into this org's own rollup total would
 produce a number that looks precise but is actually not comparable to
 its own fully-visible projects.
+
+### 1.17.2 Client-side sum, not a cross-tenant query
+
+Per-project numbers are fetched through the normal per-org RLS-scoped
+queries (one query per project the active org leads) and summed
+client-side — there is no single SQL query that reaches across
+`organizations` rows the way a naive "rollup view" might. This is a
+direct consequence of Doc 01 §1.5's RLS model: a predicate function
+like `is_org_member()` is evaluated per-row against the _current_ org
+context, so a genuine cross-tenant aggregate query would need a
+different, weaker RLS posture than the rest of this schema uses.
+Client-side summation keeps every underlying read exactly as
+tenant-isolated as any other screen. (Genuine cross-org aggregation —
+across every organization the account belongs to, not just the active
+one — is `vue-ensemble.tsx`'s job, Doc 02 §2.8a; that screen is
+unaffected by this section's correction.)
 
 ---
 
@@ -967,3 +993,113 @@ separate transactional-email service). Every run is wrapped in
 `project_url`/`service_role_key` Vault secret shows up as a _failed_
 row with a clear error, not as digests that simply never arrive with no
 diagnosable trail.
+
+## 1.20 Seat-based billing & free-tier downgrade (migrations 0043, 0044)
+
+Product decisions made explicitly (not inferred): a **seat** is an
+`organization_members` row with `role IN ('owner', 'manager')` — field
+workers are never seats, so worker-heavy orgs aren't penalized for crew
+size. §2.10's long-standing "seat-based pricing" roadmap line is
+resolved by this section; see that section for the roadmap-status
+update.
+
+Note the name collision with §1.10 ("Free-tier resource budgeting"):
+that section is about _this app's own Supabase infrastructure costs_,
+unrelated to the concept below, which is about _what a paying
+customer's org degrades to_ when a bill goes unpaid. Same words,
+different axis — §1.10 is an ops concern, this section is a product/
+billing concern.
+
+**Schema** (`organizations`, extended):
+
+```sql
+ALTER TABLE organizations
+  ADD COLUMN subscription_status  text NOT NULL DEFAULT 'trialing'
+    CHECK (subscription_status IN ('trialing','active','past_due','canceled')),
+  ADD COLUMN billing_cycle_start  date NOT NULL DEFAULT current_date,
+  ADD COLUMN seat_price_millimes  integer NOT NULL DEFAULT 15000; -- PLACEHOLDER, see 0043's header
+```
+
+`billing_cycles` — one row per generated charge attempt (service-role
+write-only; owner/manager read-only via RLS):
+
+```sql
+CREATE TABLE billing_cycles (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  org_id            uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+  cycle_start       date NOT NULL,
+  cycle_end         date NOT NULL,
+  seat_count        integer NOT NULL,
+  amount_millimes   integer NOT NULL,
+  payment_provider  text NOT NULL,
+  external_ref      text,
+  payment_url       text,
+  status            text NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending','paid','failed','expired')),
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  paid_at           timestamptz
+);
+```
+
+`get_org_seat_count(p_org_id uuid)` — counts seats live off
+`organization_members` rather than a synced counter column, so
+promoting/demoting a member is automatically correct with no
+reconciliation step.
+
+**Payment-provider abstraction, and why it exists.** Konnect (the
+intended production processor for Tunisian dinar payments) requires a
+merchant KYC application before issuing even a sandbox API key — not
+available to build/test against as of this write-up. Rather than block
+on that, `supabase/functions/_shared/paymentProvider.ts` defines the
+boundary (`createPaymentRequest` / `parseWebhookEvent`) with Stripe test
+mode fully implemented behind it — free, zero-KYC test keys, same
+"create a request → get a ref + hosted URL → webhook confirms" shape
+Konnect's own API uses. Switching to Konnect once a merchant account
+clears means implementing that file's `konnect` branch and flipping
+`PAYMENT_PROVIDER`, not touching the cron job, the webhook handler, or
+this schema.
+
+`generate-subscription-charges` (daily cron, same pg_cron/pg_net/Vault
+wiring 0026/0027 established for `send-digest-notifications`) finds
+orgs whose cycle elapsed, computes seat count, creates the
+`billing_cycles` row + payment request, advances `billing_cycle_start`.
+`payment-webhook` is the callback target; idempotent re-processing of an
+already-`paid` cycle is a safe no-op.
+
+**Past-due enforcement — decision made explicitly**: a `past_due` org
+downgrades to a capped free tier rather than being locked out entirely
+or only shown a reminder banner. Caps, as decided:
+
+- Max 3 active projects, max 3 workers on the roster — enforced as
+  `RESTRICTIVE` RLS policies (`projects_free_tier_cap`,
+  `workers_free_tier_cap`) via two named predicate functions
+  (`has_active_project_capacity`, `has_active_worker_capacity`),
+  following this codebase's own convention (§1.5) of a table-lookup
+  predicate function rather than an inline correlated subquery. This is
+  the first use of a `RESTRICTIVE` policy in this codebase — every
+  prior RLS policy has been `PERMISSIVE` (the Postgres default); a
+  restrictive policy ANDs with whatever permissive policy already
+  allows the write, rather than adding another way in.
+- No multi-org collaboration, no reports/export, no Tier 0 lateness
+  insights — enforced at the RPC layer (`invite_org_to_project`,
+  `get_worker_lateness_pattern`, both raising
+  `feature_requires_active_subscription`) and inside the two
+  report/export Edge Functions (`export-org-data`, `generate-report`),
+  gated right after each one's existing owner/manager check.
+
+**Scope decision, stated rather than silently picked**: none of the
+above retroactively touches an org that already exceeds a cap (e.g. 7
+active projects) at the moment it goes `past_due` — enforcement only
+blocks _new_ creation past the limit. A hard retroactive cap would mean
+a billing hiccup silently disrupts already-running site operations and
+worker records; that's a materially bigger call than "block new
+growth" and wasn't made here.
+
+**Worker-invite delivery**: decided to stay email-only (existing Resend
+integration) for now — SMS/WhatsApp explicitly not pursued at this
+time, no provider selected.
+
+**Still deferred, not part of this section**: Tier 1 AI (blocked on
+real accumulated usage data existing, not a decision that can be made
+yet) and legal contract templates (needs an actual lawyer, not a
+product/engineering decision).

@@ -4,23 +4,28 @@ import { Image } from 'react-native';
 /**
  * apps/mobile/src/lib/photoPipeline.ts
  *
- * Doc 02 §2.5 / Doc 01 §1.3.11 — every photo captured or picked anywhere in
- * the app (Update Chantier §4.2, Safety incident §3.17) goes through this
- * exact same pass before it ever touches the upload queue:
- *   1. Resize so the LONGEST edge is capped at 1920px (not a fixed width —
- *      a portrait phone photo needs its height capped, not its width, or
- *      it'd still be huge).
- *   2. Re-encode as JPEG at ~80% quality.
- *   3. A second 300px-wide thumbnail derivative, for list/timeline views
- *      that shouldn't have to pull full-size images just to render a row.
+ * Doc 02 §2.5 — every photo captured or picked anywhere in the app (Update
+ * Chantier §4.2, Safety incident §3.17) goes through this exact same pass
+ * before it ever touches the upload queue.
+ *
+ * PHASE 18 REDO — this file briefly (same conversation) carried a
+ * 1200px-cap + iterative-200KB-target rewrite, built against a STALE docx
+ * snapshot of the cahier des charges rather than this repo's own living
+ * spec in `docs/spec/` (confirmed authoritative — docx is older). Read
+ * directly from `docs/spec/02-features-field-ops-multi-org-and-roadmap.md`
+ * §2.5, word for word: "Resize to a 1920px longest edge... Re-encode as
+ * JPEG at ~80% quality." No byte-size target, no iterative step-down loop
+ * — anywhere in the real spec. That's exactly what this file did before
+ * either rewrite this conversation touched it — the ORIGINAL Phase-17 code
+ * was already spec-correct, and the "fix" was actually a regression,
+ * caught only once the authoritative doc was actually read instead of the
+ * stale one. This version restores that original 1920px/~80% behavior,
+ * corrected in place rather than silently reverted without explanation.
+ *
  * `expo-image-manipulator` does not carry EXIF through a resize/re-encode
  * pass unless the caller explicitly asks it to (there's no `exif`/`keep`
- * option set here) — this is the same combined
- * compress-and-strip-in-one-pass Doc 02 §2.5 calls for, not two separate
- * steps. Worth a quick manual check on a real device with a GPS-tagged
- * photo before shipping (see the manual test checklist) since exact
- * metadata-retention behavior has shifted across expo-image-manipulator
- * versions before.
+ * option set here) — this is the same combined compress-and-strip-in-one-
+ * pass Doc 01 §1.3.11 calls for, not two separate steps.
  */
 export interface ProcessedPhoto {
   /** Full-size compressed image, ready to upload. */
@@ -28,6 +33,9 @@ export interface ProcessedPhoto {
   /** 300px-wide derivative, for list/timeline thumbnails. */
   thumbnailUri: string;
 }
+
+const PHOTO_MAX_EDGE_PX = 1920; // Doc 02 §2.5
+const PHOTO_QUALITY = 0.8; // Doc 02 §2.5 "~80% quality"
 
 function getImageSize(uri: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
@@ -43,17 +51,15 @@ export async function processPhoto(uri: string): Promise<ProcessedPhoto> {
   const { width, height } = await getImageSize(uri);
   const longestEdge = Math.max(width, height);
 
-  // Only resize if the source is actually bigger than the cap — no point
-  // upscaling a smaller photo.
   const resizeAction =
-    longestEdge > 1920
+    longestEdge > PHOTO_MAX_EDGE_PX
       ? width >= height
-        ? [{ resize: { width: 1920 } }]
-        : [{ resize: { height: 1920 } }]
+        ? [{ resize: { width: PHOTO_MAX_EDGE_PX } }]
+        : [{ resize: { height: PHOTO_MAX_EDGE_PX } }]
       : [];
 
-  const main = await ImageManipulator.manipulateAsync(uri, resizeAction, {
-    compress: 0.8,
+  const result = await ImageManipulator.manipulateAsync(uri, resizeAction, {
+    compress: PHOTO_QUALITY,
     format: ImageManipulator.SaveFormat.JPEG,
   });
 
@@ -62,7 +68,7 @@ export async function processPhoto(uri: string): Promise<ProcessedPhoto> {
     format: ImageManipulator.SaveFormat.JPEG,
   });
 
-  return { uri: main.uri, thumbnailUri: thumb.uri };
+  return { uri: result.uri, thumbnailUri: thumb.uri };
 }
 
 /**
@@ -74,7 +80,7 @@ export async function processPhoto(uri: string): Promise<ProcessedPhoto> {
  * bigger lift (gesture-driven crop overlay component, nothing like it
  * exists anywhere in this app yet) than this phase's settings.tsx/
  * projects.tsx scope — disclosed here and in delivery notes, not silently
- * substituted.
+ * substituted. (Gap list item 15 — still open, scope confirmation pending.)
  */
 export async function processAvatarPhoto(uri: string): Promise<string> {
   const { width, height } = await getImageSize(uri);

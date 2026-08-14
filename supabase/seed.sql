@@ -152,9 +152,15 @@ update projects set deleted_at = now() - interval '2 days'
   where id = '33333333-3333-3333-3333-000000000004';
 
 -- Élec Zayani (org 2) is a trade partner on the Sousse project — multi-org
--- collaboration / cross-org rollup testing.
+-- collaboration / cross-org rollup testing. Only the trade org gets a
+-- project_memberships row here — the lead org (org 1) must NOT get one:
+-- migration 0034's is_project_participant() explicitly documents that a
+-- lead org's own projects have no project_memberships row at all. A
+-- prior version of this seed inserted a spurious 'lead' row for org 1 on
+-- this same project, which made the mobile Projects list fetch the
+-- project twice (once via lead_org_id, once via this membership row) and
+-- crash with a duplicate-key error on the project card list.
 insert into project_memberships (project_id, org_id, role, budget_rollup_opt_in) values
-  ('33333333-3333-3333-3333-000000000002', '11111111-1111-1111-1111-000000000001', 'lead', true),
   ('33333333-3333-3333-3333-000000000002', '11111111-1111-1111-1111-000000000002', 'trade', true)
 on conflict (project_id, org_id) do nothing;
 

@@ -31,9 +31,20 @@ export async function GET() {
     counts.set(id, (counts.get(id) ?? 0) + 1);
   }
 
+  // Doc 04 §4.3.3 — "storage used" is a required column on this table.
+  // Reuses admin_storage_usage_by_org() (migration 0026), the same RPC
+  // the Storage Monitor route already calls — no duplicated aggregation
+  // logic, just a second caller of the same read-only function.
+  const { data: usageRows } = await supabase.rpc('admin_storage_usage_by_org');
+  const storageByOrg = new Map<string, number>();
+  for (const row of (usageRows ?? []) as { organization_id: string; total_bytes: number }[]) {
+    storageByOrg.set(row.organization_id, row.total_bytes);
+  }
+
   const organizations = (data ?? []).map((org) => ({
     ...org,
     member_count: counts.get(org.id as string) ?? 0,
+    storage_used_bytes: storageByOrg.get(org.id as string) ?? 0,
   }));
 
   return NextResponse.json({ organizations });

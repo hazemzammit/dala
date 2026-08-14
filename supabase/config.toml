@@ -28,6 +28,23 @@ enable_signup = true
 double_confirm_changes = true
 enable_confirmations = true
 
+# Doc 01 §1.15 — TOTP two-factor authentication, built on Supabase Auth's
+# native MFA (security-settings.tsx calls auth.mfa.enroll/challenge/verify
+# directly — see that file's header for why this was chosen over a custom
+# column). On hosted Supabase, MFA enrollment is a dashboard toggle that
+# defaults on; the local CLI's Auth server defaults enroll/verify to OFF
+# and only reads this from config.toml, so without this section
+# `auth.mfa.enroll()` fails outright and every local build shows "Impossible
+# de démarrer l'activation" the instant "Activer" is tapped — this has
+# nothing to do with pgcrypto/search_path (see migration 0050's header for
+# that separate bug); it's simply never been turned on for local dev.
+[auth.mfa]
+max_enrolled_factors = 10
+
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true
+
 [auth.external.apple]
 enabled = false
 [auth.external.google]

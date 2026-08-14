@@ -3,7 +3,7 @@
  *
  * Two independent data sources:
  *   1. Scheduled-job status — real, backed by `scheduled_job_runs`
- *      (migration 0010). MONITORED_JOBS below was corrected this
+ *      (migration 0010). MONITORED_JOBS below was corrected in a prior
  *      session: it previously listed five job names
  *      ('expire_invitations', 'send_payment_reminders',
  *      'weekly_salary_summaries', 'cleanup_orphaned_files',
@@ -11,9 +11,18 @@
  *      job_name any real Edge Function in this repo actually inserts —
  *      a stale placeholder list, silently monitoring nothing. The three
  *      real cron-invoked jobs (0026, 0027, 0030) weren't in it at all.
+ *      This remediation phase added a fourth real one,
+ *      'audit_log_retention_cleanup' (0053). cleanup_orphaned_files() now
+ *      exists for real too (0051), but stays deliberately OFF this list —
+ *      it's on-demand only (Doc 04 §4.3.8), never scheduled, so it never
+ *      produces a scheduled_job_runs row to monitor.
  *   2. Infra reachability grid — real as of migration 0032, backed by
  *      `service_health_checks` (ping-service-health, cron every 5 min).
- *      Konnect is deliberately absent — see that migration's header.
+ *      Konnect is deliberately absent — see that migration's header, and
+ *      note it's STILL absent after this phase: paymentProvider.ts's
+ *      Konnect branch is still a stub that throws (confirmed by reading
+ *      it), not real provider-calling code, despite migration 0043
+ *      existing — there's genuinely nothing real to ping yet.
  */
 import { NextResponse } from 'next/server';
 
@@ -24,6 +33,12 @@ const MONITORED_JOBS = [
   'send_impersonation_notifications',
   'send_digest_notifications',
   'send_announcement_notifications',
+  // Added this remediation phase — 0053's daily pg_cron job, the only
+  // real caller of cleanup_audit_log_retention(). cleanup_orphaned_files()
+  // (0051) is deliberately NOT listed here: it's on-demand only (Doc 04
+  // §4.3.8 — triggered by an admin button, never scheduled), so it never
+  // writes a scheduled_job_runs row to monitor.
+  'audit_log_retention_cleanup',
 ];
 
 const MONITORED_SERVICES = ['supabase_auth', 'supabase_storage', 'resend', 'expo_push'] as const;

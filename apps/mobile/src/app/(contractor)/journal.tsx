@@ -1,8 +1,15 @@
 import type { Project, SiteLog, Worker } from '@dala/shared-types';
 import { useAudioPlayer } from 'expo-audio';
-import { useFocusEffect } from 'expo-router';
-import { ImageIcon, MapPinIcon, MicrophoneIcon, NoteIcon, PlayIcon } from 'phosphor-react-native';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import {
+  ArrowLeftIcon,
+  ImageIcon,
+  MapPinIcon,
+  MicrophoneIcon,
+  NoteIcon,
+  PlayIcon,
+} from 'phosphor-react-native';
+import { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
@@ -22,7 +29,11 @@ import { supabase } from '@/lib/supabase';
  *
  * Per-project (a project picker at the top), same simplification
  * expenses.tsx already established for "Projects CRUD doesn't exist yet"
- * rather than reinventing a different pattern here.
+ * rather than reinventing a different pattern here. Phase 10 adds
+ * `project/[id].tsx` (Doc 03 §3.10.2's hub); this screen now accepts an
+ * optional `project_id` deep-link param from it and locks to that project
+ * instead of showing its own picker — same additive pattern as
+ * expenses.tsx's own Phase 10 change, not a rewrite.
  *
  * Every photo/thumbnail/voice-note URL in the row list and the detail
  * sheet is a fresh 1-hour signed URL minted on read (getSignedUrl,
@@ -31,12 +42,19 @@ import { supabase } from '@/lib/supabase';
  * an hour; not solved here (a reasonable Phase-3 scope cut, called out in
  * the delivery guide) — pull-to-refresh / re-focusing the screen re-mints
  * them, same as any other screen that reloads on focus already does.
- * Playback uses expo-audio's useAudioPlayer — same caveat as
- * (worker)/update-chantier.tsx: this is a newer Expo API whose exact hook
- * signature should be double-checked against whatever version
- * `npx expo install expo-audio` resolves.
+ * Playback uses expo-audio's useAudioPlayer. Do NOT add a manual
+ * `useEffect(() => () => player?.remove?.(), [player])` cleanup here —
+ * useAudioPlayer already releases its underlying native player itself
+ * whenever `detailVoiceUrl` changes or the component unmounts (it's built
+ * on Expo's shared-object auto-release pattern). A prior version of this
+ * file duplicated that cleanup manually, which raced with the hook's own
+ * release and crashed with "Cannot use shared object that was already
+ * released" every time the detail sheet closed. If future playback
+ * controls need cleanup, hook into that lifecycle rather than re-adding
+ * a manual `.remove()` call.
  */
 export default function JournalScreen() {
+  const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -83,8 +101,12 @@ export default function JournalScreen() {
     setProjects(list);
     setWorkers((workerRows as Worker[] | null) ?? []);
     if (list.length > 0) {
-      setSelectedProjectId((current) => current ?? list[0]!.id);
-      await loadLogs(list[0]!.id);
+      const initial =
+        deepLinkProjectId && list.some((p) => p.id === deepLinkProjectId)
+          ? deepLinkProjectId
+          : list[0]!.id;
+      setSelectedProjectId((current) => current ?? initial);
+      await loadLogs(initial);
     }
     setLoading(false);
   }
@@ -129,12 +151,6 @@ export default function JournalScreen() {
     if (log.voice_note_url) setDetailVoiceUrl(await getSignedUrl(log.voice_note_url));
   }
 
-  useEffect(() => {
-    return () => {
-      player?.remove?.();
-    };
-  }, [player]);
-
   if (loading) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
@@ -159,33 +175,54 @@ export default function JournalScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-          Journal de chantier
-        </Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <XStack gap="$2">
-            {projects.map((p) => {
-              const active = p.id === selectedProjectId;
-              return (
-                <XStack
-                  key={p.id}
-                  paddingVertical={8}
-                  paddingHorizontal={14}
-                  borderRadius={999}
-                  backgroundColor={active ? '$accent600' : '$neutral0'}
-                  borderWidth={1}
-                  borderColor={active ? '$accent600' : '$neutral300'}
-                  onPress={() => setSelectedProjectId(p.id)}
-                >
-                  <Text fontSize={13.5} fontWeight="500" color={active ? 'white' : '$neutral900'}>
-                    {p.name}
-                  </Text>
-                </XStack>
-              );
-            })}
+        {deepLinkProjectId ? (
+          <XStack alignItems="center" gap="$3" marginBottom="$4">
+            <XStack
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Retour"
+            >
+              <ArrowLeftIcon size={20} />
+            </XStack>
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Journal de chantier
+            </Text>
           </XStack>
-        </ScrollView>
+        ) : (
+          <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
+            Journal de chantier
+          </Text>
+        )}
+
+        {!deepLinkProjectId && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 16 }}
+          >
+            <XStack gap="$2">
+              {projects.map((p) => {
+                const active = p.id === selectedProjectId;
+                return (
+                  <XStack
+                    key={p.id}
+                    paddingVertical={8}
+                    paddingHorizontal={14}
+                    borderRadius={999}
+                    backgroundColor={active ? '$accent600' : '$neutral0'}
+                    borderWidth={1}
+                    borderColor={active ? '$accent600' : '$neutral300'}
+                    onPress={() => setSelectedProjectId(p.id)}
+                  >
+                    <Text fontSize={13.5} fontWeight="500" color={active ? 'white' : '$neutral900'}>
+                      {p.name}
+                    </Text>
+                  </XStack>
+                );
+              })}
+            </XStack>
+          </ScrollView>
+        )}
 
         {logs.length === 0 ? (
           <Text color="$neutral500" fontSize={14} textAlign="center" marginTop="$6">

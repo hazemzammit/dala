@@ -8,6 +8,7 @@ import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useAdminSession } from '@/lib/use-admin-session';
 
 interface OrgRow {
   id: string;
@@ -16,9 +17,27 @@ interface OrgRow {
   plan: string;
   created_at: string;
   member_count: number;
+  storage_used_bytes?: number;
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 Mo';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return `${mb.toFixed(1)} Mo`;
+  return `${(mb / 1024).toFixed(2)} Go`;
 }
 
 export function OrganizationsTable() {
+  // Doc 04 §4.3 intro — UI gating is defense-in-depth on top of the real
+  // server-side role check in api/admin/organizations/[orgId]/route.ts,
+  // never a substitute for it: a Support admin shouldn't see a button
+  // they'll only get a 403 from, but the 403 is what actually protects
+  // the data either way.
+  const { data: session } = useAdminSession();
+  const role = session?.admin.role;
+  const canSuspend = role === 'super_admin' || role === 'admin';
+  const canSoftDelete = role === 'super_admin';
+
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pendingAction, setPendingAction] = useState<{
@@ -86,6 +105,16 @@ export function OrganizationsTable() {
       render: (r) => r.member_count,
     },
     {
+      // Doc 04 §4.3.3 — "storage used" is a required column on this table.
+      // Reuses admin_storage_usage_by_org() (migration 0026), same RPC the
+      // Storage Monitor already calls, rather than a second aggregation.
+      key: 'storage_used_bytes',
+      header: 'Stockage',
+      align: 'right',
+      sortValue: (r) => r.storage_used_bytes ?? 0,
+      render: (r) => formatBytes(r.storage_used_bytes ?? 0),
+    },
+    {
       key: 'created_at',
       header: 'Créée le',
       sortValue: (r) => r.created_at,
@@ -97,18 +126,28 @@ export function OrganizationsTable() {
       align: 'right',
       render: (r) => (
         <div className="flex justify-end gap-2">
-          <button
-            onClick={() => setPendingAction({ org: r, action: 'suspend' })}
-            className="text-warning text-xs font-medium hover:underline"
+          {canSuspend && (
+            <button
+              onClick={() => setPendingAction({ org: r, action: 'suspend' })}
+              className="text-warning text-xs font-medium hover:underline"
+            >
+              Suspendre
+            </button>
+          )}
+          {canSoftDelete && (
+            <button
+              onClick={() => setPendingAction({ org: r, action: 'soft_delete' })}
+              className="text-danger text-xs font-medium hover:underline"
+            >
+              Supprimer
+            </button>
+          )}
+          <a
+            href={`/api/admin/organizations/${r.id}/export?format=json`}
+            className="text-accent-600 text-xs font-medium hover:underline"
           >
-            Suspendre
-          </button>
-          <button
-            onClick={() => setPendingAction({ org: r, action: 'soft_delete' })}
-            className="text-danger text-xs font-medium hover:underline"
-          >
-            Supprimer
-          </button>
+            Exporter
+          </a>
         </div>
       ),
     },

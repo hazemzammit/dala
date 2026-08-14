@@ -31,6 +31,17 @@ import { supabase } from '@/lib/supabase';
  * org-switcher sheet's "Vue d'ensemble" row (see OrgSwitcherSheet's own
  * comment for why that placement over a Dashboard mode or a Settings
  * entry — Settings isn't a built screen yet either).
+ *
+ * PHASE 20 SCOPE NOTE, stated rather than left unaddressed: this screen
+ * was checked (not assumed) against dashboard.tsx's new post-org-switch
+ * `runSync()` call to see whether it needed the same treatment. It does
+ * not — every fetch in this file goes directly through `supabase` (see
+ * the imports above), never through a WatermelonDB collection, and per
+ * this file's own "never blended" reasoning above, it independently
+ * queries each OWNED org by id rather than reading a single "active org"
+ * scope at all — there is no "active org" WatermelonDB cache for this
+ * screen to go stale on org switch, since it isn't scoped to the active
+ * org in the first place. Out of scope for item 4 for that reason.
  */
 interface OrgRollup {
   org: MyOrgSummary;

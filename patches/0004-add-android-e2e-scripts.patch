@@ -1,0 +1,13 @@
+--- a/apps/mobile/package.json
++++ b/apps/mobile/package.json
+@@ -12,7 +12,9 @@
+     "test": "jest",
+     "test:rls": "jest --config jest.integration.config.js",
+     "test:e2e": "detox test -c ios.sim.debug",
+-    "test:e2e:build": "detox build -c ios.sim.debug"
++    "test:e2e:build": "detox build -c ios.sim.debug",
++    "test:e2e:android": "detox test -c android.emu.debug",
++    "test:e2e:android:build": "detox build -c android.emu.debug"
+   },
+   "dependencies": {
+     "@dala/design-tokens": "workspace:*",

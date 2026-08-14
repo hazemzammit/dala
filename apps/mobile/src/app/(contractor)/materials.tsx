@@ -3,7 +3,7 @@ import { reassignMaterialSchema, refuseMaterialSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CheckIcon, PackageIcon, UserSwitchIcon, XIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
@@ -15,6 +15,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -45,6 +46,16 @@ import { supabase } from '@/lib/supabase';
  * Doc 03 §3.15 describes a flat "list … filter (En attente/Approuvé/
  * Refusé)" with no project grouping, so this stays a single org-wide
  * queue.
+ *
+ * PHASE 19 SCOPE NOTE: this screen was deliberately left OUT of the
+ * offline-first routing pass. Approve/refuse/reassign are all UPDATEs on
+ * an already-created row, performed by a contractor — exactly the
+ * "editable-record… but the actor is always online" case Doc 01 §1.9
+ * draws a line around for the append-only tables (creation can happen
+ * offline in the field; approval is office/admin work). Routing these
+ * through WatermelonDB would mean building local update-conflict handling
+ * for a scenario that doesn't arise in this app's actual usage pattern —
+ * not free, and not something to add speculatively.
  */
 type Filter = 'pending' | 'approved' | 'rejected';
 
@@ -66,6 +77,7 @@ const STATUS_LABEL: Record<Material['status'], string> = {
 };
 
 export default function MaterialsScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -154,11 +166,12 @@ export default function MaterialsScreen() {
         .eq('id', materialId);
       if (updateError) throw updateError;
       haptics.confirm();
+      toast.success('Demande approuvée.');
       setDetailId(null);
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? "Impossible d'approuver cette demande.");
+      toast.error(e?.message ?? "Impossible d'approuver cette demande.");
     } finally {
       setActionLoadingId(null);
     }
@@ -191,6 +204,7 @@ export default function MaterialsScreen() {
         .eq('id', parsed.data.material_id);
       if (updateError) throw updateError;
       haptics.confirm();
+      toast.success('Demande refusée.');
       setRefuseSheetOpen(false);
       setDetailId(null);
       await load();
@@ -223,11 +237,12 @@ export default function MaterialsScreen() {
         .eq('id', parsed.data.material_id);
       if (updateError) throw updateError;
       haptics.confirm();
+      toast.success('Demande réassignée.');
       setReassignSheetOpen(false);
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? 'Impossible de réassigner cette demande.');
+      toast.error(e?.message ?? 'Impossible de réassigner cette demande.');
     } finally {
       setActionLoadingId(null);
     }
@@ -422,8 +437,8 @@ export default function MaterialsScreen() {
             value={rejectionReason}
             onChangeText={setRejectionReason}
             placeholder="Ex : article indisponible actuellement"
+            error={error ?? undefined}
           />
-          {error && <Text color="$danger">{error}</Text>}
           <Button onPress={handleRefuse} loading={Boolean(detail && actionLoadingId === detail.id)}>
             Confirmer le refus
           </Button>

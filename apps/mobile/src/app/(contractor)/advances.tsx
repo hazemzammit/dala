@@ -3,7 +3,7 @@ import { createAdvanceSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CheckIcon, HandCoinsIcon, PlusIcon, XIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -15,6 +15,7 @@ import { NumericText } from '@/components/ui/NumericText';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
@@ -36,6 +37,13 @@ import { supabase } from '@/lib/supabase';
  * avance" and "Marquer comme payé" generate a fresh idempotency key the
  * instant the button is tapped and disable that row/sheet immediately —
  * never a shared/memoized key across taps.
+ *
+ * Phase 13 fix: the days-worked figure below now reads `attendance_effective`
+ * (migration 0036) instead of raw `attendance_records`. Before this, a
+ * worker with both a manual_pointage row and a dispatch_checkin row on the
+ * same day had that day counted TWICE toward gross pay — a real
+ * money-calculation bug, not a display nuance. See 0036's header for the
+ * full audit of which screens this affected.
  */
 const AMOUNT_CHIPS = [20, 50, 100];
 
@@ -51,6 +59,7 @@ interface WorkerPayroll {
 }
 
 export default function AdvancesScreen() {
+  const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<WorkerPayroll[]>([]);
@@ -89,7 +98,7 @@ export default function AdvancesScreen() {
       await Promise.all([
         supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
         supabase
-          .from('attendance_records')
+          .from('attendance_effective')
           .select('worker_id, status')
           .eq('org_id', org)
           .gte('record_date', cycleStart)
@@ -202,6 +211,7 @@ export default function AdvancesScreen() {
       });
       if (error) throw error;
       haptics.confirm();
+      toast.success('Avance enregistrée.');
       setSheetOpen(false);
       await load();
     } catch (e: any) {
@@ -241,10 +251,11 @@ export default function AdvancesScreen() {
       });
       if (rpcError) throw rpcError;
       haptics.confirm();
+      toast.success('Cycle marqué comme payé.');
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? 'Impossible de marquer ce cycle comme payé.');
+      toast.error(e?.message ?? 'Impossible de marquer ce cycle comme payé.');
     } finally {
       setPayingWorkerId(null);
     }
@@ -261,10 +272,11 @@ export default function AdvancesScreen() {
       });
       if (error) throw error;
       haptics.confirm();
+      toast.success('Demande approuvée.');
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? "Impossible d'approuver cette demande.");
+      toast.error(e?.message ?? "Impossible d'approuver cette demande.");
     } finally {
       setRespondingId(null);
     }
@@ -282,10 +294,11 @@ export default function AdvancesScreen() {
         .update({ status: 'rejected' })
         .eq('id', advanceId);
       if (error) throw error;
+      toast.success('Demande refusée.');
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? 'Impossible de refuser cette demande.');
+      toast.error(e?.message ?? 'Impossible de refuser cette demande.');
     } finally {
       setRespondingId(null);
     }
@@ -555,6 +568,7 @@ export default function AdvancesScreen() {
                 value={customAmount}
                 onChangeText={setCustomAmount}
                 keyboardType="numeric"
+                error={formError ?? undefined}
               />
             )}
             {exceedsNetWarning && (
@@ -572,7 +586,10 @@ export default function AdvancesScreen() {
             placeholder="Ex : avance sur salaire"
           />
 
-          {formError && <Text color="$danger">{formError}</Text>}
+          {/* Only shown when the error isn't already routed to the
+              custom-amount field above (worker-not-selected, or a chip
+              amount that failed a check that isn't field-specific). */}
+          {formError && !useCustom && <Text color="$danger">{formError}</Text>}
 
           <Button onPress={handleCreateAdvance} loading={savingAdvance}>
             Confirmer l'avance

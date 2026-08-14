@@ -102,33 +102,37 @@ inlined at a call site, so "is this a meaningful moment" stays an easy
 question to audit. **Never** fired on routine navigation, tab switches,
 or opening a FAB/sheet — only:
 
-| Trigger                                                                     | Call        |
-| --------------------------------------------------------------------------- | ----------- |
-| Worker departure/arrival confirmed                                          | `confirm()` |
-| Dispatch assignment created/updated successfully                            | `confirm()` |
-| Pointage (attendance) save succeeds                                         | `confirm()` |
-| Contractor records an advance successfully (quick-advance)                  | `confirm()` |
-| Contractor marks a salary cycle as paid successfully                        | `confirm()` |
-| Contractor approves a pending advance request successfully                  | `confirm()` |
-| Worker submits an advance request successfully                              | `confirm()` |
-| Org-to-org invitation sent successfully (Collaboration)                     | `confirm()` |
-| Org-to-org invitation accepted successfully                                 | `confirm()` |
-| Budget-rollup / report-branding toggle saved successfully                   | `confirm()` |
-| Org switch (org-switcher sheet) saved successfully                          | `confirm()` |
-| Worker soft-deleted / restored successfully (Trash, Team)                   | `confirm()` |
-| Trash restore fails                                                         | `error()`   |
-| Data export / report generated and share sheet opened successfully          | `confirm()` |
-| Notification preference (category toggle or digest frequency) saved         | `confirm()` |
-| Chantier created/edited/soft-deleted successfully (Projects, Trash)         | `confirm()` |
-| Profile field (name, avatar, language) saved successfully                   | `confirm()` |
-| Phone-change code sent / new phone number confirmed                         | `confirm()` |
-| Organization profile saved successfully                                     | `confirm()` |
-| Password changed successfully                                               | `confirm()` |
-| Org member role changed / member removed successfully                       | `confirm()` |
-| Two-factor authentication enrolled / disabled successfully                  | `confirm()` |
-| Account recovered via recovery code successfully                            | `confirm()` |
-| Any form validation failure (sign-up, login, invite, dispatch assign, etc.) | `error()`   |
-| Any save/auth/network failure surfaced to the user                          | `error()`   |
+| Trigger                                                                                                                                      | Call        |
+| -------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| Worker departure/arrival confirmed                                                                                                           | `confirm()` |
+| Dispatch assignment created/updated successfully                                                                                             | `confirm()` |
+| Pointage (attendance) save succeeds                                                                                                          | `confirm()` |
+| Contractor records an advance successfully (quick-advance)                                                                                   | `confirm()` |
+| Contractor marks a salary cycle as paid successfully                                                                                         | `confirm()` |
+| Contractor approves a pending advance request successfully                                                                                   | `confirm()` |
+| Worker submits an advance request successfully                                                                                               | `confirm()` |
+| Org-to-org invitation sent successfully (Collaboration)                                                                                      | `confirm()` |
+| Org-to-org invitation accepted successfully                                                                                                  | `confirm()` |
+| Budget-rollup / report-branding toggle saved successfully                                                                                    | `confirm()` |
+| Org switch (org-switcher sheet) saved successfully                                                                                           | `confirm()` |
+| Worker soft-deleted / restored successfully (Trash, Team)                                                                                    | `confirm()` |
+| Trash restore fails                                                                                                                          | `error()`   |
+| Data export / report generated and share sheet opened successfully                                                                           | `confirm()` |
+| Notification preference (category toggle or digest frequency) saved                                                                          | `confirm()` |
+| Chantier created/edited/soft-deleted successfully (Projects, Trash)                                                                          | `confirm()` |
+| Profile field (name, avatar, language) saved successfully                                                                                    | `confirm()` |
+| Phone-change code sent / new phone number confirmed                                                                                          | `confirm()` |
+| Organization profile saved successfully                                                                                                      | `confirm()` |
+| Password changed successfully                                                                                                                | `confirm()` |
+| Org member role changed / member removed successfully                                                                                        | `confirm()` |
+| Org-member invite sent / re-sent successfully (email delivered or not — the invitation itself succeeding is the meaningful moment, Phase 10) | `confirm()` |
+| Org-member invite link copied to clipboard                                                                                                   | `confirm()` |
+| Two-factor authentication enrolled / disabled successfully                                                                                   | `confirm()` |
+| Account recovered via recovery code successfully                                                                                             | `confirm()` |
+| Worker added to / removed from a project's Équipe roster successfully (Phase 12)                                                             | `confirm()` |
+| Dispatch conflict resolved via the compare sheet (keep mine / use server) successfully (Phase 20)                                            | `confirm()` |
+| Any form validation failure (sign-up, login, invite, dispatch assign, etc.)                                                                  | `error()`   |
+| Any save/auth/network failure surfaced to the user                                                                                           | `error()`   |
 
 If a new screen needs haptics, it should extend this table before
 shipping — not introduce a third semantic or an ad hoc `Haptics.*` call.

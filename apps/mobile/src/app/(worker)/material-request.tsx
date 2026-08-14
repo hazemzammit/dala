@@ -1,5 +1,6 @@
 import type { Material } from '@dala/shared-types';
 import { requestMaterialSchema } from '@dala/validation';
+import { Q } from '@nozbe/watermelondb';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, PackageIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
@@ -11,6 +12,10 @@ import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { database } from '@/db';
+import { createWithClientId } from '@/db/createWithClientId';
+import MaterialRequest from '@/db/models/MaterialRequest';
+import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -36,6 +41,19 @@ import { supabase } from '@/lib/supabase';
  * and §1.11.3's mandatory-idempotency list is money-moving actions only.
  * A plain RLS-checked insert (migration 0020's materials_insert_self) is
  * the correct amount of machinery here, not a security-definer RPC.
+ *
+ * PHASE 19 — `handleSubmit` writes locally first via `createWithClientId`,
+ * then fires `runSync()` in the background. The history list ALSO now
+ * reads from local WatermelonDB instead of a live Supabase query — a
+ * plain live-only read would mean a request submitted offline (or even
+ * online, before this device's next sync round-trip) wouldn't show up in
+ * "Historique" until it synced, which breaks the core submit-then-see-it
+ * loop this screen exists for. Local WatermelonDB is a strict superset of
+ * what a live read would show (everything synced, plus anything queued
+ * locally), so this is a pure improvement, not a tradeoff — the one
+ * caveat is the very first app launch before AutoSync's initial sync
+ * completes, where local history would be empty; accepted as a real but
+ * narrow edge case, not fixed further here.
  */
 const URGENCY_OPTIONS = [
   { value: 'normal' as const, label: 'Normal', color: '$neutral900' },
@@ -56,6 +74,7 @@ const STATUS_VARIANT: Record<Material['status'], 'neutral' | 'success' | 'danger
 export default function MaterialRequestScreen() {
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
+  const [userId, setUserId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
   const [projectName, setProjectName] = useState<string | null>(null);
   const [history, setHistory] = useState<Material[]>([]);
@@ -73,6 +92,29 @@ export default function MaterialRequestScreen() {
     }, []),
   );
 
+  /** Maps a local WatermelonDB record into the `Material` shape the UI
+   * already expects — the local model stores timestamps as epoch-ms Dates
+   * (schema.ts's convention), `Material` (from `@dala/shared-types`,
+   * mirroring the Postgres row) expects ISO strings. */
+  function toMaterialShape(record: MaterialRequest): Material {
+    return {
+      id: record.id,
+      org_id: record.orgId,
+      project_id: record.projectId,
+      item: record.item,
+      quantity: record.quantity,
+      urgency: record.urgency as Material['urgency'],
+      note: record.note,
+      status: record.status as Material['status'],
+      rejection_reason: record.rejectionReason,
+      created_by: record.createdBy,
+      approved_by: record.approvedBy,
+      assigned_worker_id: record.assignedWorkerId,
+      created_at: record.createdAt.toISOString(),
+      updated_at: record.updatedAt.toISOString(),
+    };
+  }
+
   async function load() {
     setLoading(true);
     try {
@@ -80,6 +122,7 @@ export default function MaterialRequestScreen() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) return;
+      setUserId(session.user.id);
 
       const { data: worker } = await supabase
         .from('workers')
@@ -101,15 +144,11 @@ export default function MaterialRequestScreen() {
       setProjectId(assignment?.project_id ?? null);
       setProjectName((assignment as any)?.projects?.name ?? null);
 
-      // materials_select_self (migration 0020) — read back only this
-      // worker's own requests, ordered newest first.
-      const { data: requests } = await supabase
-        .from('materials')
-        .select('*')
-        .eq('created_by', session.user.id)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      setHistory((requests as Material[] | null) ?? []);
+      const localRequests = await database
+        .get<MaterialRequest>('materials')
+        .query(Q.where('created_by', session.user.id), Q.sortBy('created_at', Q.desc), Q.take(20))
+        .fetch();
+      setHistory(localRequests.map(toMaterialShape));
     } finally {
       setLoading(false);
     }
@@ -118,10 +157,7 @@ export default function MaterialRequestScreen() {
   async function handleSubmit() {
     setError(null);
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session || !orgId) {
+    if (!userId || !orgId) {
       setError('Session expirée. Reconnectez-vous.');
       haptics.error();
       return;
@@ -142,17 +178,22 @@ export default function MaterialRequestScreen() {
 
     setSubmitting(true);
     try {
-      const { error: insertError } = await supabase.from('materials').insert({
-        org_id: orgId,
-        project_id: parsed.data.project_id ?? null,
-        item: parsed.data.item,
-        quantity: parsed.data.quantity,
-        urgency: parsed.data.urgency,
-        note: parsed.data.note ?? null,
-        status: 'pending',
-        created_by: session.user.id,
-      });
-      if (insertError) throw insertError;
+      await database.write(() =>
+        createWithClientId(database.get<MaterialRequest>('materials'), (record) => {
+          record.orgId = orgId;
+          record.projectId = parsed.data.project_id ?? null;
+          record.item = parsed.data.item;
+          record.quantity = parsed.data.quantity ?? null;
+          record.urgency = parsed.data.urgency;
+          record.note = parsed.data.note ?? null;
+          record.status = 'pending';
+          record.rejectionReason = null;
+          record.createdBy = userId;
+          record.approvedBy = null;
+          record.assignedWorkerId = null;
+        }),
+      );
+      void runSync();
 
       haptics.confirm();
       setItem('');

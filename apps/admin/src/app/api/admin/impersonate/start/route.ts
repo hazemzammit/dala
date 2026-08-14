@@ -128,7 +128,7 @@ export async function POST(request: Request) {
       },
     },
     'admin.impersonate_start',
-    { targetTable: 'profiles', targetId: targetUserId, metadata: { reason, urgent } },
+    { targetTable: 'profiles', targetId: targetUserId, orgId, metadata: { reason, urgent } },
   );
 
   return NextResponse.json({

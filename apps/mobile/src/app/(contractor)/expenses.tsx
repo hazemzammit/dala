@@ -1,7 +1,7 @@
 import type { ExpenseCategory, Project, ProjectExpense } from '@dala/shared-types';
 import { createProjectExpenseSchema } from '@dala/validation';
-import { useFocusEffect } from 'expo-router';
-import { CoinsIcon, PlusIcon } from 'phosphor-react-native';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { ArrowLeftIcon, CoinsIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -14,6 +14,7 @@ import { NumericText } from '@/components/ui/NumericText';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 import { haptics } from '@/lib/haptics';
@@ -23,12 +24,15 @@ import { supabase } from '@/lib/supabase';
  * apps/mobile/src/app/(contractor)/expenses.tsx
  *
  * Doc 03 §3.10.3a — "the 'Dépenses' tab's content." The spec nests this
- * inside Project Detail, which doesn't exist yet (`projects.tsx` is still
- * the Phase-1 stub — full Projects CRUD was never scheduled as its own
- * Phase 1/2 line item, see the roadmap). Building a standalone screen with
- * a project picker at the top instead of scope-creeping into Projects
- * CRUD to give this a parent screen — this is a deliberate simplification,
- * called out in the delivery notes, not an oversight.
+ * inside Project Detail, which didn't exist through Phase 9 (`projects.tsx`
+ * was still the Phase-1 stub — full Projects CRUD was never scheduled as
+ * its own Phase 1/2 line item, see the roadmap). Phase 10 adds
+ * `project/[id].tsx` (Doc 03 §3.10.2's hub); this screen now accepts an
+ * optional `project_id` deep-link param from it and locks to that project
+ * (chip-row picker hidden, back arrow returns to the hub) instead of
+ * showing its own picker. Opened directly (no param — still reachable from
+ * the tab bar / existing nav for now), it falls back to the original
+ * standalone picker behavior unchanged — this is additive, not a rewrite.
  *
  * Doc 01 §1.14.2 (referenced from Doc 02, since the section itself is
  * missing from the current Doc 01 — see delivery notes): worker
@@ -55,6 +59,8 @@ function todayISO(): string {
 }
 
 export default function ExpensesScreen() {
+  const toast = useToast();
+  const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
   const [canWrite, setCanWrite] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -102,8 +108,12 @@ export default function ExpensesScreen() {
     const list = projectRows ?? [];
     setProjects(list);
     if (list.length > 0) {
-      setSelectedProjectId((current) => current ?? list[0]!.id);
-      await loadExpenses((list[0] as Project).id);
+      const initial =
+        deepLinkProjectId && list.some((p) => p.id === deepLinkProjectId)
+          ? deepLinkProjectId
+          : (list[0] as Project).id;
+      setSelectedProjectId((current) => current ?? initial);
+      await loadExpenses(initial);
     }
     setLoading(false);
   }
@@ -177,6 +187,7 @@ export default function ExpensesScreen() {
       if (insertError) throw insertError;
 
       haptics.confirm();
+      toast.success('Dépense enregistrée.');
       setSheetOpen(false);
       await loadExpenses(parsed.data.project_id);
     } catch (e: any) {
@@ -211,33 +222,54 @@ export default function ExpensesScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-          Dépenses
-        </Text>
-
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
-          <XStack gap="$2">
-            {projects.map((p) => {
-              const active = p.id === selectedProjectId;
-              return (
-                <XStack
-                  key={p.id}
-                  paddingVertical={8}
-                  paddingHorizontal={14}
-                  borderRadius={999}
-                  backgroundColor={active ? '$accent600' : '$neutral0'}
-                  borderWidth={1}
-                  borderColor={active ? '$accent600' : '$neutral300'}
-                  onPress={() => setSelectedProjectId(p.id)}
-                >
-                  <Text fontSize={13.5} fontWeight="500" color={active ? 'white' : '$neutral900'}>
-                    {p.name}
-                  </Text>
-                </XStack>
-              );
-            })}
+        {deepLinkProjectId ? (
+          <XStack alignItems="center" gap="$3" marginBottom="$4">
+            <XStack
+              onPress={() => router.back()}
+              accessibilityRole="button"
+              accessibilityLabel="Retour"
+            >
+              <ArrowLeftIcon size={20} />
+            </XStack>
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Dépenses
+            </Text>
           </XStack>
-        </ScrollView>
+        ) : (
+          <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
+            Dépenses
+          </Text>
+        )}
+
+        {!deepLinkProjectId && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={{ marginBottom: 16 }}
+          >
+            <XStack gap="$2">
+              {projects.map((p) => {
+                const active = p.id === selectedProjectId;
+                return (
+                  <XStack
+                    key={p.id}
+                    paddingVertical={8}
+                    paddingHorizontal={14}
+                    borderRadius={999}
+                    backgroundColor={active ? '$accent600' : '$neutral0'}
+                    borderWidth={1}
+                    borderColor={active ? '$accent600' : '$neutral300'}
+                    onPress={() => setSelectedProjectId(p.id)}
+                  >
+                    <Text fontSize={13.5} fontWeight="500" color={active ? 'white' : '$neutral900'}>
+                      {p.name}
+                    </Text>
+                  </XStack>
+                );
+              })}
+            </XStack>
+          </ScrollView>
+        )}
 
         {selectedProject && (
           <YStack

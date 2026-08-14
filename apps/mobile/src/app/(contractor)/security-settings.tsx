@@ -249,13 +249,7 @@ export default function SecuritySettingsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <XStack
-        paddingTop={56}
-        paddingHorizontal="$4"
-        paddingBottom="$3"
-        alignItems="center"
-        gap="$3"
-      >
+      <XStack paddingHorizontal="$4" paddingBottom="$3" alignItems="center" gap="$3">
         <XStack
           onPress={() => router.back()}
           accessibilityRole="button"

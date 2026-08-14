@@ -53,6 +53,7 @@ export async function POST() {
   await logAdminAction(ctx, 'admin.impersonate_end', {
     targetTable: 'profiles',
     targetId: impersonatedUserId,
+    orgId,
   });
 
   await supabase

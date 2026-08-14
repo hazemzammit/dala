@@ -11,11 +11,18 @@ import { logAdminAction } from '@/lib/audit-log';
 import { classifySql } from '@/lib/db-explorer/classify-sql';
 import { getDbExplorerPool } from '@/lib/db-explorer/pg-client';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
+import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 export async function POST(request: Request) {
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  // Doc 04 §4.3 intro — raw-SQL writes are Super-Admin-only, full stop
+  // ("Admin (everything except (...) raw SQL"). Support and Admin both
+  // still get the read-only /query path (no gate there — see that route).
+  const roleError = requireRole(ctx, ['super_admin']);
+  if (roleError) return roleError;
 
   const body = await request.json().catch(() => null);
   const sql = typeof body?.sql === 'string' ? body.sql : '';

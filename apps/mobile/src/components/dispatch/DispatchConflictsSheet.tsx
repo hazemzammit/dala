@@ -1,0 +1,359 @@
+import type { Project, Vehicle, Worker } from '@dala/shared-types';
+import { useCallback, useEffect, useState } from 'react';
+import { Text, XStack, YStack } from 'tamagui';
+
+import { Button } from '@/components/ui/Button';
+import { Sheet } from '@/components/ui/Sheet';
+import { database } from '@/db';
+import DispatchAssignmentModel from '@/db/models/DispatchAssignment';
+import DispatchAssignmentConflictModel from '@/db/models/DispatchAssignmentConflict';
+import { runSync } from '@/db/sync';
+import { haptics } from '@/lib/haptics';
+
+/**
+ * apps/mobile/src/components/dispatch/DispatchConflictsSheet.tsx
+ *
+ * Doc 01 §1.9 / Doc 03 §3.11 — Phase 20. The compare-sheet UI that
+ * `dispatch_assignment_conflicts` (schema.ts, Phase 18) and
+ * `conflictResolver.ts`'s own comment named as "a future screen (Phase
+ * 19+)" — this is that screen, built as a Sheet (not a standalone route),
+ * matching `Sheet.tsx`'s own header, which already lists "dispatch
+ * conflict-compare" as one of this component's intended consumers, and
+ * matching the synchronous "Modifié ailleurs" conflict UI already living
+ * inside `dispatch.tsx`'s own sheet (same Sheet wrapper, same "Garder ma
+ * version" / "Utiliser la version du serveur" copy, reused verbatim rather
+ * than re-worded for the same concept).
+ *
+ * WHAT THIS SHOWS: every unresolved `dispatch_assignment_conflicts` local
+ * row, joined against its `dispatch_assignments` row by
+ * `dispatch_assignment_id`. Per Doc 03 §3.11's design (server wins in the
+ * synced table itself — see `conflictResolver.ts`), that `dispatch_
+ * assignments` row IS "what the server now has" by the time this sheet
+ * reads it; `local_snapshot` (JSON, changed-fields-only) is "your
+ * changements." Field-by-field, side by side.
+ *
+ * MULTI-CONFLICT: a plain list, one card per conflict — not a
+ * single-conflict assumption. Each card resolves independently; resolving
+ * one doesn't require leaving or reopening the sheet to resolve the next.
+ *
+ * RESOLUTION ACTIONS:
+ *   - "Garder ma version": re-applies every field in `local_snapshot`
+ *     directly onto the current `dispatch_assignments` model via a plain
+ *     `record.update(...)` (NOT `updateWithFieldVersions` — that helper,
+ *     and the field-level-merge design it belonged to, was deleted this
+ *     same phase; see db/fieldVersions.ts's removal). A fresh local dirty
+ *     write naturally bumps `version` again on the next push. Then the
+ *     local conflict row is deleted.
+ *   - "Utiliser la version du serveur": just deletes the local conflict
+ *     row — the synced `dispatch_assignments` row already holds the
+ *     server's value (conflictResolver.ts's own comment: "the synced row
+ *     itself settle[s] to the server's value").
+ * Either action calls `void runSync()` afterward so the resolution (the
+ * re-applied edit, in the keep-mine case) actually pushes.
+ *
+ * NAME RESOLUTION: worker/vehicle/project names for the id-valued fields
+ * in `local_snapshot` are resolved from the SAME `workers`/`vehicles`/
+ * `projects` arrays `dispatch.tsx` already fetches for its own board —
+ * passed in as props rather than re-fetched here, since dispatch.tsx's own
+ * `load()` already has them for the active org.
+ */
+
+const FIELD_LABELS: Record<string, string> = {
+  worker_id: 'Ouvrier',
+  vehicle_id: 'Véhicule',
+  project_id: 'Chantier',
+  assignment_date: 'Date',
+  departure_time: 'Heure de départ',
+  confirmation_channel: 'Envoyer via',
+  actual_departure_time: 'Départ réel',
+};
+
+const CHANNEL_LABELS: Record<string, string> = {
+  app: 'App',
+  whatsapp: 'WhatsApp',
+  sms: 'SMS',
+  call: 'Appel',
+};
+
+/** Maps a `local_snapshot` JSON key to the model property it corresponds
+ * to, so "Garder ma version" can re-apply it through the real Model API
+ * rather than poking `_raw` directly. */
+const FIELD_SETTERS: Record<string, (record: DispatchAssignmentModel, value: unknown) => void> = {
+  worker_id: (record, value) => {
+    record.workerId = value as string;
+  },
+  vehicle_id: (record, value) => {
+    record.vehicleId = (value as string | null) ?? null;
+  },
+  project_id: (record, value) => {
+    record.projectId = (value as string | null) ?? null;
+  },
+  assignment_date: (record, value) => {
+    record.assignmentDate = value as string;
+  },
+  departure_time: (record, value) => {
+    record.departureTime = (value as string | null) ?? null;
+  },
+  confirmation_channel: (record, value) => {
+    record.confirmationChannel = (value as string | null) ?? null;
+  },
+  actual_departure_time: (record, value) => {
+    record.actualDepartureTime = (value as string | null) ?? null;
+  },
+};
+
+/** snake_case `local_snapshot` key -> the matching camelCase property on
+ * the `DispatchAssignment` model, so the server-side column value can be
+ * read generically instead of a repeated if/else per field. */
+const MODEL_PROPERTY: Record<string, keyof DispatchAssignmentModel> = {
+  worker_id: 'workerId',
+  vehicle_id: 'vehicleId',
+  project_id: 'projectId',
+  assignment_date: 'assignmentDate',
+  departure_time: 'departureTime',
+  confirmation_channel: 'confirmationChannel',
+  actual_departure_time: 'actualDepartureTime',
+};
+
+interface ConflictRow {
+  /** WatermelonDB id of the `dispatch_assignment_conflicts` row itself. */
+  conflictId: string;
+  dispatchAssignmentId: string;
+  localSnapshot: Record<string, unknown>;
+  /** "What the server now has" — the current local mirror of the synced
+   * `dispatch_assignments` row. Null only if that row somehow no longer
+   * exists locally (shouldn't normally happen; handled defensively). */
+  serverRecord: DispatchAssignmentModel | null;
+}
+
+function formatValue(
+  key: string,
+  value: unknown,
+  lookups: { workers: Worker[]; vehicles: Vehicle[]; projects: Project[] },
+): string {
+  if (value === null || value === undefined || value === '') {
+    return '—';
+  }
+  if (key === 'worker_id') {
+    return lookups.workers.find((w) => w.id === value)?.full_name ?? String(value);
+  }
+  if (key === 'vehicle_id') {
+    return lookups.vehicles.find((v) => v.id === value)?.name ?? String(value);
+  }
+  if (key === 'project_id') {
+    return lookups.projects.find((p) => p.id === value)?.name ?? String(value);
+  }
+  if (key === 'confirmation_channel') {
+    return CHANNEL_LABELS[value as string] ?? String(value);
+  }
+  return String(value);
+}
+
+interface DispatchConflictsSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  workers: Worker[];
+  vehicles: Vehicle[];
+  projects: Project[];
+  /** Called after any resolution so the caller can refresh its own
+   * conflict-count badge / assignment list. */
+  onResolved: () => void;
+}
+
+export function DispatchConflictsSheet({
+  visible,
+  onClose,
+  workers,
+  vehicles,
+  projects,
+  onResolved,
+}: DispatchConflictsSheetProps) {
+  const [conflicts, setConflicts] = useState<ConflictRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const conflictsCollection = database.get<DispatchAssignmentConflictModel>(
+      'dispatch_assignment_conflicts',
+    );
+    const dispatchCollection = database.get<DispatchAssignmentModel>('dispatch_assignments');
+    const conflictRecords = await conflictsCollection.query().fetch();
+
+    const rows: ConflictRow[] = [];
+    for (const c of conflictRecords) {
+      let serverRecord: DispatchAssignmentModel | null = null;
+      try {
+        serverRecord = await dispatchCollection.find(c.dispatchAssignmentId);
+      } catch {
+        // The synced row is gone locally for some reason (shouldn't
+        // normally happen — no delete path exists for this table, per
+        // pullChanges.ts's own note). Still show the conflict rather than
+        // silently dropping it; "Utiliser la version du serveur" still
+        // works (just deletes the conflict row), "Garder ma version" is
+        // disabled below when serverRecord is null.
+        serverRecord = null;
+      }
+
+      let localSnapshot: Record<string, unknown> = {};
+      try {
+        localSnapshot = JSON.parse(c.localSnapshot) as Record<string, unknown>;
+      } catch {
+        localSnapshot = {};
+      }
+
+      rows.push({
+        conflictId: c.id,
+        dispatchAssignmentId: c.dispatchAssignmentId,
+        localSnapshot,
+        serverRecord,
+      });
+    }
+
+    setConflicts(rows);
+    setLoading(false);
+  }, []);
+
+  // Reload every time the sheet opens, not just on mount — a conflict may
+  // have been created (a new sync ran) since the last time this was shown.
+  useEffect(() => {
+    if (visible) void load();
+  }, [visible, load]);
+
+  async function handleKeepMine(row: ConflictRow) {
+    if (!row.serverRecord) return;
+    setResolvingId(row.conflictId);
+    try {
+      await database.write(async () => {
+        await row.serverRecord!.update((record) => {
+          for (const [key, value] of Object.entries(row.localSnapshot)) {
+            const setter = FIELD_SETTERS[key];
+            if (setter) setter(record, value);
+          }
+        });
+        const conflictsCollection = database.get<DispatchAssignmentConflictModel>(
+          'dispatch_assignment_conflicts',
+        );
+        const toDelete = await conflictsCollection.find(row.conflictId);
+        await toDelete.destroyPermanently();
+      });
+      haptics.confirm();
+      void runSync();
+      await load();
+      onResolved();
+    } catch {
+      haptics.error();
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  async function handleUseServer(row: ConflictRow) {
+    setResolvingId(row.conflictId);
+    try {
+      await database.write(async () => {
+        const conflictsCollection = database.get<DispatchAssignmentConflictModel>(
+          'dispatch_assignment_conflicts',
+        );
+        const toDelete = await conflictsCollection.find(row.conflictId);
+        await toDelete.destroyPermanently();
+      });
+      haptics.confirm();
+      void runSync();
+      await load();
+      onResolved();
+    } catch {
+      haptics.error();
+    } finally {
+      setResolvingId(null);
+    }
+  }
+
+  return (
+    <Sheet visible={visible} onClose={onClose} title="Vos changements">
+      {loading ? (
+        <Text color="$neutral500" fontSize={14}>
+          Chargement…
+        </Text>
+      ) : conflicts.length === 0 ? (
+        <Text color="$neutral500" fontSize={14}>
+          Aucun conflit à résoudre.
+        </Text>
+      ) : (
+        <YStack gap="$4">
+          {conflicts.map((row) => {
+            const changedKeys = Object.keys(row.localSnapshot);
+            const lookups = { workers, vehicles, projects };
+            return (
+              <YStack
+                key={row.conflictId}
+                backgroundColor="$neutral25"
+                borderRadius="$card"
+                padding="$3"
+                gap="$3"
+              >
+                <Text fontFamily="$display" fontSize={15} fontWeight="600">
+                  Modifié ailleurs
+                </Text>
+                <Text color="$neutral500" fontSize={13}>
+                  Cette affectation a été modifiée par quelqu&apos;un d&apos;autre entre-temps.
+                </Text>
+
+                <YStack gap="$2">
+                  {changedKeys.map((key) => (
+                    <YStack key={key} gap="$1">
+                      <Text fontSize={12} fontWeight="500" color="$neutral500">
+                        {FIELD_LABELS[key] ?? key}
+                      </Text>
+                      <XStack gap="$2">
+                        <YStack flex={1} gap="$0.5">
+                          <Text fontSize={11} color="$neutral500">
+                            Version du serveur
+                          </Text>
+                          <Text fontSize={13.5}>
+                            {row.serverRecord
+                              ? formatValue(
+                                  key,
+                                  (row.serverRecord as unknown as Record<string, unknown>)[
+                                    MODEL_PROPERTY[key] ?? key
+                                  ],
+                                  lookups,
+                                )
+                              : '—'}
+                          </Text>
+                        </YStack>
+                        <YStack flex={1} gap="$0.5">
+                          <Text fontSize={11} color="$accent600">
+                            Vos changements
+                          </Text>
+                          <Text fontSize={13.5} fontWeight="500">
+                            {formatValue(key, row.localSnapshot[key], lookups)}
+                          </Text>
+                        </YStack>
+                      </XStack>
+                    </YStack>
+                  ))}
+                </YStack>
+
+                <Button
+                  onPress={() => handleKeepMine(row)}
+                  loading={resolvingId === row.conflictId}
+                  disabled={!row.serverRecord}
+                >
+                  Garder ma version
+                </Button>
+                <Button
+                  variant="secondary"
+                  onPress={() => handleUseServer(row)}
+                  loading={resolvingId === row.conflictId}
+                >
+                  Utiliser la version du serveur
+                </Button>
+              </YStack>
+            );
+          })}
+        </YStack>
+      )}
+    </Sheet>
+  );
+}

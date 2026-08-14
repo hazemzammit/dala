@@ -4,7 +4,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { CameraIcon, FilePdfIcon, PlusIcon, ShieldWarningIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -17,6 +17,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
@@ -87,6 +88,7 @@ function todayISO(): string {
 }
 
 export default function SafetyScreen() {
+  const toast = useToast();
   const [tab, setTab] = useState<Tab>('incidents');
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -256,6 +258,7 @@ export default function SafetyScreen() {
       }
 
       haptics.confirm();
+      toast.success('Incident enregistré.');
       setIncidentSheetOpen(false);
       await load();
     } catch (e: any) {
@@ -306,6 +309,7 @@ export default function SafetyScreen() {
       if (insertError) throw insertError;
 
       haptics.confirm();
+      toast.success('Assurance ajoutée.');
       setInsuranceSheetOpen(false);
       await load();
     } catch (e: any) {
@@ -322,7 +326,7 @@ export default function SafetyScreen() {
   }
 
   function handleExportPdf() {
-    Alert.alert('Bientôt disponible', "L'export PDF des incidents arrive prochainement.");
+    toast.info("L'export PDF des incidents arrive prochainement.");
   }
 
   const detailIncident = useMemo(

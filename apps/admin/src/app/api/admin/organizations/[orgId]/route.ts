@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 
 import { logAdminAction } from '@/lib/audit-log';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
+import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 export async function GET(_request: Request, { params }: { params: { orgId: string } }) {
@@ -44,6 +45,16 @@ export async function POST(request: Request, { params }: { params: { orgId: stri
   const action = body?.action as OrgAction | undefined;
   const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
   const confirmName = typeof body?.confirmName === 'string' ? body.confirmName : '';
+
+  // Doc 04 §4.3 intro — Support has no data/billing changes at all; every
+  // org action here is a mutation, so Support is blocked outright.
+  // Soft-delete is further restricted to Super Admin only ("Admin (...)
+  // except (...) deleting orgs" — the one Admin-can't-do item).
+  const roleError = requireRole(
+    ctx,
+    action === 'soft_delete' ? ['super_admin'] : ['super_admin', 'admin'],
+  );
+  if (roleError) return roleError;
 
   const supabase = getAdminSupabaseClient();
   const { data: org } = await supabase
@@ -96,6 +107,7 @@ export async function POST(request: Request, { params }: { params: { orgId: stri
   await logAdminAction(ctx, `org.${action}`, {
     targetTable: 'organizations',
     targetId: org.id as string,
+    orgId: org.id as string,
     metadata: { reason: reason || undefined, plan: body?.plan },
   });
 

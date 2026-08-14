@@ -23,7 +23,19 @@ import { supabase } from '@/lib/supabase';
  * Relies on migration 0019's `attendance_records_select_self` /
  * `advances_select_self` / `salary_cycles_select_self` RLS policies — none
  * of these three reads (or the worker home screen's equivalent ones) were
- * actually reachable by a worker session before that migration.
+ * actually reachable by a worker session before that migration. Still true
+ * here even though the query below now targets `attendance_effective`
+ * (migration 0036) rather than `attendance_records` directly:
+ * security_invoker = true on that view means it's still
+ * `attendance_records_select_self` doing the actual filtering.
+ *
+ * Phase 13 fix: before 0036, the day-by-day map below was built with no
+ * explicit ordering on the underlying query, so which source "won" on a
+ * conflict day (a manual entry AND a dispatch check-in the same day) was
+ * whatever order Postgres happened to return rows in — not reliably
+ * "manual wins," despite that being the stated intent (Doc 01 §1.14.3).
+ * attendance_effective resolves this server-side now, so the map below no
+ * longer needs to reason about ordering at all.
  */
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: 'Présent',
@@ -78,7 +90,7 @@ export default function WorkerSalaryScreen() {
 
       const [{ data: attendance }, { data: advances }, { data: cycles }] = await Promise.all([
         supabase
-          .from('attendance_records')
+          .from('attendance_effective')
           .select('record_date, status')
           .eq('worker_id', worker.id)
           .gte('record_date', cycleStart)

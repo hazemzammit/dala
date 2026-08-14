@@ -43,6 +43,15 @@ export const TEST_FIXTURES = {
     password: 'e2e-test-password-B1!',
     role: 'admin' as const,
   },
+  // Added this remediation phase — rbac.spec.ts needs a real support-role
+  // admin to log in as and assert 403s against, not just adminA/adminB
+  // (both 'admin' role, which the RBAC fix doesn't restrict most actions
+  // for).
+  adminSupport: {
+    email: 'e2e-admin-support@dala.tn',
+    password: 'e2e-test-password-S1!',
+    role: 'support' as const,
+  },
   orgOwner: { email: 'e2e-org-owner@dala.tn', password: 'e2e-test-password-O1!' },
   targetWorker: { email: 'e2e-target-worker@dala.tn', password: 'e2e-test-password-W1!' },
   orgName: 'E2E Test Org — Playwright',
@@ -105,7 +114,7 @@ export default async function globalSetup() {
     // --- Two admins, both with a known, pre-encrypted TOTP secret so
     // tests can compute a valid code with `otpauth` directly instead of
     // going through the interactive first-login enrollment screen.
-    for (const admin of [TEST_FIXTURES.adminA, TEST_FIXTURES.adminB]) {
+    for (const admin of [TEST_FIXTURES.adminA, TEST_FIXTURES.adminB, TEST_FIXTURES.adminSupport]) {
       const userId = await upsertAuthUser(supabase, admin.email, admin.password);
       const totpSecret = new OTPAuth.Secret({ size: 20 }).base32;
       const encryptedSecret = await encryptTotpSecretWithPool(pool, totpSecret);
@@ -172,6 +181,10 @@ export default async function globalSetup() {
         {
           adminA: { ...TEST_FIXTURES.adminA, totpSecret: (TEST_FIXTURES.adminA as any).totpSecret },
           adminB: { ...TEST_FIXTURES.adminB, totpSecret: (TEST_FIXTURES.adminB as any).totpSecret },
+          adminSupport: {
+            ...TEST_FIXTURES.adminSupport,
+            totpSecret: (TEST_FIXTURES.adminSupport as any).totpSecret,
+          },
           orgOwner: TEST_FIXTURES.orgOwner,
           targetWorker: TEST_FIXTURES.targetWorker,
           orgName: TEST_FIXTURES.orgName,

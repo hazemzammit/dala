@@ -4,18 +4,20 @@ import { inviteWorkerSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
 import { PlusIcon, TrashIcon, UsersIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -67,7 +69,19 @@ function deriveStatus(row: WorkerRow): DerivedStatus {
   return 'inactive';
 }
 
+/** Per-field validation errors — same rationale as vehicles.tsx's
+ * FieldErrors: replaces the previous single `error` string that only ever
+ * showed `issues[0]`. */
+interface FieldErrors {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  trade?: string;
+  daily_rate?: string;
+}
+
 export default function TeamScreen() {
+  const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,8 +93,13 @@ export default function TeamScreen() {
   const [trade, setTrade] = useState('');
   const [dailyRate, setDailyRate] = useState('');
   const [channel, setChannel] = useState<'app' | 'whatsapp' | 'sms'>('whatsapp');
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Themed ConfirmDialog replacing Alert.alert's destructive two-button variant.
+  const [deleteTarget, setDeleteTarget] = useState<WorkerRow | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -127,12 +146,14 @@ export default function TeamScreen() {
     setTrade('');
     setDailyRate('');
     setChannel('whatsapp');
-    setError(null);
+    setFieldErrors({});
+    setFormError(null);
     setSheetOpen(true);
   }
 
   async function handleInvite() {
-    setError(null);
+    setFieldErrors({});
+    setFormError(null);
     if (!orgId) return;
 
     const parsed = inviteWorkerSchema.safeParse({
@@ -144,7 +165,20 @@ export default function TeamScreen() {
       channel,
     });
     if (!parsed.success) {
-      setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+      const errors: FieldErrors = {};
+      for (const issue of parsed.error.issues) {
+        const key = issue.path[0];
+        if (
+          key === 'full_name' ||
+          key === 'email' ||
+          key === 'phone' ||
+          key === 'trade' ||
+          key === 'daily_rate'
+        ) {
+          errors[key] = issue.message;
+        }
+      }
+      setFieldErrors(errors);
       haptics.error();
       return;
     }
@@ -174,10 +208,12 @@ export default function TeamScreen() {
       // service concern (Doc 02's notification dispatch, not built yet in
       // this pass) — the invitation row existing is what the accept-invite
       // screen and the roster's "pending" badge both depend on today.
+      haptics.confirm();
+      toast.success(`Invitation envoyée à ${parsed.data.full_name}.`);
       setSheetOpen(false);
       await load();
     } catch (e: any) {
-      setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
+      setFormError(e?.message ?? 'Une erreur est survenue. Réessayez.');
       haptics.error();
     } finally {
       setSaving(false);
@@ -196,34 +232,33 @@ export default function TeamScreen() {
       p_channel: row.invitation?.channel ?? 'whatsapp',
     });
     if (rpcError) {
-      Alert.alert('Erreur', "Impossible de renvoyer l'invitation.");
+      toast.error("Impossible de renvoyer l'invitation.");
+      haptics.error();
       return;
     }
-    Alert.alert('Invitation renvoyée', `Un nouveau lien a été généré pour ${row.full_name}.`);
+    toast.success(`Un nouveau lien a été généré pour ${row.full_name}.`);
     await load();
   }
 
   function confirmDelete(row: WorkerRow) {
-    Alert.alert(
-      'Supprimer ce travailleur ?',
-      `${row.full_name} sera déplacé vers la corbeille et restaurable pendant 30 jours.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Supprimer', style: 'destructive', onPress: () => void handleDelete(row) },
-      ],
-    );
+    setDeleteTarget(row);
   }
 
-  async function handleDelete(row: WorkerRow) {
+  async function handleDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
     const { error: rpcError } = await supabase.rpc('soft_delete_worker', {
-      p_worker_id: row.id,
+      p_worker_id: deleteTarget.id,
     });
+    setDeleting(false);
     if (rpcError) {
-      Alert.alert('Erreur', 'Impossible de supprimer ce travailleur.');
+      toast.error('Impossible de supprimer ce travailleur.');
       haptics.error();
       return;
     }
     haptics.confirm();
+    toast.success('Travailleur déplacé vers la corbeille.');
+    setDeleteTarget(null);
     await load();
   }
 
@@ -246,6 +281,7 @@ export default function TeamScreen() {
         />
         <FAB icon={PlusIcon} accessibilityLabel="Inviter un travailleur" onPress={openInvite} />
         {renderSheet()}
+        {renderDeleteConfirm()}
       </YStack>
     );
   }
@@ -329,33 +365,65 @@ export default function TeamScreen() {
 
       <FAB icon={PlusIcon} accessibilityLabel="Inviter un travailleur" onPress={openInvite} />
       {renderSheet()}
+      {renderDeleteConfirm()}
     </YStack>
   );
+
+  function renderDeleteConfirm() {
+    return (
+      <ConfirmDialog
+        visible={deleteTarget !== null}
+        title="Supprimer ce travailleur ?"
+        description={
+          deleteTarget
+            ? `${deleteTarget.full_name} sera déplacé vers la corbeille et restaurable pendant 30 jours.`
+            : undefined
+        }
+        confirmLabel="Supprimer"
+        loading={deleting}
+        onConfirm={() => void handleDelete()}
+        onCancel={() => setDeleteTarget(null)}
+      />
+    );
+  }
 
   function renderSheet() {
     return (
       <Sheet visible={sheetOpen} onClose={() => setSheetOpen(false)} title="Inviter un travailleur">
         <YStack gap="$3">
-          <FormField label="Nom complet" value={fullName} onChangeText={setFullName} />
+          <FormField
+            label="Nom complet"
+            value={fullName}
+            onChangeText={setFullName}
+            error={fieldErrors.full_name}
+          />
           <FormField
             label="E-mail"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            error={fieldErrors.email}
           />
           <FormField
             label="Téléphone"
             value={phone}
             onChangeText={setPhone}
             keyboardType="phone-pad"
+            error={fieldErrors.phone}
           />
-          <FormField label="Métier (optionnel)" value={trade} onChangeText={setTrade} />
+          <FormField
+            label="Métier (optionnel)"
+            value={trade}
+            onChangeText={setTrade}
+            error={fieldErrors.trade}
+          />
           <FormField
             label="Taux journalier (TND, optionnel)"
             value={dailyRate}
             onChangeText={setDailyRate}
             keyboardType="numeric"
+            error={fieldErrors.daily_rate}
           />
 
           <YStack gap="$1.5">
@@ -373,7 +441,7 @@ export default function TeamScreen() {
             />
           </YStack>
 
-          {error && <Text color="$danger">{error}</Text>}
+          {formError && <Text color="$danger">{formError}</Text>}
 
           <Button onPress={handleInvite} loading={saving}>
             Envoyer l&apos;invitation

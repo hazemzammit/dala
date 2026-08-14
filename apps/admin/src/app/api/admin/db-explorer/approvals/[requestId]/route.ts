@@ -9,11 +9,19 @@ import { NextResponse } from 'next/server';
 import { logAdminAction } from '@/lib/audit-log';
 import { getDbExplorerPool } from '@/lib/db-explorer/pg-client';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
+import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 export async function POST(request: Request, { params }: { params: { requestId: string } }) {
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  // Approving a pending write is itself the execution trigger (see this
+  // route's header) — it must require exactly the same role the direct
+  // /execute path requires, or Support/Admin could rubber-stamp their way
+  // around the Super-Admin-only raw-SQL restriction.
+  const roleError = requireRole(ctx, ['super_admin']);
+  if (roleError) return roleError;
 
   const body = await request.json().catch(() => null);
   const decision = body?.decision as 'approve' | 'reject' | undefined;

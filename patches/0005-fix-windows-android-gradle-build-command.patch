@@ -1,0 +1,25 @@
+--- a/apps/mobile/.detoxrc.js
++++ b/apps/mobile/.detoxrc.js
+@@ -42,9 +42,20 @@
+       type: 'android.apk',
+       binaryPath: 'android/app/build/outputs/apk/debug/app-debug.apk',
+       testBinaryPath: 'android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk',
++      // Windows fix: `cd android && ./gradlew ...` assumes a Unix shell —
++      // Windows' default shell (cmd.exe, which Detox's exec runs under
++      // regardless of PowerShell being the interactive shell) doesn't
++      // support `./` script invocation or reliably chain `&&` the same
++      // way, giving "'.' is not recognized..." rather than a real Gradle
++      // error. `gradlew.bat` is the actual Windows-native wrapper Gradle
++      // ships alongside `gradlew` — invoking it directly by relative path
++      // avoids `cd`/`&&`/`./` entirely. This only works on Windows; if
++      // this project ever also builds e2e on macOS/Linux (CI, a
++      // contributor on Mac), that platform needs the original
++      // `cd android && ./gradlew ...` form back — worth making this
++      // conditional on `process.platform` at that point, not before.
+       build:
+-        'cd android && ./gradlew assembleDebug assembleAndroidTest ' +
+-        '-DtestBuildType=debug && cd ..',
++        'android\\gradlew.bat assembleDebug assembleAndroidTest -DtestBuildType=debug',
+     },
+   },
+   devices: {

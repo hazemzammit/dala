@@ -5,10 +5,12 @@ import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useAdminSession } from '@/lib/use-admin-session';
 
 // Doc 00 §0.3 item 7 — free-tier storage-overage policy, labels shown next
 // to each org's usage. Only meaningful for plan === 'free'; other plans
@@ -32,6 +34,11 @@ function formatBytes(bytes: number): string {
 }
 
 export function StorageUsageTable() {
+  // Doc 04 §4.3.8 / §4.3 intro — the cleanup action is a data-deleting
+  // action, outside Support's read-only boundary.
+  const { data: session } = useAdminSession();
+  const canCleanup = session?.admin.role === 'super_admin' || session?.admin.role === 'admin';
+
   const [rows, setRows] = useState<OrgStorageUsage[]>([]);
   const [totals, setTotals] = useState<{
     totalBytes: number;
@@ -40,6 +47,8 @@ export function StorageUsageTable() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cleaning, setCleaning] = useState(false);
+  const [cleanupResult, setCleanupResult] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +69,31 @@ export function StorageUsageTable() {
       cancelled = true;
     };
   }, []);
+
+  async function runCleanup() {
+    setCleaning(true);
+    setCleanupResult(null);
+    try {
+      const res = await fetch('/api/admin/storage/cleanup', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) {
+        setCleanupResult(data.error ?? 'Erreur inconnue.');
+        return;
+      }
+      setCleanupResult(
+        `${data.deletedCount} fichier(s) orphelin(s) supprimé(s) — ${formatBytes(data.freedBytes)} libéré(s).`,
+      );
+      // Refresh the table so the freed storage reflects immediately.
+      const refreshed = await fetch('/api/admin/storage');
+      const refreshedData = await refreshed.json();
+      if (refreshed.ok) {
+        setRows(refreshedData.rows ?? []);
+        setTotals(refreshedData.totals ?? null);
+      }
+    } finally {
+      setCleaning(false);
+    }
+  }
 
   const columns: DataTableColumn<OrgStorageUsage>[] = [
     {
@@ -131,13 +165,23 @@ export function StorageUsageTable() {
 
   return (
     <div className="mt-6">
-      {totals && (
-        <p className="mb-3 text-sm text-neutral-500">
-          {totals.orgCount} organisation{totals.orgCount === 1 ? '' : 's'} ·{' '}
-          {totals.totalFiles.toLocaleString('fr-FR')} fichier{totals.totalFiles === 1 ? '' : 's'} ·{' '}
-          {formatBytes(totals.totalBytes)} au total
-        </p>
-      )}
+      <div className="mb-3 flex items-center justify-between gap-4">
+        {totals && (
+          <p className="text-sm text-neutral-500">
+            {totals.orgCount} organisation{totals.orgCount === 1 ? '' : 's'} ·{' '}
+            {totals.totalFiles.toLocaleString('fr-FR')} fichier{totals.totalFiles === 1 ? '' : 's'}{' '}
+            · {formatBytes(totals.totalBytes)} au total
+          </p>
+        )}
+        {canCleanup && (
+          <div className="flex items-center gap-3">
+            {cleanupResult && <p className="text-xs text-neutral-500">{cleanupResult}</p>}
+            <Button variant="secondary" onClick={runCleanup} disabled={cleaning}>
+              {cleaning ? 'Nettoyage…' : 'Nettoyer les fichiers orphelins'}
+            </Button>
+          </div>
+        )}
+      </div>
       <DataTable
         columns={columns}
         rows={rows}

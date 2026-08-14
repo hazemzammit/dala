@@ -14,6 +14,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -41,6 +42,7 @@ import { supabase } from '@/lib/supabase';
  *    deliberate interim substitution, not an oversight.
  */
 export default function ClientPortalScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
   const [portalsByProject, setPortalsByProject] = useState<Record<string, ClientPortal>>({});
@@ -106,6 +108,7 @@ export default function ClientPortalScreen() {
       });
       if (rpcError) throw rpcError;
       haptics.confirm();
+      toast.success('Lien généré.');
       await load();
     } catch (e: any) {
       haptics.error();
@@ -138,6 +141,7 @@ export default function ClientPortalScreen() {
         });
         if (rpcError) throw rpcError;
         haptics.confirm();
+        toast.success('Code PIN désactivé.');
         await load();
       } catch (e: any) {
         haptics.error();
@@ -163,6 +167,7 @@ export default function ClientPortalScreen() {
       });
       if (rpcError) throw rpcError;
       haptics.confirm();
+      toast.success('Code PIN défini.');
       setPin('');
       await load();
     } catch (e: any) {
