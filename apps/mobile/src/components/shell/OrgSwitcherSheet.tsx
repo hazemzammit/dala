@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { router } from 'expo-router';
 import { CaretRightIcon, CheckIcon, SquaresFourIcon } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -6,6 +5,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Avatar } from '@/components/ui/Avatar';
 import { Sheet } from '@/components/ui/Sheet';
 import type { MyOrgSummary } from '@/lib/myOrgs';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/shell/OrgSwitcherSheet.tsx
@@ -50,6 +50,7 @@ export function OrgSwitcherSheet({
   activeOrgId,
   onSelect,
 }: OrgSwitcherSheetProps) {
+  const tc = useTokenColor();
   return (
     <Sheet visible={visible} onClose={onClose} title="Changer d'entreprise">
       <YStack gap="$1">
@@ -68,7 +69,7 @@ export function OrgSwitcherSheet({
             }}
             accessibilityRole="button"
           >
-            <SquaresFourIcon size={20} color={color.accent[600]} weight="bold" />
+            <SquaresFourIcon size={20} color={tc.accent600} weight="bold" />
             <YStack flex={1}>
               <Text fontSize={15} fontWeight="600" color="$accent600">
                 Vue d&apos;ensemble
@@ -77,7 +78,7 @@ export function OrgSwitcherSheet({
                 Toutes vos entreprises, côte à côte
               </Text>
             </YStack>
-            <CaretRightIcon size={16} color={color.accent[600]} />
+            <CaretRightIcon size={16} color={tc.accent600} />
           </XStack>
         )}
 
@@ -102,7 +103,7 @@ export function OrgSwitcherSheet({
                   {ROLE_LABEL[org.role]}
                 </Text>
               </YStack>
-              {active && <CheckIcon size={18} color={color.accent[600]} weight="bold" />}
+              {active && <CheckIcon size={18} color={tc.accent600} weight="bold" />}
             </XStack>
           );
         })}

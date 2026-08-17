@@ -2,12 +2,13 @@ import { requestDataExportSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { DownloadSimpleIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, Share } from 'react-native';
+import { Share } from 'react-native';
 import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -30,6 +31,7 @@ import { supabase } from '@/lib/supabase';
  * field.
  */
 export default function DataExportScreen() {
+  const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [allowed, setAllowed] = useState(false);
   const [format, setFormat] = useState<'csv' | 'json'>('csv');
@@ -71,7 +73,7 @@ export default function DataExportScreen() {
       await Share.share({ message: content, title: `Export Dala (${format.toUpperCase()})` });
       haptics.confirm();
     } catch (e: any) {
-      Alert.alert('Erreur', e?.message ?? "Impossible de générer l'export.");
+      toast.error(e?.message ?? "Impossible de générer l'export.");
       haptics.error();
     } finally {
       setExporting(false);

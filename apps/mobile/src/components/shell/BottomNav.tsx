@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { usePathname, router } from 'expo-router';
 import {
   BuildingsIcon,
@@ -9,6 +8,8 @@ import {
   type Icon,
 } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/shell/BottomNav.tsx
@@ -22,6 +23,12 @@ import { Text, XStack, YStack } from 'tamagui';
  * pathname-driven bar gives full control over the active-icon-weight swap
  * and the "Plus opens a sheet instead of navigating" behavior without
  * fighting the Tabs abstraction for a 5th non-navigating item.
+ *
+ * Dark-mode pass: this is the single most-visible component in the whole
+ * app (present on every contractor screen) and was reading icon colors
+ * directly from `@dala/design-tokens` — the highest-priority fix in the
+ * whole icon-color migration for exactly that visibility reason. Now uses
+ * `useTokenColor()`, same as the rest of this pass.
  */
 const TABS: { href: string; label: string; icon: Icon }[] = [
   { href: '/dashboard', label: 'Accueil', icon: HouseIcon },
@@ -36,6 +43,7 @@ interface BottomNavProps {
 
 export function BottomNav({ onPlusPress }: BottomNavProps) {
   const pathname = usePathname();
+  const tc = useTokenColor();
 
   return (
     <XStack
@@ -64,7 +72,7 @@ export function BottomNav({ onPlusPress }: BottomNavProps) {
             <TabIcon
               size={22}
               weight={active ? 'fill' : 'regular'}
-              color={active ? color.accent[600] : color.neutral[500]}
+              color={active ? tc.accent600 : tc.neutral500}
             />
             <Text
               fontSize={11}
@@ -84,7 +92,7 @@ export function BottomNav({ onPlusPress }: BottomNavProps) {
         onPress={onPlusPress}
         paddingHorizontal="$2"
       >
-        <DotsThreeIcon size={22} weight="regular" color={color.neutral[500]} />
+        <DotsThreeIcon size={22} weight="regular" color={tc.neutral500} />
         <Text fontSize={11} color="$neutral500">
           Plus
         </Text>

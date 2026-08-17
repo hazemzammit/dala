@@ -3,13 +3,15 @@ import { changePasswordSchema, totpCodeSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, CheckCircleIcon, ShieldCheckIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
 import { Sheet } from '@/components/ui/Sheet';
+import { useToast } from '@/components/ui/Toast';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -30,6 +32,7 @@ import { supabase } from '@/lib/supabase';
  * before reaching for a new dependency).
  */
 export default function SecuritySettingsScreen() {
+  const toast = useToast();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -40,6 +43,11 @@ export default function SecuritySettingsScreen() {
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState<string | null>(null);
   const [recoveryCodesRemaining, setRecoveryCodesRemaining] = useState<number | null>(null);
+  // Themed ConfirmDialog replacing Alert.alert's destructive two-button
+  // variant — disabling 2FA is security-relevant enough to keep as an
+  // interrupting confirm, just re-themed rather than the bare OS dialog.
+  const [disableConfirmOpen, setDisableConfirmOpen] = useState(false);
+  const [disabling, setDisabling] = useState(false);
 
   const [enrollSheetOpen, setEnrollSheetOpen] = useState(false);
   const [enrollStep, setEnrollStep] = useState<'qr' | 'codes'>('qr');
@@ -207,36 +215,31 @@ export default function SecuritySettingsScreen() {
   }
 
   function confirmDisable() {
-    Alert.alert(
-      'Désactiver la vérification en deux étapes ?',
-      'Votre compte ne sera plus protégé par un code supplémentaire à la connexion.',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Désactiver', style: 'destructive', onPress: () => void handleDisable() },
-      ],
-    );
+    setDisableConfirmOpen(true);
   }
 
   async function handleDisable() {
     if (!mfaFactorId) return;
+    setDisabling(true);
     const { error: unenrollError } = await supabase.auth.mfa.unenroll({ factorId: mfaFactorId });
+    setDisabling(false);
     if (unenrollError) {
-      Alert.alert(
-        'Erreur',
+      toast.error(
         'Impossible de désactiver la vérification en deux étapes. Reconnectez-vous et réessayez.',
       );
       haptics.error();
       return;
     }
     haptics.confirm();
+    toast.success('Vérification en deux étapes désactivée.');
+    setDisableConfirmOpen(false);
     await loadMfaStatus();
   }
 
   async function handleRegenerateCodes() {
     const { data: codes, error: codesError } = await supabase.rpc('generate_mfa_recovery_codes');
     if (codesError || !codes) {
-      Alert.alert(
-        'Erreur',
+      toast.error(
         'Reconnectez-vous (avec vérification en deux étapes) puis réessayez — la régénération nécessite une session vérifiée.',
       );
       return;
@@ -414,6 +417,16 @@ export default function SecuritySettingsScreen() {
           </YStack>
         )}
       </Sheet>
+
+      <ConfirmDialog
+        visible={disableConfirmOpen}
+        title="Désactiver la vérification en deux étapes ?"
+        description="Votre compte ne sera plus protégé par un code supplémentaire à la connexion."
+        confirmLabel="Désactiver"
+        loading={disabling}
+        onConfirm={() => void handleDisable()}
+        onCancel={() => setDisableConfirmOpen(false)}
+      />
     </YStack>
   );
 }

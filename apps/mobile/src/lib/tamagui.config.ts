@@ -53,12 +53,17 @@ const dalaConfig = createTamagui({
     ...tamaguiDefaultConfig.tokens,
     color: {
       ...tamaguiDefaultConfig.tokens.color,
+      // These flat tokens are the LIGHT-mode values, kept as the
+      // fallback Tamagui uses if a theme doesn't define a same-named
+      // key. See the `themes` block below for the actual dark-mode
+      // swap — every key here has a matching key there.
       accent600: color.accent[600],
       accent700: color.accent[700],
       accent50: color.accent[50],
       accent100: color.accent[100],
       neutral25: color.neutral[25],
       neutral100: color.neutral[100],
+      neutral200: color.neutral[200],
       neutral300: color.neutral[300],
       neutral500: color.neutral[500],
       neutral0: color.neutral[0],
@@ -72,6 +77,73 @@ const dalaConfig = createTamagui({
       control: radius.control,
       card: radius.card,
       sheet: radius.sheet,
+    },
+  },
+  /**
+   * UI/UX pass — dark mode. Tamagui resolves a `$name` reference by
+   * checking the ACTIVE THEME for a same-named key first, falling back to
+   * the flat `tokens.color` entry above only if the theme doesn't define
+   * it. Because every screen in this app already references color via
+   * plain flat-token shorthand (`$neutral0`, `$neutral900`, `$accent600`,
+   * etc.) rather than Tamagui's own semantic `$background`/`$color`
+   * slots, defining a `dark` theme with the SAME key names is genuinely
+   * enough to re-color every one of those ~700 existing references with
+   * zero screen-level changes — this is the "config swap, not a rewrite"
+   * the design-tokens file's own comment describes, and it's now actually
+   * true rather than aspirational (previously `color.dark` only had 3 of
+   * the ~14 keys screens actually use).
+   *
+   * ONE REAL, DISCLOSED LIMITATION: this re-colors every Tamagui-styled
+   * prop (`color="$neutral900"`, `backgroundColor="$neutral0"`, border
+   * colors, etc.) automatically, but NOT icon fills or SVG strokes that
+   * read a raw hex value directly from `@dala/design-tokens`'s `color`
+   * object in JS (e.g. `<MagnifyingGlassIcon color={color.neutral[500]}
+   * />`, used throughout the app for Phosphor icons and in Chart.tsx/
+   * Sparkline.tsx's SVG elements, because those props need a literal
+   * color string, not a Tamagui token). Those bypass Tamagui's
+   * theme-resolution entirely and will stay light-mode-colored even with
+   * this theme active. Fixing that fully means threading Tamagui's
+   * `useTheme()` hook through every icon call site across ~16 component
+   * files — a real, separate piece of work, not done in this pass.
+   */
+  themes: {
+    ...tamaguiDefaultConfig.themes,
+    light: {
+      ...tamaguiDefaultConfig.themes.light,
+      accent600: color.accent[600],
+      accent700: color.accent[700],
+      accent50: color.accent[50],
+      accent100: color.accent[100],
+      neutral25: color.neutral[25],
+      neutral100: color.neutral[100],
+      neutral200: color.neutral[200],
+      neutral300: color.neutral[300],
+      neutral500: color.neutral[500],
+      neutral0: color.neutral[0],
+      neutral900: color.neutral[900],
+      success: color.status.success,
+      warning: color.status.warning,
+      danger: color.status.danger,
+    },
+    dark: {
+      ...tamaguiDefaultConfig.themes.dark,
+      accent600: color.dark.accent600,
+      accent700: color.dark.accent700,
+      accent50: color.dark.accent50,
+      accent100: color.dark.accent100,
+      neutral25: color.dark.neutral25,
+      neutral100: color.dark.neutral100,
+      neutral200: color.dark.neutral200,
+      neutral300: color.dark.neutral300,
+      neutral500: color.dark.neutral500,
+      neutral0: color.dark.neutral0,
+      neutral900: color.dark.neutral900,
+      // WCAG AA-audited — see design-tokens' own comment on the dark
+      // block for the actual contrast-ratio numbers. `success`/`danger`
+      // differ from their light-mode values; `warning` doesn't need to.
+      success: color.dark.success,
+      warning: color.dark.warning,
+      danger: color.dark.danger,
     },
   },
 });

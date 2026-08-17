@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { router, usePathname } from 'expo-router';
 import { WarningIcon } from 'phosphor-react-native';
 import { useEffect, useState } from 'react';
@@ -6,6 +5,7 @@ import { Text, XStack } from 'tamagui';
 
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/PastDueBanner.tsx
@@ -47,6 +47,7 @@ import { supabase } from '@/lib/supabase';
 export function PastDueBanner() {
   const pathname = usePathname();
   const [pastDue, setPastDue] = useState(false);
+  const tc = useTokenColor();
 
   useEffect(() => {
     let cancelled = false;
@@ -87,8 +88,8 @@ export function PastDueBanner() {
       accessibilityRole="button"
       accessibilityLabel="Paiement en retard — voir la facturation"
     >
-      <WarningIcon size={14} color={color.status.danger} weight="fill" />
-      <Text color={color.status.danger} fontSize={12.5} fontWeight="500">
+      <WarningIcon size={14} color={tc.danger} weight="fill" />
+      <Text color={tc.danger} fontSize={12.5} fontWeight="500">
         Paiement en retard — certaines fonctionnalités sont limitées. Voir la facturation.
       </Text>
     </XStack>

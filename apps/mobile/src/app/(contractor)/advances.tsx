@@ -1,9 +1,11 @@
+import { color } from '@dala/design-tokens';
 import type { Advance, AttendanceStatus, SalaryCycle, Worker } from '@dala/shared-types';
 import { createAdvanceSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CheckIcon, HandCoinsIcon, PlusIcon, XIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -12,6 +14,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
+import { ProgressRing } from '@/components/ui/Progress';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -19,6 +22,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
+import { collapseOut, listReflow } from '@/lib/motion';
 import { cycleEndISO, cycleStartISO } from '@/lib/salaryCycle';
 import { supabase } from '@/lib/supabase';
 
@@ -44,6 +48,24 @@ import { supabase } from '@/lib/supabase';
  * same day had that day counted TWICE toward gross pay — a real
  * money-calculation bug, not a display nuance. See 0036's header for the
  * full audit of which screens this affected.
+ *
+ * UI/UX pass — two real bugs, not just polish:
+ *   1. Each worker's Net figure was hardcoded to `$accent600` (teal)
+ *      regardless of sign — since `net = gross - advancesGiven` can and
+ *      does go negative (a worker advanced more than they've earned so
+ *      far this cycle), a negative net was rendering in the same color as
+ *      a positive one. Now signed: `$success` when >= 0, `$danger` when
+ *      negative, matching the semantic color rule already established
+ *      elsewhere (Progress.tsx's threshold colors).
+ *   2. Approve/Refuse had no optimistic feedback beyond the button's own
+ *      inline spinner — the card just sat there through the round-trip.
+ *      Now wrapped in `Animated.View` with `collapseOut`/`listReflow`
+ *      (lib/motion.ts) so a resolved request visibly leaves the pending
+ *      list instead of silently re-rendering in place.
+ * Also added: pull-to-refresh, and a small `ProgressRing` next to the hero
+ * card showing paid/total workers this cycle — the screen's only progress
+ * indicator before this was buried inside each worker card's own bar-less
+ * Brut/Avances/Net row.
  */
 const AMOUNT_CHIPS = [20, 50, 100];
 
@@ -62,6 +84,7 @@ export default function AdvancesScreen() {
   const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [rows, setRows] = useState<WorkerPayroll[]>([]);
   const [pending, setPending] = useState<(Advance & { workerName: string })[]>([]);
   const [payingWorkerId, setPayingWorkerId] = useState<string | null>(null);
@@ -85,12 +108,14 @@ export default function AdvancesScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -156,12 +181,18 @@ export default function AdvancesScreen() {
     setPending(pendingRequests);
 
     setLoading(false);
+    setRefreshing(false);
   }
 
   const runningTotal = useMemo(
     () => rows.filter((r) => r.cycle?.status !== 'paid').reduce((sum, r) => sum + r.net, 0),
     [rows],
   );
+
+  // Paid/total ratio for the new hero-adjacent ring — was previously
+  // buried per-row as a StatusBadge with no aggregate view.
+  const paidCount = useMemo(() => rows.filter((r) => r.cycle?.status === 'paid').length, [rows]);
+  const paidPercent = rows.length > 0 ? Math.round((paidCount / rows.length) * 100) : 0;
 
   function openAdvanceSheet(workerId?: string) {
     setSelectedWorkerId(workerId ?? null);
@@ -332,7 +363,16 @@ export default function AdvancesScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
           Avances & paie
         </Text>
@@ -340,20 +380,41 @@ export default function AdvancesScreen() {
           Cycle du {cycleStart} au {cycleEnd}
         </Text>
 
-        <YStack
+        <XStack
           backgroundColor="$neutral900"
           borderRadius="$card"
           padding="$4"
           marginBottom="$4"
           alignItems="center"
+          justifyContent="space-between"
         >
-          <Text color="$neutral0" fontSize={13}>
-            Net restant à payer cette semaine
-          </Text>
-          <NumericText color="$neutral0" fontFamily="$display" fontSize={34} fontWeight="600">
-            {runningTotal.toFixed(0)} TND
-          </NumericText>
-        </YStack>
+          <YStack>
+            <Text color="$neutral0" fontSize={13} opacity={0.75}>
+              Net restant à payer cette semaine
+            </Text>
+            <NumericText color="$neutral0" fontFamily="$display" fontSize={34} fontWeight="600">
+              {runningTotal.toFixed(0)} TND
+            </NumericText>
+          </YStack>
+
+          {/* Paid/total ring — the screen's first aggregate progress
+              indicator; each worker card below only ever showed its own
+              row-level "Payé"/"En attente" badge, with no crew-wide view.
+              Explicit tintColor: ProgressRing's default threshold color
+              assumes high-value-is-bad (budget consumed), the opposite
+              semantic of a paid ratio, where high is good. */}
+          <ProgressRing
+            value={paidPercent}
+            size={54}
+            strokeWidth={5}
+            trackColor="#2A2C32"
+            tintColor={color.accent[600]}
+          >
+            <Text color="$neutral0" fontSize={12} fontWeight="700">
+              {paidCount}/{rows.length}
+            </Text>
+          </ProgressRing>
+        </XStack>
 
         {pending.length > 0 && (
           <YStack gap="$2" marginBottom="$4">
@@ -361,51 +422,47 @@ export default function AdvancesScreen() {
               Demandes en attente
             </Text>
             {pending.map((request) => (
-              <YStack
-                key={request.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$3"
-                gap="$2"
-              >
-                <XStack justifyContent="space-between" alignItems="center">
-                  <XStack gap="$3" alignItems="center" flex={1}>
-                    <Avatar name={request.workerName} size={32} />
-                    <YStack flex={1}>
-                      <Text fontSize={15} fontWeight="600">
-                        {request.workerName}
-                      </Text>
-                      {request.reason && (
-                        <Text fontSize={12} color="$neutral500">
-                          {request.reason}
+              <Animated.View key={request.id} exiting={collapseOut} layout={listReflow}>
+                <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$3" gap="$2">
+                  <XStack justifyContent="space-between" alignItems="center">
+                    <XStack gap="$3" alignItems="center" flex={1}>
+                      <Avatar name={request.workerName} size={32} />
+                      <YStack flex={1}>
+                        <Text fontSize={15} fontWeight="600">
+                          {request.workerName}
                         </Text>
-                      )}
-                    </YStack>
+                        {request.reason && (
+                          <Text fontSize={12} color="$neutral500">
+                            {request.reason}
+                          </Text>
+                        )}
+                      </YStack>
+                    </XStack>
+                    <NumericText fontSize={16} fontWeight="600">
+                      {Number(request.amount).toFixed(0)} TND
+                    </NumericText>
                   </XStack>
-                  <NumericText fontSize={16} fontWeight="600">
-                    {Number(request.amount).toFixed(0)} TND
-                  </NumericText>
-                </XStack>
-                <XStack gap="$2">
-                  <Button
-                    variant="secondary"
-                    fullWidth={false}
-                    icon={XIcon}
-                    loading={respondingId === request.id}
-                    onPress={() => handleReject(request.id)}
-                  >
-                    Refuser
-                  </Button>
-                  <Button
-                    fullWidth={false}
-                    icon={CheckIcon}
-                    loading={respondingId === request.id}
-                    onPress={() => handleApprove(request.id)}
-                  >
-                    Approuver
-                  </Button>
-                </XStack>
-              </YStack>
+                  <XStack gap="$2">
+                    <Button
+                      variant="secondary"
+                      fullWidth={false}
+                      icon={XIcon}
+                      loading={respondingId === request.id}
+                      onPress={() => handleReject(request.id)}
+                    >
+                      Refuser
+                    </Button>
+                    <Button
+                      fullWidth={false}
+                      icon={CheckIcon}
+                      loading={respondingId === request.id}
+                      onPress={() => handleApprove(request.id)}
+                    >
+                      Approuver
+                    </Button>
+                  </XStack>
+                </YStack>
+              </Animated.View>
             ))}
           </YStack>
         )}
@@ -459,7 +516,15 @@ export default function AdvancesScreen() {
                     <Text fontSize={12} color="$neutral500">
                       Net
                     </Text>
-                    <NumericText fontSize={15.5} fontWeight="700" color="$accent600">
+                    {/* Bug fix — this was hardcoded to $accent600 (teal)
+                        regardless of sign; net can go negative when a
+                        worker's advances this cycle exceed what they've
+                        earned so far. Now semantically signed. */}
+                    <NumericText
+                      fontSize={15.5}
+                      fontWeight="700"
+                      color={net >= 0 ? '$success' : '$danger'}
+                    >
                       {net.toFixed(0)} TND
                     </NumericText>
                   </YStack>

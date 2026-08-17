@@ -1,7 +1,8 @@
+import { color } from '@dala/design-tokens';
 import { useFocusEffect } from 'expo-router';
 import { GlobeHemisphereWestIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -53,6 +54,7 @@ interface OrgRollup {
 
 export default function VueEnsembleScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [rollups, setRollups] = useState<OrgRollup[]>([]);
 
   useFocusEffect(
@@ -61,13 +63,15 @@ export default function VueEnsembleScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const owned = await listOwnedOrganizations();
 
     const results = await Promise.all(owned.map((org) => fetchOrgRollup(org)));
     setRollups(results);
     setLoading(false);
+    setRefreshing(false);
   }
 
   if (loading) {
@@ -93,7 +97,16 @@ export default function VueEnsembleScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 48 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 48 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
           Vue d&apos;ensemble
         </Text>

@@ -3,7 +3,7 @@ import type { TrashItem } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
 import { BuildingsIcon, HardHatIcon, TrashIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -51,6 +51,7 @@ export default function TrashScreen() {
   const toast = useToast();
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -58,12 +59,14 @@ export default function TrashScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setItems([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -97,6 +100,7 @@ export default function TrashScreen() {
 
     setItems(merged);
     setLoading(false);
+    setRefreshing(false);
   }
 
   function daysRemaining(deletedAt: string): number {
@@ -152,7 +156,16 @@ export default function TrashScreen() {
         </Text>
       </YStack>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingTop: 0 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <YStack gap="$2">
           {items.map((item) => {
             const remaining = daysRemaining(item.deleted_at);

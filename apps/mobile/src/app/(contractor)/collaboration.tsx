@@ -1,9 +1,10 @@
+import { color } from '@dala/design-tokens';
 import type { Project, ProjectInvitation, ProjectMembership } from '@dala/shared-types';
 import { inviteOrgToProjectSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { HandshakeIcon, PlusIcon, UsersThreeIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView, Switch } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -16,6 +17,7 @@ import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
+import { Toggle } from '@/components/ui/Toggle';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -61,6 +63,7 @@ interface TradeProjectRow {
 export default function CollaborationScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [ledProjects, setLedProjects] = useState<LedProjectRow[]>([]);
   const [tradeProjects, setTradeProjects] = useState<TradeProjectRow[]>([]);
 
@@ -79,11 +82,13 @@ export default function CollaborationScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -157,6 +162,7 @@ export default function CollaborationScreen() {
     setTradeProjects(tradeRows);
 
     setLoading(false);
+    setRefreshing(false);
   }
 
   function openInvite() {
@@ -277,7 +283,16 @@ export default function CollaborationScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
           Collaboration
         </Text>
@@ -364,11 +379,12 @@ export default function CollaborationScreen() {
                       {row.leadOrgName} verra un % agrégé, jamais le détail de mes dépenses.
                     </Text>
                   </YStack>
-                  <Switch
+                  <Toggle
                     value={row.membership.budget_rollup_opt_in}
-                    onValueChange={(v) =>
+                    onChange={(v) =>
                       toggleMembershipFlag(row.membership, 'budget_rollup_opt_in', v)
                     }
+                    accessibilityLabel="Partager mon budget consommé"
                   />
                 </XStack>
 
@@ -381,11 +397,12 @@ export default function CollaborationScreen() {
                       Masque ma ligne d&apos;attribution sur les rapports de {row.leadOrgName}.
                     </Text>
                   </YStack>
-                  <Switch
+                  <Toggle
                     value={row.membership.report_branding_opt_out}
-                    onValueChange={(v) =>
+                    onChange={(v) =>
                       toggleMembershipFlag(row.membership, 'report_branding_opt_out', v)
                     }
+                    accessibilityLabel="Ne pas apparaître dans le rapport"
                   />
                 </XStack>
               </YStack>

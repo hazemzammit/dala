@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { router } from 'expo-router';
 import {
   BuildingsIcon,
@@ -21,6 +20,8 @@ import {
 } from 'phosphor-react-native';
 import { Modal, Pressable } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/shell/PlusSheet.tsx
@@ -61,6 +62,7 @@ interface PlusSheetProps {
 }
 
 export function PlusSheet({ visible, onClose }: PlusSheetProps) {
+  const tc = useTokenColor();
   function navigate(href: string) {
     onClose();
     router.push(href as never);
@@ -82,7 +84,7 @@ export function PlusSheet({ visible, onClose }: PlusSheetProps) {
             Plus
           </Text>
           <View onPress={onClose} accessibilityRole="button" accessibilityLabel="Fermer">
-            <XIcon size={20} color={color.neutral[500]} />
+            <XIcon size={20} color={tc.neutral500} />
           </View>
         </XStack>
 
@@ -98,7 +100,7 @@ export function PlusSheet({ visible, onClose }: PlusSheetProps) {
                 paddingVertical={12}
                 onPress={() => navigate(item.href)}
               >
-                <ItemIcon size={20} color={color.neutral[900]} />
+                <ItemIcon size={20} color={tc.neutral900} />
                 <Text fontSize={15.5} color="$neutral900">
                   {item.label}
                 </Text>

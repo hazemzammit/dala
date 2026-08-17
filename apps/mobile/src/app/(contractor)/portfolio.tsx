@@ -1,8 +1,9 @@
+import { color } from '@dala/design-tokens';
 import type { Project } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
 import { BuildingsIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -89,6 +90,7 @@ function todayISO(): string {
 export default function PortfolioScreen() {
   const [rollups, setRollups] = useState<ProjectRollup[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -96,12 +98,14 @@ export default function PortfolioScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setRollups([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -155,6 +159,7 @@ export default function PortfolioScreen() {
 
     setRollups(withRollups);
     setLoading(false);
+    setRefreshing(false);
   }
 
   if (loading) {
@@ -189,7 +194,16 @@ export default function PortfolioScreen() {
         </Text>
       </YStack>
 
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingTop: 0 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <YStack gap="$2">
           {rollups.map((p) => {
             const budgetTotal = p.budget_total ?? 0;

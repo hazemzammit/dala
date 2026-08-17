@@ -1,5 +1,6 @@
-import { color } from '@dala/design-tokens';
 import Svg, { Line, Path, Rect } from 'react-native-svg';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/Sparkline.tsx
@@ -11,6 +12,11 @@ import Svg, { Line, Path, Rect } from 'react-native-svg';
  * module) rather than pulling in victory-native or similar for what is,
  * for this app's actual data shapes, a small fixed set of points with no
  * need for pan/zoom/tooltips.
+ *
+ * Dark-mode pass: the `color` prop's default used to be a light-only
+ * `color.accent[600]` literal baked into the parameter list — moved to
+ * `useTokenColor()`, resolved inside the function body, same reasoning as
+ * `Progress.tsx`'s `trackColor` fix.
  */
 interface SparklineProps {
   data: number[];
@@ -19,12 +25,9 @@ interface SparklineProps {
   color?: string;
 }
 
-export function SparklineBars({
-  data,
-  width = 120,
-  height = 32,
-  color: tint = color.accent[600],
-}: SparklineProps) {
+export function SparklineBars({ data, width = 120, height = 32, color }: SparklineProps) {
+  const tc = useTokenColor();
+  const tint = color ?? tc.accent600;
   if (data.length === 0) return null;
   const max = Math.max(...data, 1);
   const gap = 3;
@@ -54,12 +57,9 @@ export function SparklineBars({
   );
 }
 
-export function SparklineLine({
-  data,
-  width = 120,
-  height = 32,
-  color: tint = color.accent[600],
-}: SparklineProps) {
+export function SparklineLine({ data, width = 120, height = 32, color }: SparklineProps) {
+  const tc = useTokenColor();
+  const tint = color ?? tc.accent600;
   if (data.length < 2) return null;
   const max = Math.max(...data, 1);
   const min = Math.min(...data, 0);

@@ -1,10 +1,11 @@
+import { color } from '@dala/design-tokens';
 import type { Material } from '@dala/shared-types';
 import { requestMaterialSchema } from '@dala/validation';
 import { Q } from '@nozbe/watermelondb';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, PackageIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -12,6 +13,7 @@ import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { database } from '@/db';
 import { createWithClientId } from '@/db/createWithClientId';
 import MaterialRequest from '@/db/models/MaterialRequest';
@@ -72,7 +74,9 @@ const STATUS_VARIANT: Record<Material['status'], 'neutral' | 'success' | 'danger
 };
 
 export default function MaterialRequestScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -115,8 +119,9 @@ export default function MaterialRequestScreen() {
     };
   }
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const {
         data: { session },
@@ -151,6 +156,7 @@ export default function MaterialRequestScreen() {
       setHistory(localRequests.map(toMaterialShape));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -196,6 +202,7 @@ export default function MaterialRequestScreen() {
       void runSync();
 
       haptics.confirm();
+      toast.success('Demande envoyée.');
       setItem('');
       setQuantity('');
       setUrgency('normal');
@@ -219,7 +226,16 @@ export default function MaterialRequestScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <XStack alignItems="center" gap="$2" marginBottom="$4" onPress={() => router.back()}>
           <ArrowLeftIcon size={20} />
           <Text fontSize={15} color="$neutral500">

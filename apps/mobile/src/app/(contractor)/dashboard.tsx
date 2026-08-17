@@ -3,11 +3,12 @@ import type { AttendanceStatus, Project, Worker } from '@dala/shared-types';
 import { router, useFocusEffect } from 'expo-router';
 import { BuildingsIcon, CaretDownIcon, CaretRightIcon, HandCoinsIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { OrgSwitcherSheet } from '@/components/shell/OrgSwitcherSheet';
 import { Avatar } from '@/components/ui/Avatar';
+import { Carousel } from '@/components/ui/Carousel';
 import { NumericText } from '@/components/ui/NumericText';
 import { ProgressBar } from '@/components/ui/Progress';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
@@ -41,6 +42,11 @@ import { supabase } from '@/lib/supabase';
  *   - Profile-completion checklist / unverified-email banner: real §3.9
  *     elements, still out of scope for this pass — pulls from four
  *     different tables per Doc 01 §1.3.12–13, sized like its own phase.
+ *
+ * UI/UX pass (post-Phase-27 audit): added pull-to-refresh on the main
+ * ScrollView (was missing on every list screen in the app) and upgraded
+ * the "Chantiers actifs" row from a plain horizontal ScrollView to the new
+ * `Carousel` component — see that section's own comment below.
  *
  * NEWLY BUILT this phase:
  *   - Hero StatCard: "Net à payer cette semaine" — the same unpaid-net
@@ -106,6 +112,7 @@ export default function DashboardScreen() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [firstName, setFirstName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [netThisWeek, setNetThisWeek] = useState(0);
   const [payrollDeltaPercent, setPayrollDeltaPercent] = useState<number | null>(null);
@@ -120,8 +127,9 @@ export default function DashboardScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const [all, owned, active] = await Promise.all([
       listMyOrganizations(),
       listOwnedOrganizations(),
@@ -138,6 +146,7 @@ export default function DashboardScreen() {
       loadPayrollSummary(active),
     ]);
     setLoading(false);
+    setRefreshing(false);
   }
 
   async function loadGreetingName() {
@@ -356,7 +365,16 @@ export default function DashboardScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <YStack gap="$3">
           {loading ? (
             <SkeletonBlock width="60%" height={23} />
@@ -492,9 +510,13 @@ export default function DashboardScreen() {
           )}
         </YStack>
 
-        {/* Active projects — was entirely absent; a horizontal carousel
-            with the app's first on-screen progress bar, reusing
-            projects.tsx's own budget-consumed calculation. */}
+        {/* Active projects — a horizontal carousel with the app's first
+            on-screen progress bar, reusing projects.tsx's own
+            budget-consumed calculation. UI/UX pass: upgraded from a plain
+            <ScrollView horizontal> to the new `Carousel` component, which
+            adds page-snap + a dot indicator — with more than 2-3 active
+            chantiers there was previously no sense of "how many more are
+            there" while scrolling. */}
         <YStack gap="$2.5">
           <XStack justifyContent="space-between" alignItems="center">
             <Text
@@ -532,58 +554,58 @@ export default function DashboardScreen() {
               </Text>
             </YStack>
           ) : (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <XStack gap="$2.5">
-                {activeProjects.map((project) => {
-                  const consumedPercent =
-                    project.budget_total && project.budget_total > 0
-                      ? Math.min(
-                          100,
-                          Math.round((project.consumedTotal / project.budget_total) * 100),
-                        )
-                      : null;
-                  return (
-                    <YStack
-                      key={project.id}
-                      width={220}
-                      backgroundColor="$neutral0"
-                      borderRadius="$card"
-                      padding="$4"
-                      gap="$2"
-                      onPress={() => router.push(`/project/${project.id}` as never)}
-                      accessibilityRole="button"
-                      accessibilityLabel={project.name}
-                    >
-                      <Text fontSize={15} fontWeight="600" numberOfLines={1}>
-                        {project.name}
+            <Carousel
+              data={activeProjects}
+              keyExtractor={(project) => project.id}
+              itemWidth={220}
+              contentPaddingHorizontal={0}
+              renderItem={(project) => {
+                const consumedPercent =
+                  project.budget_total && project.budget_total > 0
+                    ? Math.min(
+                        100,
+                        Math.round((project.consumedTotal / project.budget_total) * 100),
+                      )
+                    : null;
+                return (
+                  <YStack
+                    backgroundColor="$neutral0"
+                    borderRadius="$card"
+                    padding="$4"
+                    gap="$2"
+                    onPress={() => router.push(`/project/${project.id}` as never)}
+                    accessibilityRole="button"
+                    accessibilityLabel={project.name}
+                  >
+                    <Text fontSize={15} fontWeight="600" numberOfLines={1}>
+                      {project.name}
+                    </Text>
+                    {project.client_name && (
+                      <Text fontSize={12.5} color="$neutral500" numberOfLines={1}>
+                        {project.client_name}
                       </Text>
-                      {project.client_name && (
-                        <Text fontSize={12.5} color="$neutral500" numberOfLines={1}>
-                          {project.client_name}
-                        </Text>
-                      )}
-                      {consumedPercent !== null ? (
-                        <YStack gap="$1" marginTop="$1">
-                          <XStack justifyContent="space-between">
-                            <Text fontSize={11.5} color="$neutral500">
-                              Budget consommé
-                            </Text>
-                            <NumericText fontSize={11.5} fontWeight="600">
-                              {consumedPercent}%
-                            </NumericText>
-                          </XStack>
-                          <ProgressBar value={consumedPercent} height={5} />
-                        </YStack>
-                      ) : (
-                        <Text fontSize={11.5} color="$neutral500" marginTop="$1">
-                          Pas de budget défini
-                        </Text>
-                      )}
-                    </YStack>
-                  );
-                })}
-              </XStack>
-            </ScrollView>
+                    )}
+                    {consumedPercent !== null ? (
+                      <YStack gap="$1" marginTop="$1">
+                        <XStack justifyContent="space-between">
+                          <Text fontSize={11.5} color="$neutral500">
+                            Budget consommé
+                          </Text>
+                          <NumericText fontSize={11.5} fontWeight="600">
+                            {consumedPercent}%
+                          </NumericText>
+                        </XStack>
+                        <ProgressBar value={consumedPercent} height={5} />
+                      </YStack>
+                    ) : (
+                      <Text fontSize={11.5} color="$neutral500" marginTop="$1">
+                        Pas de budget défini
+                      </Text>
+                    )}
+                  </YStack>
+                );
+              }}
+            />
           )}
         </YStack>
 

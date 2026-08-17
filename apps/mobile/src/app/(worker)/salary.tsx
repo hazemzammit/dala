@@ -1,8 +1,9 @@
+import { color } from '@dala/design-tokens';
 import type { AttendanceStatus, SalaryCycle } from '@dala/shared-types';
 import { router, useFocusEffect } from 'expo-router';
 import { HandCoinsIcon, WalletIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -57,6 +58,7 @@ interface DayRow {
 
 export default function WorkerSalaryScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [dailyRate, setDailyRate] = useState(0);
   const [days, setDays] = useState<DayRow[]>([]);
   const [advancesTotal, setAdvancesTotal] = useState(0);
@@ -71,8 +73,9 @@ export default function WorkerSalaryScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const {
         data: { session },
@@ -124,6 +127,7 @@ export default function WorkerSalaryScreen() {
       setCycle((cycles as SalaryCycle | null) ?? null);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -157,7 +161,16 @@ export default function WorkerSalaryScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$1">
           <Text fontFamily="$display" fontSize={23} fontWeight="600">
             Mon salaire

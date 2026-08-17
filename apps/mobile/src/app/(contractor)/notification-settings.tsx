@@ -2,10 +2,12 @@ import { notificationPrefsSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView, Switch } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { useToast } from '@/components/ui/Toast';
+import { Toggle } from '@/components/ui/Toggle';
 import { haptics } from '@/lib/haptics';
 import { registerForPushNotifications } from '@/lib/pushNotifications';
 import { supabase } from '@/lib/supabase';
@@ -55,6 +57,7 @@ const DEFAULT_PREFS: Prefs = {
 };
 
 export default function NotificationSettingsScreen() {
+  const toast = useToast();
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -109,13 +112,11 @@ export default function NotificationSettingsScreen() {
     if (anyEnabled) {
       const result = await registerForPushNotifications();
       if ('error' in result && result.error === 'permission_denied') {
-        Alert.alert(
-          'Notifications désactivées',
+        toast.info(
           'Activez les notifications pour cette application dans les réglages de votre téléphone pour recevoir ces alertes.',
         );
       } else if ('error' in result && result.error === 'unsupported_in_expo_go') {
-        Alert.alert(
-          'Aperçu limité',
+        toast.info(
           "Les notifications push nécessitent une build de développement — vos préférences sont bien enregistrées, mais les alertes ne s'afficheront pas dans Expo Go.",
         );
       } else if ('error' in result && result.error === 'token_unavailable') {
@@ -123,7 +124,7 @@ export default function NotificationSettingsScreen() {
         // — see pushNotifications.ts's own header. Preferences below still
         // save normally; this just means push delivery itself won't work
         // until that's set up, which is expected on a dev build and not
-        // worth alarming the person with an Alert over every time they
+        // worth alarming the person with a toast over every time they
         // toggle a category.
       }
     }
@@ -134,7 +135,7 @@ export default function NotificationSettingsScreen() {
       .eq('id', session.user.id);
 
     if (error) {
-      Alert.alert('Erreur', 'Impossible de mettre à jour vos préférences.');
+      toast.error('Impossible de mettre à jour vos préférences.');
       haptics.error();
     } else {
       haptics.confirm();
@@ -229,7 +230,7 @@ function ToggleRow({
   return (
     <XStack justifyContent="space-between" alignItems="center">
       <Text fontSize={14.5}>{label}</Text>
-      <Switch value={value} onValueChange={onChange} disabled={disabled} />
+      <Toggle value={value} onChange={onChange} disabled={disabled} accessibilityLabel={label} />
     </XStack>
   );
 }

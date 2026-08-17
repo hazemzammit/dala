@@ -3,7 +3,7 @@ import type { Organization } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
 import { ReceiptIcon, WarningIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -135,6 +135,7 @@ export default function BillingScreen() {
   const toast = useToast();
   const [org, setOrg] = useState<OrgWithBilling | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
   const [storageLoading, setStorageLoading] = useState(true);
   const [cycles, setCycles] = useState<BillingCycleRow[]>([]);
@@ -146,11 +147,13 @@ export default function BillingScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setLoading(false);
+      setRefreshing(false);
       setStorageLoading(false);
       setCyclesLoading(false);
       return;
@@ -158,6 +161,7 @@ export default function BillingScreen() {
     const { data } = await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle();
     setOrg(data as OrgWithBilling | null);
     setLoading(false);
+    setRefreshing(false);
 
     // Separate loading state, deliberately not awaited above — the
     // recursive org-files listing is slower and shouldn't block the plan
@@ -208,7 +212,16 @@ export default function BillingScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
           Facturation
         </Text>

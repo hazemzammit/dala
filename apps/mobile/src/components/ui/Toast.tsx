@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { CheckCircleIcon, InfoIcon, WarningCircleIcon, XIcon } from 'phosphor-react-native';
 import { createContext, useCallback, useContext, useRef, useState } from 'react';
 import { Pressable } from 'react-native';
@@ -10,6 +9,8 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { Text, View, XStack } from 'tamagui';
+
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/Toast.tsx
@@ -47,13 +48,10 @@ interface ToastContextValue {
 
 const ToastContext = createContext<ToastContextValue | null>(null);
 
-const VARIANT_CONFIG: Record<
-  ToastVariant,
-  { icon: typeof CheckCircleIcon; color: string; background: string }
-> = {
-  success: { icon: CheckCircleIcon, color: color.status.success, background: '#EAF7EF' },
-  error: { icon: WarningCircleIcon, color: color.status.danger, background: '#FBEAE9' },
-  info: { icon: InfoIcon, color: color.accent[600], background: color.accent[50] },
+const ICONS: Record<ToastVariant, typeof CheckCircleIcon> = {
+  success: CheckCircleIcon,
+  error: WarningCircleIcon,
+  info: InfoIcon,
 };
 
 const AUTO_DISMISS_MS = 3500;
@@ -61,8 +59,19 @@ const AUTO_DISMISS_MS = 3500;
 function ToastRow({ item, onDismiss }: { item: ToastItem; onDismiss: (id: number) => void }) {
   const translateY = useSharedValue(-24);
   const opacity = useSharedValue(0);
-  const config = VARIANT_CONFIG[item.variant];
-  const Icon = config.icon;
+  // Dark-mode pass — VARIANT_CONFIG used to be a module-level constant
+  // reading `color.status.*`/`color.accent[600]` directly, plus hardcoded
+  // light pastel backgrounds ('#EAF7EF'/'#FBEAE9') matching no token.
+  // Module-level constants can't call hooks, so this moved inside the
+  // component (`ToastRow` renders per-toast anyway) to use
+  // `useTokenColor()` + the shared `toRgba` tint helper instead.
+  const tc = useTokenColor();
+  const config = {
+    success: { color: tc.success, background: toRgba(tc.success, 0.12) },
+    error: { color: tc.danger, background: toRgba(tc.danger, 0.12) },
+    info: { color: tc.accent600, background: tc.accent50 },
+  }[item.variant];
+  const Icon = ICONS[item.variant];
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Enter animation + auto-dismiss timer, both fired once per mounted row.

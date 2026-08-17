@@ -1,3 +1,4 @@
+import { color } from '@dala/design-tokens';
 import type { Project, SiteLog, Worker } from '@dala/shared-types';
 import { useAudioPlayer } from 'expo-audio';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
@@ -10,10 +11,12 @@ import {
   PlayIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
+import { Avatar } from '@/components/ui/Avatar';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ImageViewer } from '@/components/ui/ImageViewer';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonTimeline } from '@/components/ui/Skeleton';
 import { getActiveOrgId } from '@/lib/activeOrg';
@@ -52,10 +55,19 @@ import { supabase } from '@/lib/supabase';
  * released" every time the detail sheet closed. If future playback
  * controls need cleanup, hook into that lifecycle rather than re-adding
  * a manual `.remove()` call.
+ *
+ * UI/UX pass: this was the thinnest screen in the app relative to what a
+ * site journal should be — a flat card list with no sense that entries are
+ * sequential. Adds a connecting timeline rail (vertical line + per-entry
+ * dot) down the left edge, an author `Avatar` per entry (previously text
+ * only), and pull-to-refresh (the signed thumbnail/voice URLs this screen
+ * mints expire after an hour per the storage note above, so refresh is
+ * more than cosmetic here).
  */
 export default function JournalScreen() {
   const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [logs, setLogs] = useState<SiteLog[]>([]);
@@ -65,6 +77,7 @@ export default function JournalScreen() {
   const [detailId, setDetailId] = useState<string | null>(null);
   const [detailPhotoUrl, setDetailPhotoUrl] = useState<string | null>(null);
   const [detailVoiceUrl, setDetailVoiceUrl] = useState<string | null>(null);
+  const [fullScreenPhoto, setFullScreenPhoto] = useState(false);
 
   const player = useAudioPlayer(detailVoiceUrl ?? undefined);
 
@@ -80,11 +93,13 @@ export default function JournalScreen() {
     }, [selectedProjectId]),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -109,6 +124,7 @@ export default function JournalScreen() {
       await loadLogs(initial);
     }
     setLoading(false);
+    setRefreshing(false);
   }
 
   async function loadLogs(projectId: string) {
@@ -174,7 +190,16 @@ export default function JournalScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         {deepLinkProjectId ? (
           <XStack alignItems="center" gap="$3" marginBottom="$4">
             <XStack
@@ -229,58 +254,94 @@ export default function JournalScreen() {
             Aucune entrée pour ce chantier.
           </Text>
         ) : (
-          <YStack gap="$2">
-            {logs.map((log) => (
-              <XStack
-                key={log.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$3"
-                alignItems="center"
-                gap="$3"
-                onPress={() => openDetail(log)}
-              >
-                {thumbUrls[log.id] ? (
-                  <Image
-                    source={{ uri: thumbUrls[log.id]! }}
-                    width={56}
-                    height={56}
-                    borderRadius={12}
-                  />
-                ) : (
-                  <YStack
-                    width={56}
-                    height={56}
-                    borderRadius={12}
-                    backgroundColor="$neutral100"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    {log.voice_note_url ? (
-                      <MicrophoneIcon size={22} color="#8A8F98" />
-                    ) : (
-                      <NoteIcon size={22} color="#8A8F98" />
-                    )}
+          <YStack position="relative">
+            {/* Timeline rail — a single continuous line down the left
+                edge, with a dot per entry. Was entirely absent; the
+                screen's own header comment already calls this a
+                "reverse-chronological timeline," but nothing visually
+                connected entries before this. */}
+            <YStack
+              position="absolute"
+              left={7}
+              top={28}
+              bottom={28}
+              width={2}
+              backgroundColor="$neutral200"
+            />
+            <YStack gap="$3">
+              {logs.map((log) => (
+                <XStack key={log.id} alignItems="flex-start" gap="$3">
+                  <YStack alignItems="center" width={16} paddingTop={26} zIndex={1}>
+                    <YStack
+                      width={10}
+                      height={10}
+                      borderRadius={5}
+                      backgroundColor="$accent600"
+                      borderWidth={2}
+                      borderColor="$neutral25"
+                    />
                   </YStack>
-                )}
-                <YStack flex={1} gap="$1">
-                  <Text fontSize={14.5} numberOfLines={2}>
-                    {log.note_text || log.caption || 'Photo de chantier'}
-                  </Text>
-                  <XStack alignItems="center" gap="$2">
-                    <Text fontSize={12} color="$neutral500">
-                      {loggedByName(log)} · {new Date(log.created_at).toLocaleDateString('fr-TN')}
-                    </Text>
-                    {log.location_lat != null && <MapPinIcon size={13} color="#8A8F98" />}
+                  <XStack
+                    flex={1}
+                    backgroundColor="$neutral0"
+                    borderRadius="$card"
+                    padding="$3"
+                    alignItems="center"
+                    gap="$3"
+                    onPress={() => openDetail(log)}
+                  >
+                    {thumbUrls[log.id] ? (
+                      <Image
+                        source={{ uri: thumbUrls[log.id]! }}
+                        width={56}
+                        height={56}
+                        borderRadius={12}
+                      />
+                    ) : (
+                      <YStack
+                        width={56}
+                        height={56}
+                        borderRadius={12}
+                        backgroundColor="$neutral100"
+                        alignItems="center"
+                        justifyContent="center"
+                      >
+                        {log.voice_note_url ? (
+                          <MicrophoneIcon size={22} color="#8A8F98" />
+                        ) : (
+                          <NoteIcon size={22} color="#8A8F98" />
+                        )}
+                      </YStack>
+                    )}
+                    <YStack flex={1} gap="$1">
+                      <Text fontSize={14.5} numberOfLines={2}>
+                        {log.note_text || log.caption || 'Photo de chantier'}
+                      </Text>
+                      <XStack alignItems="center" gap="$1.5">
+                        <Avatar name={loggedByName(log)} size={16} />
+                        <Text fontSize={12} color="$neutral500">
+                          {loggedByName(log)} ·{' '}
+                          {new Date(log.created_at).toLocaleDateString('fr-TN')}
+                        </Text>
+                        {log.location_lat != null && <MapPinIcon size={13} color="#8A8F98" />}
+                      </XStack>
+                    </YStack>
                   </XStack>
-                </YStack>
-              </XStack>
-            ))}
+                </XStack>
+              ))}
+            </YStack>
           </YStack>
         )}
       </ScrollView>
 
-      <Sheet visible={Boolean(detail)} onClose={() => setDetailId(null)} title="Détail">
+      <Sheet
+        visible={Boolean(detail)}
+        onClose={() => {
+          setDetailId(null);
+          setFullScreenPhoto(false);
+        }}
+        title="Détail"
+      >
         {detail && (
           <YStack gap="$3">
             {detailPhotoUrl && (
@@ -290,6 +351,9 @@ export default function JournalScreen() {
                 height={240}
                 borderRadius={16}
                 resizeMode="cover"
+                onPress={() => setFullScreenPhoto(true)}
+                accessibilityRole="button"
+                accessibilityLabel="Agrandir la photo"
               />
             )}
             {detailVoiceUrl && (
@@ -325,6 +389,12 @@ export default function JournalScreen() {
           </YStack>
         )}
       </Sheet>
+
+      <ImageViewer
+        visible={fullScreenPhoto}
+        uri={detailPhotoUrl}
+        onClose={() => setFullScreenPhoto(false)}
+      />
     </YStack>
   );
 }

@@ -14,17 +14,19 @@ import {
   UsersThreeIcon,
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -71,7 +73,9 @@ const ROLE_LABEL: Record<MemberRow['role'], string> = {
 };
 
 export default function TeamMembersScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -79,6 +83,9 @@ export default function TeamMembersScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
 
   const [roleSheetMember, setRoleSheetMember] = useState<MemberRow | null>(null);
+  // Themed ConfirmDialog replacing Alert.alert's destructive two-button variant.
+  const [removeTarget, setRemoveTarget] = useState<MemberRow | null>(null);
+  const [removing, setRemoving] = useState(false);
 
   const [inviteSheetOpen, setInviteSheetOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -98,11 +105,13 @@ export default function TeamMembersScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const activeOrgId = await getActiveOrgId();
     if (!activeOrgId) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     setOrgId(activeOrgId);
@@ -148,6 +157,7 @@ export default function TeamMembersScreen() {
 
     setInvitations((invitationRows ?? []) as InvitationRow[]);
     setLoading(false);
+    setRefreshing(false);
   }
 
   // Fire-and-report, never fire-and-throw: a failed email send shouldn't
@@ -195,6 +205,7 @@ export default function TeamMembersScreen() {
 
       const warning = await sendInvitationEmail(invitationId);
       haptics.confirm();
+      toast.success('Invitation envoyée.');
       setInviteSheetOpen(false);
       setInviteEmail('');
       setInviteRole('viewer');
@@ -219,15 +230,15 @@ export default function TeamMembersScreen() {
         p_role: inv.role,
       });
       if (error || !invitationId) {
-        Alert.alert('Erreur', "Impossible de renvoyer l'invitation.");
+        toast.error("Impossible de renvoyer l'invitation.");
         haptics.error();
         return;
       }
       const warning = await sendInvitationEmail(invitationId);
       if (warning) {
-        Alert.alert('Invitation renvoyée', warning);
+        toast.info(warning);
       } else {
-        Alert.alert('Invitation renvoyée', `Un nouvel e-mail a été envoyé à ${inv.invited_email}.`);
+        toast.success(`Un nouvel e-mail a été envoyé à ${inv.invited_email}.`);
       }
       haptics.confirm();
       await load();
@@ -260,8 +271,7 @@ export default function TeamMembersScreen() {
       p_role: parsed.data.role,
     });
     if (error) {
-      Alert.alert(
-        'Erreur',
+      toast.error(
         error.message.includes('propriétaire')
           ? 'Cette organisation doit conserver au moins un propriétaire.'
           : 'Impossible de modifier ce rôle.',
@@ -270,30 +280,26 @@ export default function TeamMembersScreen() {
       return;
     }
     haptics.confirm();
+    toast.success('Rôle mis à jour.');
     setRoleSheetMember(null);
     await load();
   }
 
   function confirmRemove(member: MemberRow) {
-    Alert.alert(
-      'Retirer ce membre ?',
-      `${member.full_name} perdra l'accès à cette organisation. Son compte n'est pas supprimé.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Retirer', style: 'destructive', onPress: () => void handleRemove(member) },
-      ],
-    );
+    setRoleSheetMember(null);
+    setRemoveTarget(member);
   }
 
-  async function handleRemove(member: MemberRow) {
-    if (!orgId) return;
+  async function handleRemove() {
+    if (!orgId || !removeTarget) return;
+    setRemoving(true);
     const { error } = await supabase.rpc('remove_organization_member', {
       p_org_id: orgId,
-      p_user_id: member.user_id,
+      p_user_id: removeTarget.user_id,
     });
+    setRemoving(false);
     if (error) {
-      Alert.alert(
-        'Erreur',
+      toast.error(
         error.message.includes('propriétaire')
           ? 'Cette organisation doit conserver au moins un propriétaire.'
           : 'Impossible de retirer ce membre.',
@@ -302,6 +308,8 @@ export default function TeamMembersScreen() {
       return;
     }
     haptics.confirm();
+    toast.success(`${removeTarget.full_name} a été retiré.`);
+    setRemoveTarget(null);
     await load();
   }
 
@@ -336,7 +344,16 @@ export default function TeamMembersScreen() {
           description="Les membres de votre organisation apparaîtront ici."
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16 }}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={color.accent[600]}
+            />
+          }
+        >
           <YStack gap="$2">
             {members.map((member) => (
               <XStack
@@ -531,6 +548,20 @@ export default function TeamMembersScreen() {
           <Button onPress={() => setEmailSendWarning(null)}>Compris</Button>
         </YStack>
       </Sheet>
+
+      <ConfirmDialog
+        visible={removeTarget !== null}
+        title="Retirer ce membre ?"
+        description={
+          removeTarget
+            ? `${removeTarget.full_name} perdra l'accès à cette organisation. Son compte n'est pas supprimé.`
+            : undefined
+        }
+        confirmLabel="Retirer"
+        loading={removing}
+        onConfirm={() => void handleRemove()}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </YStack>
   );
 }

@@ -2,10 +2,16 @@ import { color } from '@dala/design-tokens';
 import type { Worker, WorkerInvitation } from '@dala/shared-types';
 import { inviteWorkerSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
-import { PlusIcon, TrashIcon, UsersIcon } from 'phosphor-react-native';
-import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import {
+  MagnifyingGlassIcon,
+  PaperPlaneTiltIcon,
+  PlusIcon,
+  TrashIcon,
+  UsersIcon,
+} from 'phosphor-react-native';
+import { useCallback, useMemo, useState } from 'react';
+import { RefreshControl, ScrollView } from 'react-native';
+import { Input, Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
@@ -17,6 +23,7 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
@@ -47,6 +54,16 @@ import { supabase } from '@/lib/supabase';
  *     only fully-built worker screen to put it on.
  *   - tapping a row (rather than its delete icon) opens the new Worker
  *     Detail screen (`worker/[id].tsx`) for Tier 0 lateness surfacing.
+ *
+ * UI/UX pass: the roster was previously one flat list regardless of the
+ * three derived statuses computed above — a manager scanning for "who
+ * still hasn't accepted their invite" had to read every badge one by one.
+ * Adds: grouped sections (Actifs/En attente/Inactifs) with per-section
+ * counts, a headcount summary row, a name/trade search filter (parity with
+ * `projects.tsx`'s own search bar), pull-to-refresh, and a `SwipeableRow`
+ * delete action replacing the small standalone trash icon (kept the trash
+ * icon too, inside the swipe reveal, rather than removing tap-precision
+ * entirely for anyone who prefers it).
  */
 type DerivedStatus = 'active' | 'pending' | 'inactive';
 
@@ -85,6 +102,8 @@ export default function TeamScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [query, setQuery] = useState('');
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [fullName, setFullName] = useState('');
@@ -107,12 +126,14 @@ export default function TeamScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -137,6 +158,7 @@ export default function TeamScreen() {
 
     setWorkers(merged);
     setLoading(false);
+    setRefreshing(false);
   }
 
   function openInvite() {
@@ -262,6 +284,31 @@ export default function TeamScreen() {
     await load();
   }
 
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return workers;
+    return workers.filter(
+      (w) => w.full_name.toLowerCase().includes(q) || (w.trade ?? '').toLowerCase().includes(q),
+    );
+  }, [workers, query]);
+
+  const grouped = useMemo(() => {
+    const active: WorkerRow[] = [];
+    const pending: WorkerRow[] = [];
+    const inactive: WorkerRow[] = [];
+    filtered.forEach((w) => {
+      const status = deriveStatus(w);
+      if (status === 'active') active.push(w);
+      else if (status === 'pending') pending.push(w);
+      else inactive.push(w);
+    });
+    return [
+      { key: 'active' as const, label: 'Actifs', rows: active },
+      { key: 'pending' as const, label: 'En attente', rows: pending },
+      { key: 'inactive' as const, label: 'Inactifs', rows: inactive },
+    ].filter((g) => g.rows.length > 0);
+  }, [filtered]);
+
   if (loading) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
@@ -288,8 +335,17 @@ export default function TeamScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
-        <XStack justifyContent="space-between" alignItems="center" marginBottom="$4">
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
+        <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
           <Text fontFamily="$display" fontSize={23} fontWeight="600">
             Équipe
           </Text>
@@ -303,64 +359,144 @@ export default function TeamScreen() {
           </Text>
         </XStack>
 
-        <YStack gap="$2">
-          {workers.map((worker) => {
-            const derived = deriveStatus(worker);
-            return (
-              <XStack
-                key={worker.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$4"
-                justifyContent="space-between"
-                alignItems="center"
-                onPress={() => router.push(`/worker/${worker.id}` as never)}
-              >
-                <XStack gap="$3" alignItems="center" flex={1}>
-                  <Avatar name={worker.full_name} />
-                  <YStack gap="$1" flex={1}>
-                    <Text fontSize={15.5} fontWeight="600">
-                      {worker.full_name}
-                    </Text>
-                    <Text fontSize={13} color="$neutral500">
-                      {worker.trade ?? '—'}
-                    </Text>
-                  </YStack>
-                </XStack>
-                <XStack alignItems="center" gap="$3">
-                  <YStack alignItems="flex-end" gap="$2">
-                    <StatusBadge variant={STATUS_BADGE[derived].variant}>
-                      {STATUS_BADGE[derived].label}
-                    </StatusBadge>
-                    {derived !== 'active' && (
-                      <Text
-                        fontSize={12}
-                        color="$accent600"
-                        onPress={(e: any) => {
-                          e.stopPropagation?.();
-                          handleResend(worker);
-                        }}
-                      >
-                        Renvoyer l&apos;invitation
-                      </Text>
-                    )}
-                  </YStack>
-                  <XStack
-                    padding={6}
-                    onPress={(e: any) => {
-                      e.stopPropagation?.();
-                      confirmDelete(worker);
-                    }}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Supprimer ${worker.full_name}`}
+        {/* Headcount summary — was entirely absent; the roster's own three
+            derived statuses (active/pending/inactive) had nowhere to
+            surface as a total until now. */}
+        <XStack
+          backgroundColor="$neutral0"
+          borderRadius="$card"
+          padding="$3"
+          marginBottom="$3"
+          gap="$2"
+        >
+          <YStack flex={1} alignItems="center" gap={2}>
+            <Text fontFamily="$display" fontSize={20} fontWeight="600">
+              {workers.length}
+            </Text>
+            <Text fontSize={11.5} color="$neutral500">
+              Travailleurs
+            </Text>
+          </YStack>
+          <YStack flex={1} alignItems="center" gap={2}>
+            <Text fontFamily="$display" fontSize={20} fontWeight="600" color="$success">
+              {workers.filter((w) => deriveStatus(w) === 'active').length}
+            </Text>
+            <Text fontSize={11.5} color="$neutral500">
+              Actifs
+            </Text>
+          </YStack>
+          <YStack flex={1} alignItems="center" gap={2}>
+            <Text fontFamily="$display" fontSize={20} fontWeight="600" color="$warning">
+              {workers.filter((w) => deriveStatus(w) === 'pending').length}
+            </Text>
+            <Text fontSize={11.5} color="$neutral500">
+              En attente
+            </Text>
+          </YStack>
+        </XStack>
+
+        <XStack
+          alignItems="center"
+          gap="$2"
+          backgroundColor="$neutral0"
+          borderRadius="$control"
+          paddingHorizontal={12}
+          marginBottom="$4"
+          borderWidth={1}
+          borderColor="$neutral200"
+        >
+          <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
+          <Input
+            flex={1}
+            unstyled
+            placeholder="Rechercher un travailleur ou un métier"
+            placeholderTextColor={color.neutral[500]}
+            value={query}
+            onChangeText={setQuery}
+            paddingVertical={10}
+            fontSize={14.5}
+          />
+        </XStack>
+
+        {grouped.length === 0 ? (
+          <Text color="$neutral500" fontSize={14} textAlign="center" marginTop="$6">
+            Aucun résultat pour « {query} ».
+          </Text>
+        ) : (
+          <YStack gap="$4">
+            {grouped.map((group) => (
+              <YStack key={group.key} gap="$2">
+                <XStack alignItems="center" gap="$2">
+                  <Text
+                    fontSize={13}
+                    fontWeight="600"
+                    color="$neutral500"
+                    textTransform="uppercase"
+                    letterSpacing={0.4}
                   >
-                    <TrashIcon size={18} color={color.neutral[500]} />
-                  </XStack>
+                    {group.label}
+                  </Text>
+                  <Text fontSize={12} color="$neutral300">
+                    ({group.rows.length})
+                  </Text>
                 </XStack>
-              </XStack>
-            );
-          })}
-        </YStack>
+
+                {group.rows.map((worker) => (
+                  <SwipeableRow
+                    key={worker.id}
+                    rightAction={{
+                      label: 'Supprimer',
+                      color: color.status.danger,
+                      icon: TrashIcon,
+                      onPress: () => confirmDelete(worker),
+                    }}
+                  >
+                    <XStack
+                      backgroundColor="$neutral0"
+                      borderRadius="$card"
+                      padding="$4"
+                      justifyContent="space-between"
+                      alignItems="center"
+                      onPress={() => router.push(`/worker/${worker.id}` as never)}
+                    >
+                      <XStack gap="$3" alignItems="center" flex={1}>
+                        <Avatar name={worker.full_name} />
+                        <YStack gap="$1" flex={1}>
+                          <Text fontSize={15.5} fontWeight="600">
+                            {worker.full_name}
+                          </Text>
+                          <Text fontSize={13} color="$neutral500">
+                            {worker.trade ?? '—'}
+                          </Text>
+                        </YStack>
+                      </XStack>
+                      <YStack alignItems="flex-end" gap="$2">
+                        <StatusBadge variant={STATUS_BADGE[deriveStatus(worker)].variant}>
+                          {STATUS_BADGE[deriveStatus(worker)].label}
+                        </StatusBadge>
+                        {deriveStatus(worker) !== 'active' && (
+                          <XStack
+                            alignItems="center"
+                            gap={4}
+                            onPress={(e: any) => {
+                              e.stopPropagation?.();
+                              handleResend(worker);
+                            }}
+                          >
+                            <PaperPlaneTiltIcon size={12} color={color.accent[600]} />
+                            <Text fontSize={12} color="$accent600" fontWeight="500">
+                              Renvoyer
+                            </Text>
+                          </XStack>
+                        )}
+                      </YStack>
+                    </XStack>
+                  </SwipeableRow>
+                ))}
+              </YStack>
+            ))}
+          </YStack>
+        )}
       </ScrollView>
 
       <FAB icon={PlusIcon} accessibilityLabel="Inviter un travailleur" onPress={openInvite} />

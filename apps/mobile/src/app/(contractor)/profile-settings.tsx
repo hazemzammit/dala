@@ -8,7 +8,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, CameraIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { processAvatarPhoto } from '@/lib/photoPipeline';
@@ -44,12 +45,12 @@ import { supabase } from '@/lib/supabase';
  * delivery depends on a Vault secret this repo doesn't have configured.
  */
 export default function ProfileSettingsScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [userId, setUserId] = useState<string | null>(null);
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [avatarPath, setAvatarPath] = useState<string | null>(null);
   const [avatarSignedUrl, setAvatarSignedUrl] = useState<string | null>(null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -95,7 +96,6 @@ export default function ProfileSettingsScreen() {
     if (profile) {
       setFullName(profile.full_name ?? '');
       setPhone(profile.phone ?? '');
-      setAvatarPath(profile.avatar_url ?? null);
       if (profile.avatar_url) {
         setAvatarSignedUrl(await getSignedUrl(profile.avatar_url));
       }
@@ -106,10 +106,7 @@ export default function ProfileSettingsScreen() {
   async function handlePickAvatar() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert(
-        'Autorisation requise',
-        "Autorisez l'accès à vos photos pour changer votre avatar.",
-      );
+      toast.error("Autorisez l'accès à vos photos pour changer votre avatar.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
@@ -128,11 +125,11 @@ export default function ProfileSettingsScreen() {
         .eq('id', userId);
       if (error) throw error;
 
-      setAvatarPath(path);
       setAvatarSignedUrl(await getSignedUrl(path));
       haptics.confirm();
+      toast.success('Photo de profil mise à jour.');
     } catch {
-      Alert.alert('Erreur', "Impossible de mettre à jour l'avatar.");
+      toast.error("Impossible de mettre à jour l'avatar.");
       haptics.error();
     } finally {
       setUploadingAvatar(false);
@@ -148,11 +145,12 @@ export default function ProfileSettingsScreen() {
       .eq('id', userId);
     setSavingName(false);
     if (error) {
-      Alert.alert('Erreur', 'Impossible de mettre à jour le nom.');
+      toast.error('Impossible de mettre à jour le nom.');
       haptics.error();
       return;
     }
     haptics.confirm();
+    toast.success('Nom mis à jour.');
   }
 
   function openPhoneSheet() {
@@ -202,6 +200,7 @@ export default function ProfileSettingsScreen() {
     haptics.confirm();
     setPhone(newPhone.trim());
     setPhoneSheetOpen(false);
+    toast.success('Numéro de téléphone mis à jour.');
   }
 
   function openEmailSheet() {

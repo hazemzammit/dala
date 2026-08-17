@@ -1,10 +1,11 @@
+import { color } from '@dala/design-tokens';
 import type { ClientPortal, Project } from '@dala/shared-types';
 import { setClientPortalPinSchema } from '@dala/validation';
 import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 import { CopyIcon, HandshakeIcon, LinkIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -44,6 +45,7 @@ import { supabase } from '@/lib/supabase';
 export default function ClientPortalScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [portalsByProject, setPortalsByProject] = useState<Record<string, ClientPortal>>({});
 
@@ -60,11 +62,13 @@ export default function ClientPortalScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -82,6 +86,7 @@ export default function ClientPortalScreen() {
     ((portalRows as ClientPortal[] | null) ?? []).forEach((p) => (map[p.project_id] = p));
     setPortalsByProject(map);
     setLoading(false);
+    setRefreshing(false);
   }
 
   const detailProject = useMemo(
@@ -201,7 +206,16 @@ export default function ClientPortalScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
           Portail client
         </Text>

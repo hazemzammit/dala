@@ -1,9 +1,10 @@
+import { color } from '@dala/design-tokens';
 import type { Vehicle, VehicleStatus } from '@dala/shared-types';
 import { createVehicleSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CarIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -59,6 +60,7 @@ export default function VehiclesScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
@@ -76,17 +78,20 @@ export default function VehiclesScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     const { data } = await supabase.from('vehicles').select('*').eq('org_id', org).order('name');
     setVehicles(data ?? []);
     setLoading(false);
+    setRefreshing(false);
   }
 
   function openAdd() {
@@ -212,7 +217,16 @@ export default function VehiclesScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
           Véhicules
         </Text>

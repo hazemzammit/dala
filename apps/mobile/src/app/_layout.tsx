@@ -1,4 +1,5 @@
 import { Stack } from 'expo-router';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TamaguiProvider, YStack } from 'tamagui';
 
@@ -24,6 +25,25 @@ import tamaguiConfig from '@/lib/tamagui.config';
  * anywhere in the app that doesn't set an explicit `color` prop. Since this
  * product has no designed dark mode at all, pinning the theme is the
  * correct fix, not a per-screen patch.
+ *
+ * UI/UX pass — the underlying gap that made pinning necessary is now fixed
+ * at the source: `@dala/design-tokens`'s `dark` palette went from 3 keys to
+ * a complete mirror of every custom color token any screen actually
+ * references, and `tamagui.config.ts`'s new `themes` block wires those in
+ * as a real swappable Tamagui theme (see that file's own comment for the
+ * mechanism). So the specific bug this comment used to describe — our
+ * custom tokens staying light-only while Tamagui's stock semantic tokens
+ * followed the OS — no longer applies to `neutral*`/`accent*`/status
+ * colors. `defaultTheme="light"` is kept here anyway, deliberately, rather
+ * than switched to follow `useColorScheme()`: this app has ~16 component
+ * files (icons, Chart/Sparkline's SVG elements) that read color values
+ * directly from `@dala/design-tokens` in JS rather than through a Tamagui
+ * token, which the theme swap can't reach (see tamagui.config.ts) — those
+ * would still render light-mode-colored under a dark theme today. Flipping
+ * this line to system-following belongs in the same pass that fixes that,
+ * not before, given this exact "half-themed screen" failure mode already
+ * bit this app once (that's the whole reason this comment existed in the
+ * first place).
  *
  * SAFE AREA — `react-native-safe-area-context` was a dependency with zero
  * actual usage anywhere in the app until now: no `SafeAreaProvider`, no
@@ -72,15 +92,25 @@ function RootShell() {
  * any screen without per-screen setup. Nested inside TamaguiProvider
  * (needs themed tokens) and wraps RootShell so toasts float above every
  * screen, including modals/sheets.
+ *
+ * UI/UX pass — `react-native-gesture-handler`'s `GestureHandlerRootView`
+ * has to wrap the entire app (outermost, above even SafeAreaProvider is
+ * fine either order, but it must be an ancestor of every screen) or every
+ * `Gesture.Pan()`/`GestureDetector` used anywhere (SwipeableRow, Slider,
+ * Dispatch's drag-and-drop) silently fails to receive touches on Android.
+ * This is the one required root-level change that comes with adding the
+ * dependency — every consuming component itself needs no further setup.
  */
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-        <ToastProvider>
-          <RootShell />
-        </ToastProvider>
-      </TamaguiProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
+          <ToastProvider>
+            <RootShell />
+          </ToastProvider>
+        </TamaguiProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

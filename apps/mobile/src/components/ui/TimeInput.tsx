@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import DateTimePicker, { type DateTimePickerEvent } from '@react-native-community/datetimepicker';
 import { ClockIcon } from 'phosphor-react-native';
 import { useState } from 'react';
@@ -7,6 +6,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { Sheet } from '@/components/ui/Sheet';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/TimeInput.tsx
@@ -68,6 +68,7 @@ export function TimeInput({
   // iOS-only: staged value while the sheet is open, committed on "Terminé"
   // so dragging the wheel doesn't write on every tick.
   const [draft, setDraft] = useState<Date>(() => parseHHMM(value));
+  const tc = useTokenColor();
 
   const borderColor = error ? '$danger' : '$neutral300';
 
@@ -107,7 +108,7 @@ export function TimeInput({
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${value ?? 'non défini'}`}
       >
-        <ClockIcon size={18} color={color.neutral[500]} />
+        <ClockIcon size={18} color={tc.neutral500} />
         <Text fontSize={15.5} color={value ? '$neutral900' : '$neutral500'}>
           {value ?? placeholder}
         </Text>

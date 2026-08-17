@@ -5,22 +5,30 @@ import { router, useFocusEffect } from 'expo-router';
 import {
   BuildingsIcon,
   CaretRightIcon,
+  FunnelIcon,
+  ListIcon,
   MagnifyingGlassIcon,
   PlusIcon,
+  SquaresFourIcon,
 } from 'phosphor-react-native';
-import { useCallback, useMemo, useState } from 'react';
-import { ScrollView, TextInput } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import type { ElementRef } from 'react';
+import { RefreshControl, ScrollView, TextInput, View as RNView } from 'react-native';
+import { Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
+import { Grid } from '@/components/ui/Grid';
 import { NumericText } from '@/components/ui/NumericText';
+import { Popover } from '@/components/ui/Popover';
 import { ProgressBar } from '@/components/ui/Progress';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
+import { Slider } from '@/components/ui/Slider';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
@@ -63,12 +71,13 @@ import { supabase } from '@/lib/supabase';
  *   - Search (§3.10.1) filters client-side over the already-fetched list
  *     rather than calling the `search_rpc` (migration 0012) — simpler,
  *     and fine at the list sizes one org actually has.
- *   - No native date-picker dependency exists anywhere in this repo yet
- *     (confirmed by grepping for @react-native-community/datetimepicker
- *     and equivalents). Adding one is a native-linking/prebuild change,
- *     out of proportion for one field this phase — "Date de début" is a
- *     plain AAAA-MM-JJ text field with the same validation
- *     (createProjectSchema) a real picker would feed into anyway.
+ *   - UI/UX pass: "Date de début" was previously a plain AAAA-MM-JJ text
+ *     field (the scope-note that used to live here explained why — no
+ *     native date-picker dependency existed anywhere in the repo). That's
+ *     no longer true: `@react-native-community/datetimepicker` was added
+ *     for `TimeInput.tsx`, and this field now uses the new `DatePicker`
+ *     wrapper built on it. Same pass added the list/grid view toggle
+ *     (`Grid.tsx`) and pull-to-refresh, both previously absent.
  */
 
 interface ProjectRow extends Project {
@@ -116,11 +125,17 @@ const EMPTY_FORM: ProjectFormState = {
 export default function ProjectsScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>('tous');
   const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
   const [orgRole, setOrgRole] = useState<'owner' | 'manager' | 'viewer' | null>(null);
-
+  // Budget-consumed threshold filter — first real call site for both
+  // Popover and Slider.
+  const [minConsumedFilter, setMinConsumedFilter] = useState(0);
+  const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
+  const filterAnchorRef = useRef<ElementRef<typeof RNView>>(null);
   const [formSheetOpen, setFormSheetOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
   const [form, setForm] = useState<ProjectFormState>(EMPTY_FORM);
@@ -139,12 +154,14 @@ export default function ProjectsScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setProjects([]);
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -232,6 +249,7 @@ export default function ProjectsScreen() {
 
     setProjects(merged);
     setLoading(false);
+    setRefreshing(false);
   }
 
   const filtered = useMemo(() => {
@@ -246,10 +264,97 @@ export default function ProjectsScreen() {
         (p) => p.name.toLowerCase().includes(q) || (p.client_name ?? '').toLowerCase().includes(q),
       );
     }
+
+    if (minConsumedFilter > 0) {
+      list = list.filter((p) => {
+        if (!p.budget_total || p.budget_total <= 0) return false;
+        const pct = (p.consumedTotal / p.budget_total) * 100;
+        return pct >= minConsumedFilter;
+      });
+    }
+
     return list;
-  }, [projects, filter, search]);
+  }, [projects, filter, search, minConsumedFilter]);
 
   const canWrite = orgRole === 'owner' || orgRole === 'manager';
+
+  // Extracted so the list/grid toggle (UI/UX pass) can reuse the exact
+  // same card in either a single-column YStack or a 2-column Grid without
+  // duplicating the JSX.
+  function renderProjectCard(project: ProjectRow) {
+    const consumedPercent =
+      project.budget_total && project.budget_total > 0
+        ? Math.min(100, Math.round((project.consumedTotal / project.budget_total) * 100))
+        : null;
+
+    return (
+      <YStack
+        key={project.id}
+        backgroundColor="$neutral0"
+        borderRadius="$card"
+        padding="$4"
+        gap="$2"
+        onPress={() => router.push(`/project/${project.id}` as never)}
+        onLongPress={() => setDetailProject(project)}
+        accessibilityRole="button"
+        accessibilityLabel={project.name}
+      >
+        <XStack justifyContent="space-between" alignItems="flex-start">
+          <YStack flex={1} gap="$1">
+            <Text fontSize={16} fontWeight="600" numberOfLines={1}>
+              {project.name}
+            </Text>
+            {project.client_name && (
+              <Text fontSize={13} color="$neutral500" numberOfLines={1}>
+                {project.client_name}
+              </Text>
+            )}
+          </YStack>
+          {viewMode === 'list' && <CaretRightIcon size={18} color={color.neutral[500]} />}
+        </XStack>
+
+        <XStack gap="$2" flexWrap="wrap">
+          <StatusBadge
+            variant={
+              project.status === 'active'
+                ? 'success'
+                : project.status === 'completed'
+                  ? 'neutral'
+                  : 'warning'
+            }
+          >
+            {project.status === 'active'
+              ? 'Actif'
+              : project.status === 'completed'
+                ? 'Terminé'
+                : 'Archivé'}
+          </StatusBadge>
+          {!project.isLead && project.leadOrgName && (
+            <StatusBadge variant="info">{project.leadOrgName}</StatusBadge>
+          )}
+        </XStack>
+
+        {consumedPercent !== null && (
+          <YStack gap="$1.5" marginTop="$1">
+            <XStack justifyContent="space-between">
+              <Text fontSize={12.5} color="$neutral500">
+                Budget consommé
+              </Text>
+              <NumericText fontSize={12.5} fontWeight="600">
+                {consumedPercent}%
+              </NumericText>
+            </XStack>
+            {/* Phase 27 — refactored onto the shared ProgressBar
+                (components/ui/Progress.tsx) instead of a hand-rolled View
+                — picks up Doc 05 §3.3's full green/amber(80%)/red(100%)
+                threshold instead of this card's previous two-step
+                accent/red-at-90% logic. */}
+            <ProgressBar value={consumedPercent} />
+          </YStack>
+        )}
+      </YStack>
+    );
+  }
 
   function openCreateSheet() {
     setEditingProject(null);
@@ -373,48 +478,139 @@ export default function ProjectsScreen() {
           Chantiers
         </Text>
 
-        <XStack
-          backgroundColor="$neutral0"
-          borderRadius="$control"
-          paddingHorizontal={12}
-          paddingVertical={9}
-          alignItems="center"
-          gap="$2"
-          borderWidth={1}
-          borderColor="$neutral300"
-        >
-          <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-          <TextInput
-            placeholder="Rechercher un chantier ou un client"
-            placeholderTextColor={color.neutral[500]}
-            value={search}
-            onChangeText={setSearch}
-            style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-          />
+        <XStack gap="$2" alignItems="center">
+          <XStack
+            flex={1}
+            backgroundColor="$neutral0"
+            borderRadius="$control"
+            paddingHorizontal={12}
+            paddingVertical={9}
+            alignItems="center"
+            gap="$2"
+            borderWidth={1}
+            borderColor="$neutral300"
+          >
+            <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
+            <TextInput
+              placeholder="Rechercher un chantier ou un client"
+              placeholderTextColor={color.neutral[500]}
+              value={search}
+              onChangeText={setSearch}
+              style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
+            />
+          </XStack>
+
+          {/* Budget-consumed threshold filter — first real call site for
+              both Popover and Slider (both built in the prior pass but
+              unused until now). A small anchored panel is the right
+              container here: one control, triggered from one button, no
+              need for a full bottom sheet. */}
+          <RNView ref={filterAnchorRef} collapsable={false}>
+            <XStack
+              width={40}
+              height={40}
+              borderRadius="$control"
+              backgroundColor={minConsumedFilter > 0 ? '$accent600' : '$neutral0'}
+              borderWidth={1}
+              borderColor={minConsumedFilter > 0 ? '$accent600' : '$neutral300'}
+              alignItems="center"
+              justifyContent="center"
+              onPress={() => setFilterPopoverOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel="Filtrer par budget consommé"
+            >
+              <FunnelIcon
+                size={17}
+                weight={minConsumedFilter > 0 ? 'fill' : 'regular'}
+                color={minConsumedFilter > 0 ? 'white' : color.neutral[900]}
+              />
+            </XStack>
+          </RNView>
         </XStack>
 
-        <XStack gap="$2">
-          {FILTERS.map((f) => {
-            const active = filter === f.key;
-            return (
+        <Popover
+          visible={filterPopoverOpen}
+          onClose={() => setFilterPopoverOpen(false)}
+          anchorRef={filterAnchorRef}
+          width={240}
+        >
+          <YStack padding="$2" gap="$3">
+            <Text fontSize={13} fontWeight="600" color="$neutral900">
+              Budget consommé minimum
+            </Text>
+            <Slider value={minConsumedFilter} onChange={setMinConsumedFilter} />
+            {minConsumedFilter > 0 && (
               <XStack
-                key={f.key}
-                paddingHorizontal={14}
-                paddingVertical={7}
-                borderRadius={999}
-                backgroundColor={active ? '$accent600' : '$neutral0'}
-                borderWidth={1}
-                borderColor={active ? '$accent600' : '$neutral300'}
-                onPress={() => setFilter(f.key)}
-                accessibilityRole="button"
-                accessibilityLabel={f.label}
+                onPress={() => setMinConsumedFilter(0)}
+                paddingVertical={6}
+                justifyContent="center"
               >
-                <Text fontSize={13} fontWeight="600" color={active ? '$neutral0' : '$neutral900'}>
-                  {f.label}
+                <Text fontSize={13} color="$accent600" fontWeight="500">
+                  Réinitialiser
                 </Text>
               </XStack>
-            );
-          })}
+            )}
+          </YStack>
+        </Popover>
+
+        <XStack gap="$2" justifyContent="space-between" alignItems="center">
+          <XStack gap="$2" flex={1} flexWrap="wrap">
+            {FILTERS.map((f) => {
+              const active = filter === f.key;
+              return (
+                <XStack
+                  key={f.key}
+                  paddingHorizontal={14}
+                  paddingVertical={7}
+                  borderRadius={999}
+                  backgroundColor={active ? '$accent600' : '$neutral0'}
+                  borderWidth={1}
+                  borderColor={active ? '$accent600' : '$neutral300'}
+                  onPress={() => setFilter(f.key)}
+                  accessibilityRole="button"
+                  accessibilityLabel={f.label}
+                >
+                  <Text fontSize={13} fontWeight="600" color={active ? '$neutral0' : '$neutral900'}>
+                    {f.label}
+                  </Text>
+                </XStack>
+              );
+            })}
+          </XStack>
+
+          {/* List/grid toggle — was entirely absent; first real use of the
+              new Grid primitive. Grid is the better fit once someone has
+              more than a handful of chantiers on a wider device. */}
+          <XStack backgroundColor="$neutral100" borderRadius="$control" padding={2} gap={2}>
+            <XStack
+              padding={7}
+              borderRadius={9}
+              backgroundColor={viewMode === 'list' ? '$neutral0' : 'transparent'}
+              onPress={() => setViewMode('list')}
+              accessibilityRole="button"
+              accessibilityLabel="Vue liste"
+            >
+              <ListIcon
+                size={16}
+                weight={viewMode === 'list' ? 'bold' : 'regular'}
+                color={color.neutral[900]}
+              />
+            </XStack>
+            <XStack
+              padding={7}
+              borderRadius={9}
+              backgroundColor={viewMode === 'grid' ? '$neutral0' : 'transparent'}
+              onPress={() => setViewMode('grid')}
+              accessibilityRole="button"
+              accessibilityLabel="Vue grille"
+            >
+              <SquaresFourIcon
+                size={16}
+                weight={viewMode === 'grid' ? 'bold' : 'regular'}
+                color={color.neutral[900]}
+              />
+            </XStack>
+          </XStack>
         </XStack>
       </YStack>
 
@@ -432,84 +628,21 @@ export default function ProjectsScreen() {
           }
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 96 }}>
-          <YStack gap="$3">
-            {filtered.map((project) => {
-              const consumedPercent =
-                project.budget_total && project.budget_total > 0
-                  ? Math.min(100, Math.round((project.consumedTotal / project.budget_total) * 100))
-                  : null;
-
-              return (
-                <YStack
-                  key={project.id}
-                  backgroundColor="$neutral0"
-                  borderRadius="$card"
-                  padding="$4"
-                  gap="$2"
-                  onPress={() => router.push(`/project/${project.id}` as never)}
-                  onLongPress={() => setDetailProject(project)}
-                  accessibilityRole="button"
-                  accessibilityLabel={project.name}
-                >
-                  <XStack justifyContent="space-between" alignItems="flex-start">
-                    <YStack flex={1} gap="$1">
-                      <Text fontSize={16} fontWeight="600">
-                        {project.name}
-                      </Text>
-                      {project.client_name && (
-                        <Text fontSize={13} color="$neutral500">
-                          {project.client_name}
-                        </Text>
-                      )}
-                    </YStack>
-                    <CaretRightIcon size={18} color={color.neutral[500]} />
-                  </XStack>
-
-                  <XStack gap="$2" flexWrap="wrap">
-                    <StatusBadge
-                      variant={
-                        project.status === 'active'
-                          ? 'success'
-                          : project.status === 'completed'
-                            ? 'neutral'
-                            : 'warning'
-                      }
-                    >
-                      {project.status === 'active'
-                        ? 'Actif'
-                        : project.status === 'completed'
-                          ? 'Terminé'
-                          : 'Archivé'}
-                    </StatusBadge>
-                    {!project.isLead && project.leadOrgName && (
-                      <StatusBadge variant="info">{project.leadOrgName}</StatusBadge>
-                    )}
-                  </XStack>
-
-                  {consumedPercent !== null && (
-                    <YStack gap="$1.5" marginTop="$1">
-                      <XStack justifyContent="space-between">
-                        <Text fontSize={12.5} color="$neutral500">
-                          Budget consommé
-                        </Text>
-                        <NumericText fontSize={12.5} fontWeight="600">
-                          {consumedPercent}%
-                        </NumericText>
-                      </XStack>
-                      {/* Phase 27 — refactored onto the shared ProgressBar
-                          (components/ui/Progress.tsx) instead of a
-                          hand-rolled View — picks up Doc 05 §3.3's full
-                          green/amber(80%)/red(100%) threshold instead of
-                          this card's previous two-step accent/red-at-90%
-                          logic. */}
-                      <ProgressBar value={consumedPercent} />
-                    </YStack>
-                  )}
-                </YStack>
-              );
-            })}
-          </YStack>
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 96 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={color.accent[600]}
+            />
+          }
+        >
+          {viewMode === 'grid' ? (
+            <Grid columns={2}>{filtered.map((project) => renderProjectCard(project))}</Grid>
+          ) : (
+            <YStack gap="$3">{filtered.map((project) => renderProjectCard(project))}</YStack>
+          )}
         </ScrollView>
       )}
 
@@ -602,12 +735,10 @@ export default function ProjectsScreen() {
             value={form.address}
             onChangeText={(v) => setForm((f) => ({ ...f, address: v }))}
           />
-          <FormField
-            label="Date de début (AAAA-MM-JJ)"
-            value={form.start_date}
-            onChangeText={(v) => setForm((f) => ({ ...f, start_date: v }))}
-            placeholder="2026-01-15"
-            keyboardType="numbers-and-punctuation"
+          <DatePicker
+            label="Date de début"
+            value={form.start_date || null}
+            onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
           />
           <FormField
             label="Budget total (TND)"

@@ -1,3 +1,4 @@
+import { color } from '@dala/design-tokens';
 import type {
   ConfirmationChannel,
   DispatchAssignment,
@@ -8,11 +9,12 @@ import type {
 import { createDispatchAssignmentSchema, updateDispatchAssignmentSchema } from '@dala/validation';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ArrowLeftIcon, CalendarBlankIcon } from 'phosphor-react-native';
-import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { DispatchConflictsSheet } from '@/components/dispatch/DispatchConflictsSheet';
+import { DraggableAssignmentChip } from '@/components/dispatch/DraggableAssignmentChip';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -140,6 +142,39 @@ import { supabase } from '@/lib/supabase';
  * phase — this header update states the re-evaluated reasoning explicitly,
  * per this phase's own instruction not to leave a real trade-off
  * re-examination silent even when the answer comes out the same way twice.
+ *
+ * UI/UX pass (post-audit): three additive changes, the first two read-only,
+ * the third a real new write path built the same way this file argues
+ * every write path here must be — funneled through a single, explicit,
+ * conflict-safe core rather than a shortcut.
+ *   (1) A density dot under each day chip in the 14-day strip, backed by a
+ *       new lightweight `loadDensity` query (assignment_date only,
+ *       windowed to the visible 14 days).
+ *   (2) Each vehicle lane's "· N places" text became a dot-fill capacity
+ *       meter, same data already computed, just visualized.
+ *   (3) Drag-and-drop between vehicle lanes (long-press a worker chip,
+ *       drag it into another lane) — see `DraggableAssignmentChip.tsx` for
+ *       the gesture mechanics, and `submitAssignmentPatch` /
+ *       `handleDragReassign` below for the write path. This was
+ *       DELIBERATELY NOT bundled into the same pass as (1)/(2) originally
+ *       — it's a real write against `dispatch_assignments`, the one table
+ *       this entire file's header spends hundreds of lines reasoning about
+ *       online-only, live-version-checked writes for. It was built as its
+ *       own dedicated follow-up specifically so it could reuse
+ *       `handleUpdateExisting`'s exact conflict logic (now extracted into
+ *       `submitAssignmentPatch`, called by both the sheet-driven edit and
+ *       the drag path) rather than re-deriving a parallel, possibly
+ *       weaker, version of it. A drag that lands cleanly writes directly;
+ *       a drag that hits a live version conflict re-opens the EXACT same
+ *       "Modifié ailleurs" sheet UI the tap-to-edit path already has,
+ *       pre-filled with the drag's intended destination — no second
+ *       conflict UI was invented. A drag onto a vehicle already at
+ *       capacity, or in maintenance, is rejected client-side before any
+ *       write is attempted (same capacity/maintenance rules
+ *       `checkWarnings`/the assign-sheet already enforce). Still online-
+ *       only, same as every other edit to an existing assignment in this
+ *       file — dragging while offline surfaces the same "Impossible de
+ *       réaffecter" toast a failed edit would.
  */
 type EnrichedAssignment = DispatchAssignment & {
   workerName: string;
@@ -179,8 +214,14 @@ export default function DispatchScreen() {
   // trade-participant org too, same as project/[id].tsx's own fetch.
   const [scopedProject, setScopedProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
   const [conflictsSheetOpen, setConflictsSheetOpen] = useState(false);
+  // UI/UX pass — density dots under the 14-day strip, previously absent:
+  // set of ISO dates (within the visible window) that already have at
+  // least one assignment, so a manager can see at a glance which days
+  // still need planning without tapping through each one.
+  const [datesWithAssignments, setDatesWithAssignments] = useState<Set<string>>(new Set());
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [editing, setEditing] = useState<EnrichedAssignment | null>(null);
@@ -200,6 +241,25 @@ export default function DispatchScreen() {
   // per-field error convention rather than only at the bottom of the sheet.
   const [departureTimeError, setDepartureTimeError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // UI/UX pass — drag-and-drop. Per-chip saving indicator, deliberately
+  // separate from the sheet's own `saving` (a drag never opens the sheet
+  // unless it hits a conflict, so reusing `saving` would show a spinner
+  // nowhere the user could see it).
+  const [dragSavingId, setDragSavingId] = useState<string | null>(null);
+  // Absolute-window Y bounds of each rendered lane, keyed by lane id
+  // ('none' for "Sans véhicule") — populated via each lane's onLayout
+  // below, read by DraggableAssignmentChip's pan gesture on drop to
+  // determine which lane a chip was released over. A plain mutable ref
+  // rather than state: it's read from inside a gesture callback on every
+  // drag, and re-rendering the screen every time a lane's layout settles
+  // would be wasted work for a value nothing else displays.
+  const laneBoundsRef = useRef<Record<string, { top: number; bottom: number }>>({});
+  // Refs to each lane's rendered container, used only to call
+  // `measureInWindow` from onLayout below — a plain object keyed by lane
+  // id, same shape as laneBoundsRef, populated via each lane's own ref
+  // callback rather than one ref per possible lane declared up front
+  // (the lane list itself is dynamic, driven by `vehicles`).
+  const laneRefs = useRef<Record<string, any>>({});
 
   useFocusEffect(
     useCallback(() => {
@@ -207,12 +267,14 @@ export default function DispatchScreen() {
     }, [selectedDate]),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -252,7 +314,25 @@ export default function DispatchScreen() {
       })),
     );
     await loadConflictCount();
+    await loadDensity(org);
     setLoading(false);
+    setRefreshing(false);
+  }
+
+  // Single lightweight query for the whole visible 14-day window — only
+  // the `assignment_date` column, so this stays cheap even on a busy org.
+  // Deliberately its own query rather than widening `assignmentQuery`
+  // above, which is intentionally scoped to `selectedDate` only (and to
+  // `deepLinkProjectId` when set) for the actual lane data.
+  async function loadDensity(org: string) {
+    const window = dateChips(selectedDate);
+    const { data } = await supabase
+      .from('dispatch_assignments')
+      .select('assignment_date')
+      .eq('org_id', org)
+      .gte('assignment_date', window[0])
+      .lte('assignment_date', window[window.length - 1]);
+    setDatesWithAssignments(new Set((data ?? []).map((r) => r.assignment_date as string)));
   }
 
   // Doc 01 §1.9 / Doc 03 §3.11, Phase 20 — badge count for the
@@ -421,8 +501,19 @@ export default function DispatchScreen() {
 
   function openEditExisting(assignment: EnrichedAssignment) {
     if (readOnly) return;
+    setEditingWithVehicle(assignment, assignment.vehicle_id);
+  }
+
+  // Shared setup for opening the edit sheet against a given assignment —
+  // used both by a normal tap (openEditExisting, vehicle unchanged) and by
+  // a successful long-press drag that hit a version conflict (vehicle set
+  // to the drag's drop target). Factored out so the drag path can't drift
+  // from the tap path's field initialization and accidentally leave a
+  // stale departureTime/channel in state for the sheet's "Garder ma
+  // version" resubmit to pick up.
+  function setEditingWithVehicle(assignment: EnrichedAssignment, vehicleId: string | null) {
     setEditing(assignment);
-    setLaneVehicleId(assignment.vehicle_id);
+    setLaneVehicleId(vehicleId);
     setSelectedWorkerIds([assignment.worker_id]);
     setProjectId(assignment.project_id ?? undefined);
     setDepartureTime(assignment.departure_time ?? '');
@@ -435,6 +526,47 @@ export default function DispatchScreen() {
     setSheetOpen(true);
   }
 
+  // Doc 01 §1.9 — the actual conflict-safe write, extracted out of
+  // `handleUpdateExisting` so the drag-and-drop path below (see file
+  // header's UI/UX-pass note) can reuse the EXACT same live
+  // read-immediately-before-write version compare, rather than a second,
+  // possibly-drifting copy of it. Takes explicit arguments rather than
+  // reading component state, so it's safe to call from a code path that
+  // never opens the sheet at all (the common case: a drag that lands
+  // cleanly, no conflict).
+  async function submitAssignmentPatch(
+    assignmentId: string,
+    expectedVersion: number,
+    patch: {
+      vehicle_id?: string | null;
+      departure_time?: string;
+      confirmation_channel?: ConfirmationChannel;
+    },
+  ): Promise<
+    | { ok: true }
+    | { ok: false; kind: 'conflict'; serverVersion: number }
+    | { ok: false; kind: 'error'; message: string }
+  > {
+    const { data: current } = await supabase
+      .from('dispatch_assignments')
+      .select('version')
+      .eq('id', assignmentId)
+      .single();
+
+    if (current && current.version !== expectedVersion) {
+      return { ok: false, kind: 'conflict', serverVersion: current.version };
+    }
+
+    const { error: updateError } = await supabase
+      .from('dispatch_assignments')
+      .update({ ...patch, version: expectedVersion + 1 })
+      .eq('id', assignmentId)
+      .eq('version', expectedVersion); // last-ditch DB-level guard against a race between the read above and this write
+
+    if (updateError) return { ok: false, kind: 'error', message: updateError.message };
+    return { ok: true };
+  }
+
   async function handleUpdateExisting(resolution?: 'keep_mine' | 'use_theirs') {
     // PHASE 19: deliberately unchanged — online-only, live version-check.
     // See this file's header for why this one write path wasn't converted
@@ -444,23 +576,50 @@ export default function DispatchScreen() {
     setDepartureTimeError(null);
     setSaving(true);
     try {
-      // Doc 01 §1.9 — read the current server version immediately before
-      // writing. If it no longer matches what this sheet was opened with,
-      // that's a "Modifié ailleurs" conflict: stop and let the contractor
-      // choose explicitly, rather than guessing which version should win.
-      const { data: current } = await supabase
-        .from('dispatch_assignments')
-        .select('version, departure_time, vehicle_id, confirmation_channel')
-        .eq('id', editing.id)
-        .single();
-
-      if (!resolution && current && current.version !== editing.version) {
-        setConflict({ serverVersion: current.version });
-        setSaving(false);
+      if (!resolution) {
+        // First attempt: parse the form and hand the version check to the
+        // shared core function below, exactly as before this refactor —
+        // only difference is the version-compare + write itself now lives
+        // in `submitAssignmentPatch` instead of being inlined here.
+        const parsed = updateDispatchAssignmentSchema.safeParse({
+          vehicle_id: laneVehicleId ?? undefined,
+          departure_time: departureTime || undefined,
+          confirmation_channel: channel,
+          version: editing.version,
+        });
+        if (!parsed.success) {
+          const timeIssue = parsed.error.issues.find((i) => i.path[0] === 'departure_time');
+          if (timeIssue) {
+            setDepartureTimeError(timeIssue.message);
+          } else {
+            setError(parsed.error.issues[0]?.message ?? 'Formulaire invalide.');
+          }
+          haptics.error();
+          setSaving(false);
+          return;
+        }
+        const { version, ...patch } = parsed.data;
+        const result = await submitAssignmentPatch(editing.id, version, patch);
+        if (!result.ok && result.kind === 'conflict') {
+          setConflict({ serverVersion: result.serverVersion });
+          setSaving(false);
+          return;
+        }
+        if (!result.ok) throw new Error(result.message);
+        haptics.confirm();
+        toast.success('Affectation mise à jour.');
+        setConflict(null);
+        setSheetOpen(false);
+        await load();
         return;
       }
 
       if (resolution === 'use_theirs') {
+        const { data: current } = await supabase
+          .from('dispatch_assignments')
+          .select('version, departure_time, vehicle_id, confirmation_channel')
+          .eq('id', editing.id)
+          .single();
         setDepartureTime(current?.departure_time ?? '');
         setLaneVehicleId(current?.vehicle_id ?? null);
         setChannel((current?.confirmation_channel as ConfirmationChannel) ?? 'app');
@@ -469,8 +628,16 @@ export default function DispatchScreen() {
         return;
       }
 
-      const baseVersion =
-        resolution === 'keep_mine' ? (current?.version ?? editing.version) : editing.version;
+      // 'keep_mine' — re-read the current version so the write's WHERE
+      // clause targets the row's true current version (not the stale one
+      // the sheet was originally opened with), then apply this sheet's
+      // values on top of it.
+      const { data: current } = await supabase
+        .from('dispatch_assignments')
+        .select('version')
+        .eq('id', editing.id)
+        .single();
+      const baseVersion = current?.version ?? editing.version;
 
       const parsed = updateDispatchAssignmentSchema.safeParse({
         vehicle_id: laneVehicleId ?? undefined,
@@ -489,15 +656,10 @@ export default function DispatchScreen() {
         setSaving(false);
         return;
       }
-
       const { version, ...patch } = parsed.data;
-      const { error: updateError } = await supabase
-        .from('dispatch_assignments')
-        .update({ ...patch, version: version + 1 })
-        .eq('id', editing.id)
-        .eq('version', version); // last-ditch DB-level guard against a race between the read above and this write
-
-      if (updateError) throw updateError;
+      const result = await submitAssignmentPatch(editing.id, version, patch);
+      if (!result.ok)
+        throw new Error(result.kind === 'error' ? result.message : 'Conflit persistant.');
       haptics.confirm();
       toast.success('Affectation mise à jour.');
       setConflict(null);
@@ -509,6 +671,61 @@ export default function DispatchScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  // Drag-and-drop entry point — see file header's UI/UX-pass note for why
+  // this funnels through `submitAssignmentPatch` (the same conflict-safe
+  // core `handleUpdateExisting` uses) rather than a shortcut write, and
+  // why a conflict here re-opens the exact same "Modifié ailleurs" sheet
+  // UI instead of a second, drag-specific conflict surface.
+  async function handleDragReassign(
+    assignment: EnrichedAssignment,
+    targetVehicleId: string | null,
+  ) {
+    if (readOnly) return;
+    if (assignment.vehicle_id === targetVehicleId) return;
+    const targetVehicle = vehicles.find((v) => v.id === targetVehicleId);
+    if (targetVehicle && targetVehicle.status === 'maintenance') {
+      toast.error('Ce véhicule est en maintenance.');
+      return;
+    }
+    const targetCount = (assignmentsByVehicle[targetVehicleId ?? 'none'] ?? []).length;
+    if (targetVehicle && targetCount >= targetVehicle.capacity) {
+      toast.error(
+        `${targetVehicle.name} est déjà à pleine capacité (${targetVehicle.capacity} places).`,
+      );
+      haptics.error();
+      return;
+    }
+
+    setDragSavingId(assignment.id);
+    const result = await submitAssignmentPatch(assignment.id, assignment.version, {
+      vehicle_id: targetVehicleId,
+    });
+    setDragSavingId(null);
+
+    if (result.ok) {
+      haptics.confirm();
+      toast.success(
+        `${assignment.workerName} déplacé vers ${targetVehicle ? targetVehicle.name : 'Sans véhicule'}.`,
+      );
+      await load();
+      return;
+    }
+
+    if (result.kind === 'conflict') {
+      // Same conflict UI the sheet already has — just pre-populated with
+      // the drag's intended destination instead of the assignment's
+      // original vehicle.
+      setEditingWithVehicle(assignment, targetVehicleId);
+      setConflict({ serverVersion: result.serverVersion });
+      toast.info('Modifié ailleurs entre-temps — choisissez une version.');
+      return;
+    }
+
+    haptics.error();
+    toast.error('Impossible de réaffecter. Vérifiez votre connexion.');
+    await load(); // revert the visual to server truth
   }
 
   async function copyPreviousWeek() {
@@ -590,6 +807,7 @@ export default function DispatchScreen() {
           {dateChips(selectedDate).map((iso) => {
             const { weekday, day } = frLabel(iso);
             const active = iso === selectedDate;
+            const hasAssignments = datesWithAssignments.has(iso);
             return (
               <YStack
                 key={iso}
@@ -606,6 +824,17 @@ export default function DispatchScreen() {
                 <Text fontSize={15} fontWeight="600" color={active ? 'white' : '$neutral900'}>
                   {day}
                 </Text>
+                {/* Density dot — was entirely absent; previously the only
+                    way to know a day had assignments was to tap into it. */}
+                <YStack
+                  width={4}
+                  height={4}
+                  borderRadius={2}
+                  marginTop={2}
+                  backgroundColor={
+                    hasAssignments ? (active ? 'white' : '$accent600') : 'transparent'
+                  }
+                />
               </YStack>
             );
           })}
@@ -637,6 +866,14 @@ export default function DispatchScreen() {
         </XStack>
       </XStack>
 
+      {!loading && vehicles.length > 1 && (
+        <XStack paddingHorizontal="$4" paddingBottom="$2">
+          <Text fontSize={12} color="$neutral500">
+            Maintenez un ouvrier pour le déplacer vers un autre véhicule.
+          </Text>
+        </XStack>
+      )}
+
       {!loading && vehicles.length === 0 && assignments.length === 0 ? (
         <EmptyState
           icon={CalendarBlankIcon}
@@ -661,29 +898,86 @@ export default function DispatchScreen() {
       ) : loading ? (
         <SkeletonCardList cards={3} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 120 }}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={color.accent[600]}
+            />
+          }
+        >
           <YStack gap="$3">
             {lanes.map((lane) => {
               const laneAssignments = assignmentsByVehicle[lane.id ?? 'none'] ?? [];
               const isMaintenance = lane.vehicle?.status === 'maintenance';
+              const laneKey = lane.id ?? 'none';
               return (
                 <YStack
-                  key={lane.id ?? 'none'}
+                  key={laneKey}
+                  ref={(el: any) => {
+                    laneRefs.current[laneKey] = el;
+                  }}
                   backgroundColor="$neutral0"
                   borderRadius="$card"
                   padding="$3"
                   opacity={isMaintenance ? 0.5 : 1}
+                  // Drag-drop bounds — measured in absolute window
+                  // coordinates (same space GestureDetector reports
+                  // `e.absoluteY` in) so DraggableAssignmentChip's drop
+                  // detection doesn't need any separate scroll-offset math.
+                  // Re-measured on every layout pass (list re-renders
+                  // after a successful drag, scroll position can change
+                  // capacity meters' heights, etc.), so bounds never go
+                  // stale for long.
+                  onLayout={() => {
+                    laneRefs.current[laneKey]?.measureInWindow?.(
+                      (_x: number, y: number, _w: number, h: number) => {
+                        laneBoundsRef.current[laneKey] = { top: y, bottom: y + h };
+                      },
+                    );
+                  }}
                 >
                   <XStack justifyContent="space-between" alignItems="center" marginBottom="$2">
-                    <Text fontSize={15.5} fontWeight="600">
-                      {lane.vehicle ? lane.vehicle.name : 'Sans véhicule'}
-                      {lane.vehicle && (
-                        <Text fontSize={12} color="$neutral500">
-                          {'  '}· {lane.vehicle.capacity} places
-                          {isMaintenance ? ' · Maintenance' : ''}
+                    <YStack flex={1} gap={4}>
+                      <XStack alignItems="center" gap="$2">
+                        <Text fontSize={15.5} fontWeight="600">
+                          {lane.vehicle ? lane.vehicle.name : 'Sans véhicule'}
                         </Text>
+                        {isMaintenance && (
+                          <Text fontSize={12} color="$neutral500">
+                            · Maintenance
+                          </Text>
+                        )}
+                      </XStack>
+                      {lane.vehicle && (
+                        <XStack alignItems="center" gap="$1.5">
+                          {/* Capacity meter — was plain "· N places" text;
+                              now a dot-fill row so over/under capacity
+                              reads at a glance instead of requiring a
+                              mental N-vs-M comparison. */}
+                          <XStack gap={3}>
+                            {Array.from({ length: Math.min(lane.vehicle.capacity, 8) }).map(
+                              (_, i) => (
+                                <YStack
+                                  key={i}
+                                  width={7}
+                                  height={7}
+                                  borderRadius={3.5}
+                                  backgroundColor={
+                                    i < laneAssignments.length ? '$accent600' : '$neutral200'
+                                  }
+                                />
+                              ),
+                            )}
+                          </XStack>
+                          <Text fontSize={12} color="$neutral500">
+                            {laneAssignments.length}/{lane.vehicle.capacity} places
+                          </Text>
+                        </XStack>
                       )}
-                    </Text>
+                    </YStack>
                     {!isMaintenance && !readOnly && (
                       <Text
                         fontSize={13}
@@ -703,27 +997,37 @@ export default function DispatchScreen() {
                   ) : (
                     <YStack gap="$2">
                       {laneAssignments.map((a) => (
-                        <XStack
+                        <DraggableAssignmentChip
                           key={a.id}
-                          alignItems="center"
-                          gap="$2"
-                          onPress={() => openEditExisting(a)}
+                          laneId={lane.id}
+                          laneBoundsRef={laneBoundsRef}
+                          disabled={readOnly}
+                          isSaving={dragSavingId === a.id}
+                          onDrop={(targetLaneId) => void handleDragReassign(a, targetLaneId)}
                         >
-                          <Avatar name={a.workerName} size={26} />
-                          <Text fontSize={13.5} flex={1}>
-                            {a.workerName}
-                          </Text>
-                          {a.departure_time && (
-                            <Text fontSize={12} color="$neutral500">
-                              {a.departure_time}
+                          <XStack
+                            alignItems="center"
+                            gap="$2"
+                            backgroundColor="$neutral0"
+                            paddingVertical={2}
+                            onPress={() => openEditExisting(a)}
+                          >
+                            <Avatar name={a.workerName} size={26} />
+                            <Text fontSize={13.5} flex={1}>
+                              {a.workerName}
                             </Text>
-                          )}
-                          {a.actual_departure_time && (
-                            <Text fontSize={12} color="$success">
-                              En route
-                            </Text>
-                          )}
-                        </XStack>
+                            {a.departure_time && (
+                              <Text fontSize={12} color="$neutral500">
+                                {a.departure_time}
+                              </Text>
+                            )}
+                            {a.actual_departure_time && (
+                              <Text fontSize={12} color="$success">
+                                En route
+                              </Text>
+                            )}
+                          </XStack>
+                        </DraggableAssignmentChip>
                       ))}
                     </YStack>
                   )}

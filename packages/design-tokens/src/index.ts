@@ -41,11 +41,45 @@ export const color = {
     // info deliberately reuses accent-500 — never introduce a second cool color
   },
   dark: {
-    // Dark mode is a nice-to-have (not required for MVP) but the token layer
-    // exists from day one so enabling it is a config swap, not a rewrite.
-    neutral25: '#0E0F12',
-    neutral0: '#17191D',
-    accentPrimary: '#2AA99A', // one step lighter than light-mode 600 for contrast on near-black
+    // Dark mode is a nice-to-have (not required for MVP) but the token
+    // layer exists from day one so enabling it is (mostly) a config swap.
+    // UI/UX pass: this block was previously only 3 values (neutral25,
+    // neutral0, accentPrimary) — not enough to actually theme the app,
+    // since every screen references specific tokens for text
+    // (neutral900/neutral500), borders/dividers (neutral100/200/300), and
+    // accent tints (accent50/100) that had no dark equivalent at all.
+    // Filled out to a complete mirror of every light-mode color key
+    // actually referenced anywhere in `apps/mobile/src` (verified via
+    // `grep -rhoE '\$[a-zA-Z]+[0-9]*'` across every screen/component —
+    // see apps/mobile/src/lib/tamagui.config.ts's own comment for how
+    // these get wired into an actual swappable Tamagui theme).
+    //
+    // Status colors: WCAG AA-audited against both dark backgrounds below
+    // (contrast-ratio math run directly — see delivery notes), not just
+    // eyeballed. `warning` passed unchanged (6.29:1 / 5.78:1 against
+    // neutral25-dark / neutral0-dark, both well over the 4.5:1 normal-text
+    // threshold). `success` and `danger` FAILED at their light-mode hex
+    // values for normal-size text — success measured 4.83:1/4.44:1 (fails
+    // the card-background case by a hair) and danger measured
+    // 3.75:1/3.45:1 (fails both outright) — so both got lightened here
+    // specifically to clear 4.5:1 against the darker of the two
+    // backgrounds (neutral0-dark, the more common case since most status
+    // text sits on a card, not bare page background), same hue family,
+    // verified at 6.26:1/5.75:1 and 5.75:1/5.28:1 respectively.
+    neutral25: '#0E0F12', // app/page background
+    neutral0: '#17191D', // cards, sheets, modals — the "raised" surface
+    neutral100: '#22252B', // subtle fills — skeleton shimmer, quick-action icon circles
+    neutral200: '#2A2D33', // dividers, dot indicators
+    neutral300: '#34373E', // input/card borders
+    neutral500: '#9CA3AF', // secondary/muted text — lighter than light-mode's #6B7280 for contrast on near-black
+    neutral900: '#F2F3F5', // primary text — was near-black for light backgrounds; inverted to near-white
+    accent50: '#123C38', // darkened accent tint — badge/icon-circle backgrounds
+    accent100: '#1A4B45',
+    accent600: '#2AA99A', // one step lighter than light-mode 600 for contrast on near-black
+    accent700: '#4CBFB0',
+    success: '#26A862', // WCAG AA-audited lighten of light-mode #1F9254 — see comment above
+    warning: '#C08A1E', // unchanged — already passes AA at both dark backgrounds
+    danger: '#DE6961', // WCAG AA-audited lighten of light-mode #C0433D — see comment above
   },
 } as const;
 

@@ -17,8 +17,9 @@ const timeStringSchema = z
   .string()
   .regex(TIME_HH_MM_REGEX, 'Heure invalide — utilisez le format HH:MM, par exemple 07:30.');
 
-/** Plain boolean check for callers outside zod-schema contexts (e.g. the
- *  sync-boundary sanitizer in apps/mobile/src/db/sync/pushChanges.ts). */
+/** Same HH:MM(:SS) rule as `timeStringSchema`, exposed as a plain predicate
+ *  for call sites (e.g. the mobile sync push boundary) that need to check
+ *  an already-stored value rather than parse a Zod schema. */
 export function isValidTimeString(value: string): boolean {
   return TIME_HH_MM_REGEX.test(value);
 }

@@ -1,10 +1,11 @@
+import { color } from '@dala/design-tokens';
 import type { OrgInsurance, SafetyIncident, Worker } from '@dala/shared-types';
 import { createOrgInsuranceSchema, createSafetyIncidentSchema } from '@dala/validation';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
 import { CameraIcon, FilePdfIcon, PlusIcon, ShieldWarningIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -91,6 +92,7 @@ export default function SafetyScreen() {
   const toast = useToast();
   const [tab, setTab] = useState<Tab>('incidents');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [incidents, setIncidents] = useState<SafetyIncident[]>([]);
@@ -125,12 +127,14 @@ export default function SafetyScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -163,8 +167,8 @@ export default function SafetyScreen() {
       });
       setIncidentWorkerIds(map);
     }
-
     setLoading(false);
+    setRefreshing(false);
   }
 
   const workerById = useMemo(() => {
@@ -344,7 +348,16 @@ export default function SafetyScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
           Sécurité & assurance
         </Text>

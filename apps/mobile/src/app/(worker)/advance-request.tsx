@@ -1,8 +1,9 @@
+import { color } from '@dala/design-tokens';
 import { requestAdvanceSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, HandCoinsIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -62,6 +63,7 @@ import { supabase } from '@/lib/supabase';
  */
 export default function AdvanceRequestScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [gross, setGross] = useState(0);
   const [advancesReceived, setAdvancesReceived] = useState(0);
   const [amount, setAmount] = useState('');
@@ -77,8 +79,9 @@ export default function AdvanceRequestScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const {
         data: { session },
@@ -115,6 +118,7 @@ export default function AdvanceRequestScreen() {
       setAdvancesReceived((advances ?? []).reduce((sum, a) => sum + Number(a.amount), 0));
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -218,7 +222,16 @@ export default function AdvanceRequestScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <XStack alignItems="center" gap="$2" marginBottom="$4" onPress={() => router.back()}>
           <ArrowLeftIcon size={20} />
           <Text fontSize={15} color="$neutral500">
@@ -265,6 +278,7 @@ export default function AdvanceRequestScreen() {
             value={amount}
             onChangeText={setAmount}
             keyboardType="numeric"
+            error={error ?? undefined}
           />
           <FormField
             label="Raison (optionnel)"
@@ -272,7 +286,6 @@ export default function AdvanceRequestScreen() {
             onChangeText={setReason}
             maxLength={200}
           />
-          {error && <Text color="$danger">{error}</Text>}
           <Button icon={HandCoinsIcon} onPress={handleSubmit} loading={submitting}>
             Demander une avance
           </Button>

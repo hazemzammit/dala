@@ -1,7 +1,8 @@
-import { color } from '@dala/design-tokens';
 import { usePathname, router } from 'expo-router';
 import { GearIcon, HouseIcon, WalletIcon, type Icon } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/shell/WorkerBottomNav.tsx
@@ -13,6 +14,9 @@ import { Text, XStack, YStack } from 'tamagui';
  * BottomNav for this — it's a separate component on purpose, not a
  * parameterized variant of the same one, so a future contractor-nav change
  * can't accidentally leak complexity into the worker shell.
+ *
+ * Dark-mode pass: same fix as the contractor BottomNav — icon colors now
+ * come from `useTokenColor()` instead of `@dala/design-tokens` directly.
  */
 const TABS: { href: string; label: string; icon: Icon }[] = [
   { href: '/(worker)/home', label: 'Accueil', icon: HouseIcon },
@@ -22,6 +26,7 @@ const TABS: { href: string; label: string; icon: Icon }[] = [
 
 export function WorkerBottomNav() {
   const pathname = usePathname();
+  const tc = useTokenColor();
 
   return (
     <XStack
@@ -50,7 +55,7 @@ export function WorkerBottomNav() {
             <TabIcon
               size={22}
               weight={active ? 'fill' : 'regular'}
-              color={active ? color.accent[600] : color.neutral[500]}
+              color={active ? tc.accent600 : tc.neutral500}
             />
             <Text
               fontSize={11}

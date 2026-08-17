@@ -1,9 +1,10 @@
+import { color } from '@dala/design-tokens';
 import type { Material, Worker } from '@dala/shared-types';
 import { reassignMaterialSchema, refuseMaterialSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { CheckIcon, PackageIcon, UserSwitchIcon, XIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
@@ -79,6 +80,7 @@ const STATUS_LABEL: Record<Material['status'], string> = {
 export default function MaterialsScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
   const [filter, setFilter] = useState<Filter>('pending');
@@ -96,11 +98,13 @@ export default function MaterialsScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
 
@@ -115,6 +119,7 @@ export default function MaterialsScreen() {
     setMaterials((materialRows as Material[] | null) ?? []);
     setWorkers((workerRows as Worker[] | null) ?? []);
     setLoading(false);
+    setRefreshing(false);
   }
 
   const workerByUserId = useMemo(() => {
@@ -271,7 +276,16 @@ export default function MaterialsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$1">
           <Text fontFamily="$display" fontSize={23} fontWeight="600">
             Matériaux

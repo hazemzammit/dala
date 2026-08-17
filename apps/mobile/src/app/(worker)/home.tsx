@@ -1,8 +1,9 @@
+import { color } from '@dala/design-tokens';
 import type { AttendanceStatus } from '@dala/shared-types';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowsClockwiseIcon, MapPinIcon, PackageIcon, SignOutIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert } from 'react-native';
+import { Alert, RefreshControl } from 'react-native';
 import { AnimatePresence, ScrollView, Text, View, XStack, YStack } from 'tamagui';
 
 import { AvatarStack } from '@/components/ui/Avatar';
@@ -77,6 +78,7 @@ interface SalarySummary {
 
 export default function WorkerHomeScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -90,8 +92,9 @@ export default function WorkerHomeScreen() {
     }, []),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const {
         data: { session },
@@ -191,6 +194,7 @@ export default function WorkerHomeScreen() {
       });
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -295,7 +299,16 @@ export default function WorkerHomeScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
           Bonjour 👋
         </Text>

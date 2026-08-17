@@ -1,6 +1,7 @@
-import { color } from '@dala/design-tokens';
 import Svg, { Circle } from 'react-native-svg';
 import { View } from 'tamagui';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/Progress.tsx
@@ -15,11 +16,20 @@ import { View } from 'tamagui';
  * consumed" read consistently wherever this shows up.
  *
  * Built on react-native-svg (already a dependency) — no new native module.
+ *
+ * Dark-mode pass: `thresholdColor` now takes the theme-resolved status
+ * colors as a parameter instead of reading `color.status.*` directly (it's
+ * a plain function, not a component, so it can't call `useTokenColor()`
+ * itself) — same for `trackColor`'s default, which used to be a
+ * light-only `color.neutral[100]` literal baked into the parameter list.
  */
-function thresholdColor(percent: number): string {
-  if (percent > 100) return color.status.danger;
-  if (percent >= 80) return color.status.warning;
-  return color.status.success;
+function thresholdColor(
+  percent: number,
+  tc: { success: string; warning: string; danger: string },
+): string {
+  if (percent > 100) return tc.danger;
+  if (percent >= 80) return tc.warning;
+  return tc.success;
 }
 
 interface ProgressBarProps {
@@ -31,21 +41,18 @@ interface ProgressBarProps {
   trackColor?: string;
 }
 
-export function ProgressBar({
-  value,
-  height = 6,
-  tintColor,
-  trackColor = color.neutral[100],
-}: ProgressBarProps) {
+export function ProgressBar({ value, height = 6, tintColor, trackColor }: ProgressBarProps) {
+  const tc = useTokenColor();
   const clamped = Math.max(0, Math.min(value, 100));
-  const fillColor = tintColor ?? thresholdColor(value);
+  const fillColor = tintColor ?? thresholdColor(value, tc);
+  const resolvedTrackColor = trackColor ?? tc.neutral100;
 
   return (
     <View
       width="100%"
       height={height}
       borderRadius={height / 2}
-      backgroundColor={trackColor}
+      backgroundColor={resolvedTrackColor}
       overflow="hidden"
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max: 100, now: Math.round(value) }}
@@ -75,11 +82,13 @@ export function ProgressRing({
   size = 56,
   strokeWidth = 6,
   tintColor,
-  trackColor = color.neutral[100],
+  trackColor,
   children,
 }: ProgressRingProps) {
+  const tc = useTokenColor();
   const clamped = Math.max(0, Math.min(value, 100));
-  const fillColor = tintColor ?? thresholdColor(value);
+  const fillColor = tintColor ?? thresholdColor(value, tc);
+  const resolvedTrackColor = trackColor ?? tc.neutral100;
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
   const dashOffset = circumference * (1 - clamped / 100);
@@ -98,7 +107,7 @@ export function ProgressRing({
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke={trackColor}
+          stroke={resolvedTrackColor}
           strokeWidth={strokeWidth}
           fill="none"
         />

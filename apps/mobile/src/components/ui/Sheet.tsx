@@ -1,7 +1,8 @@
-import { color } from '@dala/design-tokens';
 import { XIcon } from 'phosphor-react-native';
 import { Modal, Pressable } from 'react-native';
 import { ScrollView, Text, View, XStack, YStack } from 'tamagui';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/Sheet.tsx
@@ -24,6 +25,11 @@ interface SheetProps {
 
 export function Sheet({ visible, onClose, title, children, scroll = true }: SheetProps) {
   const Body = scroll ? ScrollView : YStack;
+  // Dark-mode pass — this icon color used to read the light-only
+  // `color.neutral[500]` literal directly; `useTokenColor()` resolves the
+  // ACTIVE theme's value instead, so the close button stays legible if
+  // dark mode is ever turned on (see tamagui.config.ts's own comment).
+  const tc = useTokenColor();
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
@@ -42,7 +48,7 @@ export function Sheet({ visible, onClose, title, children, scroll = true }: Shee
             {title}
           </Text>
           <View onPress={onClose} accessibilityRole="button" accessibilityLabel="Fermer">
-            <XIcon size={20} color={color.neutral[500]} />
+            <XIcon size={20} color={tc.neutral500} />
           </View>
         </XStack>
 

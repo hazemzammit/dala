@@ -1,5 +1,5 @@
 import { color } from '@dala/design-tokens';
-import type { Project, ProjectWorker, Worker } from '@dala/shared-types';
+import type { ProjectWorker, Worker } from '@dala/shared-types';
 import { addProjectWorkerSchema, removeProjectWorkerSchema } from '@dala/validation';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
@@ -10,15 +10,17 @@ import {
   UsersIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -78,12 +80,13 @@ interface RosterRow extends ProjectWorker {
 }
 
 export default function ProjectRosterScreen() {
+  const toast = useToast();
   const { project_id } = useLocalSearchParams<{ project_id: string }>();
 
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [canWrite, setCanWrite] = useState(false);
-  const [projectStatus, setProjectStatus] = useState<Project['status'] | null>(null);
   const [roster, setRoster] = useState<RosterRow[]>([]);
 
   const [addSheetOpen, setAddSheetOpen] = useState(false);
@@ -92,6 +95,8 @@ export default function ProjectRosterScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [addingWorkerId, setAddingWorkerId] = useState<string | null>(null);
   const [removingRowId, setRemovingRowId] = useState<string | null>(null);
+  // Themed ConfirmDialog replacing Alert.alert's destructive two-button variant.
+  const [removeTarget, setRemoveTarget] = useState<RosterRow | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -99,12 +104,14 @@ export default function ProjectRosterScreen() {
     }, [project_id]),
   );
 
-  async function load() {
+  async function load(isRefresh = false) {
     if (!project_id) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
-    setLoading(true);
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
 
     const org = await getActiveOrgId();
     setOrgId(org);
@@ -116,7 +123,6 @@ export default function ProjectRosterScreen() {
       .select('status')
       .eq('id', project_id)
       .maybeSingle();
-    setProjectStatus((projectRow?.status as Project['status']) ?? null);
 
     if (org) {
       const role = await getMyOrgRole(org);
@@ -146,6 +152,7 @@ export default function ProjectRosterScreen() {
 
     setRoster(merged);
     setLoading(false);
+    setRefreshing(false);
   }
 
   const rosterWorkerIds = useMemo(() => new Set(roster.map((r) => r.worker_id)), [roster]);
@@ -207,35 +214,30 @@ export default function ProjectRosterScreen() {
       if (error) throw error;
 
       haptics.confirm();
+      toast.success(`${worker.full_name} ajouté au chantier.`);
       setAddSheetOpen(false);
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? "Impossible d'ajouter ce travailleur au chantier.");
+      toast.error(e?.message ?? "Impossible d'ajouter ce travailleur au chantier.");
     } finally {
       setAddingWorkerId(null);
     }
   }
 
   function confirmRemove(row: RosterRow) {
-    Alert.alert(
-      'Retirer du chantier ?',
-      `${row.worker?.full_name ?? 'Ce travailleur'} ne sera plus listé comme actif sur ce chantier. Son historique est conservé.`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        { text: 'Retirer', style: 'destructive', onPress: () => void handleRemove(row) },
-      ],
-    );
+    setRemoveTarget(row);
   }
 
-  async function handleRemove(row: RosterRow) {
-    const parsed = removeProjectWorkerSchema.safeParse({ id: row.id });
+  async function handleRemove() {
+    if (!removeTarget) return;
+    const parsed = removeProjectWorkerSchema.safeParse({ id: removeTarget.id });
     if (!parsed.success) {
       haptics.error();
       return;
     }
 
-    setRemovingRowId(row.id);
+    setRemovingRowId(removeTarget.id);
     try {
       const {
         data: { session },
@@ -252,10 +254,12 @@ export default function ProjectRosterScreen() {
       if (error) throw error;
 
       haptics.confirm();
+      toast.success(`${removeTarget.worker?.full_name ?? 'Travailleur'} retiré du chantier.`);
+      setRemoveTarget(null);
       await load();
     } catch (e: any) {
       haptics.error();
-      Alert.alert('Erreur', e?.message ?? 'Impossible de retirer ce travailleur.');
+      toast.error(e?.message ?? 'Impossible de retirer ce travailleur.');
     } finally {
       setRemovingRowId(null);
     }
@@ -315,7 +319,16 @@ export default function ProjectRosterScreen() {
           }
         />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 120 }}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 120 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={() => load(true)}
+              tintColor={color.accent[600]}
+            />
+          }
+        >
           <YStack gap="$2">
             {roster.map((row) => (
               <XStack
@@ -413,6 +426,20 @@ export default function ProjectRosterScreen() {
           )}
         </YStack>
       </Sheet>
+
+      <ConfirmDialog
+        visible={removeTarget !== null}
+        title="Retirer du chantier ?"
+        description={
+          removeTarget
+            ? `${removeTarget.worker?.full_name ?? 'Ce travailleur'} ne sera plus listé comme actif sur ce chantier. Son historique est conservé.`
+            : undefined
+        }
+        confirmLabel="Retirer"
+        loading={removingRowId === removeTarget?.id}
+        onConfirm={() => void handleRemove()}
+        onCancel={() => setRemoveTarget(null)}
+      />
     </YStack>
   );
 }

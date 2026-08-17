@@ -4,12 +4,13 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import { ArrowLeftIcon, BuildingsIcon, CameraIcon, LockIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Alert, ScrollView } from 'react-native';
+import { ScrollView } from 'react-native';
 import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { processLogoPhoto } from '@/lib/photoPipeline';
@@ -28,6 +29,7 @@ import { supabase } from '@/lib/supabase';
  * can't express "manager may edit these columns but not those two."
  */
 export default function OrganizationSettingsScreen() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [role, setRole] = useState<'owner' | 'manager' | 'viewer' | null>(null);
@@ -87,7 +89,7 @@ export default function OrganizationSettingsScreen() {
   async function handlePickLogo() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permission.granted) {
-      Alert.alert('Autorisation requise', "Autorisez l'accès à vos photos pour changer le logo.");
+      toast.error("Autorisez l'accès à vos photos pour changer le logo.");
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({ quality: 1 });
@@ -99,8 +101,9 @@ export default function OrganizationSettingsScreen() {
       const path = await uploadOrgFile(orgId, 'logo', processedUri, 'png', 'image/png');
       setLogoPath(path);
       setLogoSignedUrl(await getSignedUrl(path));
+      toast.success('Logo mis à jour.');
     } catch {
-      Alert.alert('Erreur', 'Impossible de mettre à jour le logo.');
+      toast.error('Impossible de mettre à jour le logo.');
       haptics.error();
     } finally {
       setUploadingLogo(false);
@@ -144,6 +147,7 @@ export default function OrganizationSettingsScreen() {
       return;
     }
     haptics.confirm();
+    toast.success('Organisation mise à jour.');
   }
 
   if (loading) {

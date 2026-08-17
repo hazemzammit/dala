@@ -1,10 +1,10 @@
-import { color } from '@dala/design-tokens';
 import { CaretDownIcon, CaretUpIcon } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
 import { SparklineBars, SparklineLine } from '@/components/ui/Sparkline';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/StatCard.tsx
@@ -54,7 +54,13 @@ export function StatCard({
   }
 
   const isPositive = (delta ?? 0) >= 0;
-  const deltaColor = isPositive ? color.status.success : color.status.danger;
+  const tc = useTokenColor();
+  const deltaColor = isPositive ? tc.success : tc.danger;
+  // Dark-mode pass — this used to be a hand-picked light pastel
+  // ('#EAF7EF'/'#FBEAE9') matching no token at all, so it stayed
+  // light-mode-colored regardless of theme. Now derived from the same
+  // theme-resolved success/danger value the icon and text use, tinted via
+  // the shared `toRgba` helper.
   const Sparkline = sparklineVariant === 'line' ? SparklineLine : SparklineBars;
 
   return (
@@ -101,7 +107,7 @@ export function StatCard({
           paddingHorizontal={8}
           paddingVertical={3}
           borderRadius={999}
-          backgroundColor={isPositive ? '#EAF7EF' : '#FBEAE9'}
+          backgroundColor={toRgba(deltaColor, 0.12)}
         >
           {isPositive ? (
             <CaretUpIcon size={11} weight="bold" color={deltaColor} />

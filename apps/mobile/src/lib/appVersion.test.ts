@@ -1,4 +1,5 @@
 import { checkAppVersion, currentBuild } from './appVersion';
+import { supabase } from './supabase';
 
 // Doc 03 §3.1's fails-open rule is the one thing in this file that's
 // genuinely worth pinning with a test: it's easy to accidentally regress
@@ -14,8 +15,6 @@ jest.mock('expo-constants', () => ({
   __esModule: true,
   default: { expoConfig: { version: '2.3.0' } },
 }));
-
-import { supabase } from './supabase';
 
 const mockRpc = supabase.rpc as jest.Mock;
 

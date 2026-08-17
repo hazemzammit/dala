@@ -1,13 +1,16 @@
+import { color } from '@dala/design-tokens';
 import type { ExpenseCategory, Project, ProjectExpense } from '@dala/shared-types';
 import { createProjectExpenseSchema } from '@dala/validation';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ArrowLeftIcon, CoinsIcon, PlusIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
+import { DonutChart } from '@/components/ui/Chart';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
@@ -39,7 +42,22 @@ import { supabase } from '@/lib/supabase';
  * payroll/advances are excluded from the consumed-% calculation, which is
  * why this screen only ever sums `project_expenses`, never touches
  * `advances`.
+ *
+ * UI/UX pass: the consumed-total card was a single flat bar with a raw
+ * number — real `category` data existed on every expense row but had
+ * nowhere to surface in aggregate (each row showed its own category as
+ * plain text only). Adds a `DonutChart` category breakdown above the list,
+ * pull-to-refresh, and replaces the free-text "AAAA-MM-JJ" date field
+ * (called out in this file's own prior comment as a deferred item) with
+ * the new `DatePicker` — same native dependency already added for
+ * `TimeInput`, no new module.
  */
+const CATEGORY_CHART_COLOR: Record<ExpenseCategory, string> = {
+  materiaux: color.accent[600],
+  carburant: color.accent[300],
+  sous_traitance: color.status.warning,
+  autre: color.neutral[300],
+};
 const CATEGORY_OPTIONS: { value: ExpenseCategory; label: string; color: string }[] = [
   { value: 'materiaux', label: 'Matériaux', color: '$accent600' },
   { value: 'carburant', label: 'Carburant', color: '$accent600' },
@@ -64,6 +82,7 @@ export default function ExpensesScreen() {
   const [canWrite, setCanWrite] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<ProjectExpense[]>([]);
@@ -88,12 +107,14 @@ export default function ExpensesScreen() {
     }, [selectedProjectId]),
   );
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
       setLoading(false);
+      setRefreshing(false);
       return;
     }
     const role = await getMyOrgRole(org);
@@ -116,6 +137,7 @@ export default function ExpensesScreen() {
       await loadExpenses(initial);
     }
     setLoading(false);
+    setRefreshing(false);
   }
 
   async function loadExpenses(projectId: string) {
@@ -135,6 +157,23 @@ export default function ExpensesScreen() {
 
   const consumedTotal = useMemo(() => calculateConsumedTotal(expenses), [expenses]);
   const consumedPercent = calculateConsumedPercent(consumedTotal, selectedProject?.budget_total);
+
+  // Category breakdown — real `category` data existed on every expense
+  // row already; this is the first place it's ever aggregated rather than
+  // just shown per-row as plain text.
+  const categoryBreakdown = useMemo(() => {
+    const totals: Record<string, number> = {};
+    expenses.forEach((e) => {
+      totals[e.category] = (totals[e.category] ?? 0) + Number(e.amount);
+    });
+    return (Object.keys(totals) as ExpenseCategory[])
+      .map((cat) => ({
+        label: CATEGORY_LABEL[cat],
+        value: totals[cat]!,
+        color: CATEGORY_CHART_COLOR[cat],
+      }))
+      .sort((a, b) => b.value - a.value);
+  }, [expenses]);
 
   function openSheet() {
     setCategory('materiaux');
@@ -221,7 +260,16 @@ export default function ExpensesScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 140 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         {deepLinkProjectId ? (
           <XStack alignItems="center" gap="$3" marginBottom="$4">
             <XStack
@@ -303,6 +351,27 @@ export default function ExpensesScreen() {
           </YStack>
         )}
 
+        {/* Category breakdown — was entirely absent; every expense row
+            already carried a `category` but it never got aggregated. */}
+        {categoryBreakdown.length > 0 && (
+          <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4" marginBottom="$4">
+            <Text
+              fontSize={13}
+              fontWeight="600"
+              color="$neutral500"
+              textTransform="uppercase"
+              marginBottom="$3"
+            >
+              Répartition par catégorie
+            </Text>
+            <DonutChart
+              segments={categoryBreakdown}
+              centerValue={`${consumedTotal.toFixed(0)}`}
+              centerLabel="TND"
+            />
+          </YStack>
+        )}
+
         {expenses.length === 0 ? (
           <EmptyState
             icon={CoinsIcon}
@@ -370,19 +439,18 @@ export default function ExpensesScreen() {
             maxLength={200}
           />
 
-          {/* Doc 03 §3.10.3a also specs a photo receipt + native date
-              picker here. Deferred in this pass — the receipt photo needs
-              the same capture/compress/EXIF-strip pipeline as site logs
-              (Doc 02 §2.5), which is scheduled for Phase 3 alongside
-              Journal; building a one-off version just for this screen
-              would fork that pipeline rather than reuse it. The date
-              defaults to today (editable as text below) with a
-              not-in-the-future check enforced on save. */}
-          <FormField
-            label="Date (AAAA-MM-JJ)"
+          {/* Doc 03 §3.10.3a also specs a photo receipt here. Deferred in
+              this pass — the receipt photo needs the same capture/
+              compress/EXIF-strip pipeline as site logs (Doc 02 §2.5),
+              which is scheduled for Phase 3 alongside Journal; building a
+              one-off version just for this screen would fork that
+              pipeline rather than reuse it. The date field itself is no
+              longer deferred — see file header. */}
+          <DatePicker
+            label="Date"
             value={expenseDate}
-            onChangeText={setExpenseDate}
-            autoCapitalize="none"
+            onChange={setExpenseDate}
+            maximumDate={new Date()}
           />
 
           {error && <Text color="$danger">{error}</Text>}

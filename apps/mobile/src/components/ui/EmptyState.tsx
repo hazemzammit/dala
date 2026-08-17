@@ -1,4 +1,3 @@
-import { color } from '@dala/design-tokens';
 import { router } from 'expo-router';
 import type { Icon } from 'phosphor-react-native';
 import { Text, View, YStack } from 'tamagui';
@@ -6,6 +5,8 @@ import { Text, View, YStack } from 'tamagui';
 import { Button } from './Button';
 import { Illustration } from './Illustration';
 import type { IllustrationName } from './illustrations';
+
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/components/ui/EmptyState.tsx
@@ -38,6 +39,7 @@ export function EmptyState({
   actionLabel,
   actionHref,
 }: EmptyStateProps) {
+  const tc = useTokenColor();
   return (
     <YStack alignItems="center" justifyContent="center" paddingHorizontal="$4" paddingVertical={48}>
       {illustration ? (
@@ -51,7 +53,7 @@ export function EmptyState({
           alignItems="center"
           justifyContent="center"
         >
-          <IconComponent size={28} color={color.accent[600]} />
+          <IconComponent size={28} color={tc.accent600} />
         </View>
       )}
 

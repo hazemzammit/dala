@@ -1,3 +1,4 @@
+import { color } from '@dala/design-tokens';
 import { submitSiteLogSchema } from '@dala/validation';
 import { AudioModule, useAudioRecorder, useAudioRecorderState, RecordingPresets } from 'expo-audio';
 import * as ImagePicker from 'expo-image-picker';
@@ -12,7 +13,7 @@ import {
   TrashIcon,
 } from 'phosphor-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
@@ -84,6 +85,7 @@ const MAX_RECORDING_SECONDS = 120;
 
 export default function UpdateChantierScreen() {
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -120,8 +122,9 @@ export default function UpdateChantierScreen() {
     }
   }, [handleStopRecording, recorderState.durationMillis, recorderState.isRecording]);
 
-  async function load() {
-    setLoading(true);
+  async function load(isRefresh = false) {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     try {
       const {
         data: { session },
@@ -150,6 +153,7 @@ export default function UpdateChantierScreen() {
       setProjectName((assignment as any)?.projects?.name ?? null);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }
 
@@ -336,7 +340,16 @@ export default function UpdateChantierScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+      <ScrollView
+        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => load(true)}
+            tintColor={color.accent[600]}
+          />
+        }
+      >
         <XStack alignItems="center" gap="$2" marginBottom="$4" onPress={() => router.back()}>
           <ArrowLeftIcon size={20} />
           <Text fontSize={15} color="$neutral500">
