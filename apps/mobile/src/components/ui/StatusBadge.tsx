@@ -18,14 +18,22 @@ type StatusVariant = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
 
 export function StatusBadge({ variant, children }: { variant: StatusVariant; children: string }) {
   const tc = useTokenColor();
-  const colorByVariant: Record<StatusVariant, string> = {
+  // The `Record<StatusVariant, string>` annotation belongs on the lookup
+  // object itself (for exhaustiveness-checking against StatusVariant), not
+  // on `solid` — `solid` is the single string that indexing the object
+  // with `variant` yields. Previously misattached to `solid` directly on
+  // the indexed expression, which is a type/value mismatch (the indexed
+  // result is `string`, not the whole `Record`) and the root cause of
+  // every "Type 'Record<StatusVariant, string>' is not assignable to
+  // ... string" error below.
+  const statusColors: Record<StatusVariant, string> = {
     success: tc.success,
     warning: tc.warning,
     danger: tc.danger,
     info: tc.accent600,
     neutral: tc.neutral500,
   };
-  const solid = colorByVariant[variant];
+  const solid = statusColors[variant];
   const background = variant === 'neutral' ? tc.neutral100 : toRgba(solid, 0.12);
 
   return (

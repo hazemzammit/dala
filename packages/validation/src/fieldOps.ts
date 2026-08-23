@@ -31,6 +31,41 @@ export const reassignMaterialSchema = z.object({
 });
 export type ReassignMaterialInput = z.infer<typeof reassignMaterialSchema>;
 
+/**
+ * Phase 8 (improvement-plan §1.9 item 1) — contractor-initiated material
+ * request, materials.tsx's own new create sheet. Deliberately a SEPARATE
+ * schema from `requestMaterialSchema` (money.ts, the worker-side form) even
+ * though the two share most fields — the worker form auto-resolves
+ * `project_id` from today's dispatch assignment and never asks for it, and
+ * has no `cost` field at all (only an owner/manager can set cost, per
+ * migration 0073's own column comment). Keeping them separate avoids
+ * silently widening the worker-facing schema with a field a worker screen
+ * should never expose.
+ */
+export const createMaterialRequestSchema = z.object({
+  project_id: z.string().uuid().optional(),
+  item: z.string().min(1, 'Article requis.'),
+  quantity: z.number().positive().optional(),
+  urgency: z.enum(['normal', 'urgent']),
+  note: z.string().max(200, 'Note limitée à 200 caractères.').optional(),
+  cost: z.number().positive().optional(),
+});
+export type CreateMaterialRequestInput = z.infer<typeof createMaterialRequestSchema>;
+
+/**
+ * Phase 8 (improvement-plan §1.9 item 2) — setting/editing `cost` on an
+ * already-existing (typically worker-submitted) pending request, from the
+ * review sheet before approving. A plain owner/manager update under the
+ * existing materials_write_owner_manager policy — no RPC, mirrors how
+ * `cost` itself needs no RLS change (migration 0073's own comment).
+ */
+export const setMaterialCostSchema = z.object({
+  material_id: z.string().uuid(),
+  cost: z.number().positive().nullable(),
+  project_id: z.string().uuid().nullable(),
+});
+export type SetMaterialCostInput = z.infer<typeof setMaterialCostSchema>;
+
 // ---------------------------------------------------------------------------
 // Site logs — worker Update Chantier submit (Doc 03 §4.2)
 // ---------------------------------------------------------------------------
@@ -63,10 +98,19 @@ export type SubmitSiteLogInput = z.infer<typeof submitSiteLogSchema>;
 // Safety incidents (Doc 03 §3.17)
 // ---------------------------------------------------------------------------
 
+/**
+ * `incident_type` — Phase 4 (improvement-plan §3) — a closed list at the
+ * app layer (Chute/Coupure/Électrocution/Accident véhicule, or a
+ * free-typed "Autre" value via Select.tsx), required so the future §2.3
+ * safety-by-category chart has something to group every new incident on.
+ * Same reason `min(1)` rather than `.optional()` — an incident with no
+ * category isn't chartable, defeating the whole point of adding the field.
+ */
 export const createSafetyIncidentSchema = z.object({
   project_id: z.string().uuid().optional(),
   description: z.string().min(1, 'Description requise.'),
   severity: z.enum(['minor', 'moderate', 'severe']),
+  incident_type: z.string().min(1, "Type d'incident requis."),
   location: z.string().optional(),
   photo_url: z.string().url().optional(),
   involved_worker_ids: z.array(z.string().uuid()).optional(),

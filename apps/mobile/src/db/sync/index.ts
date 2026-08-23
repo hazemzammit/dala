@@ -9,6 +9,8 @@ import { createDispatchConflictResolver, type PendingDispatchConflict } from './
 import { pullChanges } from './pullChanges';
 import { createPushChanges } from './pushChanges';
 
+import { markSyncFinished, markSyncStarted } from '@/lib/syncStatus';
+
 /**
  * apps/mobile/src/db/sync/index.ts
  *
@@ -17,6 +19,14 @@ import { createPushChanges } from './pushChanges';
  * now" affordance) should use — none of them should call `synchronize()`
  * directly, so the conflict-resolution strategy and error handling stay in
  * one place.
+ *
+ * FIXED HERE: this file had been overwritten with a stale, pre-Phase-1
+ * copy of itself (missing the markSyncStarted/markSyncFinished wiring
+ * below), while the actual up-to-date version of this same content had
+ * been mistakenly written to `db/index.ts` instead — clobbering that
+ * file's real Database/adapter setup. See `db/index.ts`'s own header for
+ * the full story; this file's content is that misplaced copy, restored to
+ * its correct path.
  *
  * PHASE 18 REDO — `conflictResolver`/`pushChanges` are now factory
  * functions, not static imports, both closing over the SAME
@@ -42,6 +52,14 @@ import { createPushChanges } from './pushChanges';
  * the record anyway either way — the flag only tells WatermelonDB this is
  * expected, so it stops logging it as an error. This is exactly the flag
  * the diagnostic message itself points at.
+ *
+ * PHASE 1 (improvement-plan §5.2) — `markSyncStarted()`/`markSyncFinished()`
+ * added around the existing try/catch/finally below, reporting into
+ * `lib/syncStatus.ts`'s external store. This is purely additive: the
+ * function's signature, return type, and every existing behavior
+ * (coalescing, conflict flushing, Sentry reporting) are unchanged. See
+ * syncStatus.ts's header for why this is done here rather than in each of
+ * the ~10 `void runSync()` call sites across the app.
  */
 export interface SyncResult {
   ok: boolean;
@@ -93,9 +111,16 @@ export async function runSync(): Promise<SyncResult> {
   // WatermelonDB's own docs note sync is for "the entire database at once,
   // not per-collection," so overlapping calls would race, not merely
   // duplicate work.
+  //
+  // Deliberately NOT calling markSyncStarted() when we return the shared
+  // in-flight promise below — the store was already moved to 'syncing' by
+  // whichever call started it, and coalesced callers cause no new,
+  // observable state transition.
   if (syncInFlight) {
     return syncInFlight;
   }
+
+  markSyncStarted();
 
   syncInFlight = (async (): Promise<SyncResult> => {
     const { resolver, pendingConflicts } = createDispatchConflictResolver();
@@ -112,13 +137,17 @@ export async function runSync(): Promise<SyncResult> {
 
       await flushPendingConflicts(pendingConflicts);
 
-      return { ok: true, conflictCount: pendingConflicts.length };
+      const result: SyncResult = { ok: true, conflictCount: pendingConflicts.length };
+      markSyncFinished(result);
+      return result;
     } catch (rawError) {
       const error = rawError instanceof Error ? rawError : new Error(String(rawError));
       // eslint-disable-next-line no-console
       console.error('[sync] failed', error);
       Sentry.captureException(error, { tags: { feature: 'offline_sync' } });
-      return { ok: false, error, conflictCount: pendingConflicts.length };
+      const result: SyncResult = { ok: false, error, conflictCount: pendingConflicts.length };
+      markSyncFinished(result);
+      return result;
     } finally {
       syncInFlight = null;
     }

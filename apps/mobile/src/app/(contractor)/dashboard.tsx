@@ -1,11 +1,21 @@
 import { color } from '@dala/design-tokens';
-import type { AttendanceStatus, Project, Worker } from '@dala/shared-types';
+import type { AttendanceStatus, OrgActivityEvent, Project, Worker } from '@dala/shared-types';
 import { router, useFocusEffect } from 'expo-router';
-import { BuildingsIcon, CaretDownIcon, CaretRightIcon, HandCoinsIcon } from 'phosphor-react-native';
+import {
+  BuildingsIcon,
+  CalendarBlankIcon,
+  CaretDownIcon,
+  CaretRightIcon,
+  CoinsIcon,
+  HandCoinsIcon,
+  NoteIcon,
+  ShieldWarningIcon,
+} from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack, Image } from 'tamagui';
 
+import { OnboardingChecklist } from '@/components/onboarding/OnboardingChecklist';
 import { OrgSwitcherSheet } from '@/components/shell/OrgSwitcherSheet';
 import { Avatar } from '@/components/ui/Avatar';
 import { Carousel } from '@/components/ui/Carousel';
@@ -18,6 +28,7 @@ import { getActiveOrgId, setActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { listMyOrganizations, listOwnedOrganizations, type MyOrgSummary } from '@/lib/myOrgs';
 import { cycleEndISO, cycleStartISO, todayISO } from '@/lib/salaryCycle';
+import { getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -33,12 +44,22 @@ import { supabase } from '@/lib/supabase';
  * ProgressBar) and Phase 26 (none directly, but the same screen benefits
  * from PlateInput/TimeInput existing elsewhere in the app).
  *
- * STILL CUT, same reason as Phase 23 — re-verified, not silently dropped:
- *   - Activity feed: `audit_log` (migration 0009) still has zero
- *     client-facing RLS policies — its own migration header says so
- *     explicitly. No mobile-readable data source exists for this yet. This
- *     remains a backend gap (new RLS policy or a purpose-built feed
- *     table/view), not a UI decision — flagged, not faked with mock data.
+ * IMPROVEMENT-PLAN PHASE 8 (§1.7) — the activity feed named as "still cut"
+ * by every prior phase (Phase 23 through Phase 7) is now built. `audit_log`
+ * (migration 0009) was confirmed, by grepping every apps/admin
+ * logAdminAction() call site, to be EXCLUSIVELY platform-admin actions
+ * (feature_flag.*, admin.impersonate_*, billing.*, etc) — never anything
+ * an org's own contractor did. RLS-ing it open would have surfaced either
+ * an empty feed or the wrong one. The feed below instead reads the new
+ * `org_activity_feed` table (migration 0073), populated by AFTER INSERT
+ * triggers on site_logs/project_expenses/safety_incidents/
+ * dispatch_assignments — see that migration's own Part 1 header for the
+ * full reasoning and why this exact four-event starter set was chosen.
+ * No backfill: an org with real history before this migration shipped
+ * will show an empty/short feed until new activity happens, by design.
+ *
+ * STILL CUT, same reason as every prior phase — re-verified, not silently
+ * dropped:
  *   - Profile-completion checklist / unverified-email banner: real §3.9
  *     elements, still out of scope for this pass — pulls from four
  *     different tables per Doc 01 §1.3.12–13, sized like its own phase.
@@ -81,6 +102,7 @@ import { supabase } from '@/lib/supabase';
 interface DispatchTodayWorker {
   workerId: string;
   name: string;
+  photoPath: string | null;
   status: 'a_venir' | 'en_route' | 'sur_place';
 }
 
@@ -105,6 +127,15 @@ const ATTENDANCE_DAY_VALUE: Record<AttendanceStatus, number> = {
   half_day: 0.5,
 };
 
+// Phase 8 §1.7 — one icon per feed event type, module-level like STATUS_DOT
+// above rather than recreated per render.
+const ACTIVITY_ICON: Record<OrgActivityEvent['event_type'], typeof NoteIcon> = {
+  site_log_added: NoteIcon,
+  expense_recorded: CoinsIcon,
+  safety_incident_reported: ShieldWarningIcon,
+  dispatch_assigned: CalendarBlankIcon,
+};
+
 export default function DashboardScreen() {
   const [orgs, setOrgs] = useState<MyOrgSummary[]>([]);
   const [ownedCount, setOwnedCount] = useState(0);
@@ -119,7 +150,17 @@ export default function DashboardScreen() {
   const [payrollSparkline, setPayrollSparkline] = useState<number[]>([]);
 
   const [dispatchToday, setDispatchToday] = useState<DispatchTodayWorker[]>([]);
+  const [dispatchPhotoUrlByPath, setDispatchPhotoUrlByPath] = useState<Record<string, string>>({});
+  const [projectPhotoUrlByPath, setProjectPhotoUrlByPath] = useState<Record<string, string>>({});
   const [activeProjects, setActiveProjects] = useState<ActiveProjectSummary[]>([]);
+
+  // Phase 8 §1.7 — activity feed. actorNameById/workerNameById resolve the
+  // feed's raw ids into display names, same batched-lookup shape every
+  // other section on this screen already uses (projectPhotoUrlByPath etc).
+  const [activityFeed, setActivityFeed] = useState<OrgActivityEvent[]>([]);
+  const [actorNameById, setActorNameById] = useState<Record<string, string>>({});
+  const [feedProjectNameById, setFeedProjectNameById] = useState<Record<string, string>>({});
+  const [feedWorkerNameById, setFeedWorkerNameById] = useState<Record<string, string>>({});
 
   useFocusEffect(
     useCallback(() => {
@@ -144,6 +185,7 @@ export default function DashboardScreen() {
       loadDispatchToday(active),
       loadActiveProjects(active),
       loadPayrollSummary(active),
+      loadActivityFeed(active),
     ]);
     setLoading(false);
     setRefreshing(false);
@@ -174,7 +216,7 @@ export default function DashboardScreen() {
     const [{ data: assignments }, { data: attendance }] = await Promise.all([
       supabase
         .from('dispatch_assignments')
-        .select('worker_id, actual_departure_time, workers(full_name)')
+        .select('worker_id, actual_departure_time, workers(full_name, photo_url)')
         .eq('org_id', org)
         .eq('assignment_date', today),
       supabase
@@ -188,6 +230,7 @@ export default function DashboardScreen() {
     const workers: DispatchTodayWorker[] = (assignments ?? []).map((a: any) => ({
       workerId: a.worker_id,
       name: a.workers?.full_name ?? 'Ouvrier',
+      photoPath: a.workers?.photo_url ?? null,
       status: arrivedIds.has(a.worker_id)
         ? 'sur_place'
         : a.actual_departure_time
@@ -195,6 +238,10 @@ export default function DashboardScreen() {
           : 'a_venir',
     }));
     setDispatchToday(workers);
+    // Phase 3 §1.5 — same simplification disclosed in dispatch.tsx/
+    // pointage.tsx: workers.photo_url directly, not the profiles.avatar_url
+    // priority chain (see docs/PHASE_3_BRIEF.md).
+    void getSignedUrlMap(workers.map((w) => w.photoPath)).then(setDispatchPhotoUrlByPath);
   }
 
   async function loadActiveProjects(org: string | null) {
@@ -231,6 +278,122 @@ export default function DashboardScreen() {
     setActiveProjects(
       (projects ?? []).map((p) => ({ ...(p as Project), consumedTotal: consumedById[p.id] ?? 0 })),
     );
+    // Phase 3 §1.5 — project cards' cover image, same batched pattern.
+    void getSignedUrlMap((projects ?? []).map((p: any) => p.cover_photo_url ?? null)).then(
+      setProjectPhotoUrlByPath,
+    );
+  }
+
+  /** Phase 8 §1.7 — dashboard "Activité récente" card. Latest 8 events
+   * org-wide (bounded — this is a dashboard summary, not the full history;
+   * no "Voir tout" screen exists for this yet, not in this phase's scope).
+   * Resolves display names in three small batched lookups rather than a
+   * PostgREST embed through org_activity_feed's own FKs — `actor_id` can
+   * be null (dispatch events) and the worker name for a dispatch event
+   * lives in `metadata->worker_id`, not a column this table has an FK
+   * for, so a single embedded select can't cover all four event types
+   * uniformly anyway. */
+  async function loadActivityFeed(org: string | null) {
+    if (!org) {
+      setActivityFeed([]);
+      setActorNameById({});
+      setFeedProjectNameById({});
+      setFeedWorkerNameById({});
+      return;
+    }
+    const { data: events } = await supabase
+      .from('org_activity_feed')
+      .select('*')
+      .eq('org_id', org)
+      .order('created_at', { ascending: false })
+      .limit(8);
+    const feed = (events as OrgActivityEvent[] | null) ?? [];
+    setActivityFeed(feed);
+
+    const actorIds = Array.from(new Set(feed.map((e) => e.actor_id).filter(Boolean))) as string[];
+    const projectIds = Array.from(
+      new Set(feed.map((e) => e.project_id).filter(Boolean)),
+    ) as string[];
+    const workerIds = Array.from(
+      new Set(
+        feed
+          .filter((e) => e.event_type === 'dispatch_assigned')
+          .map((e) => e.metadata?.worker_id as string | undefined)
+          .filter(Boolean),
+      ),
+    ) as string[];
+
+    const [{ data: actorRows }, { data: projectRows }, { data: workerRows }] = await Promise.all([
+      actorIds.length > 0
+        ? supabase.from('profiles').select('id, full_name').in('id', actorIds)
+        : Promise.resolve({ data: [] }),
+      projectIds.length > 0
+        ? supabase.from('projects').select('id, name').in('id', projectIds)
+        : Promise.resolve({ data: [] }),
+      workerIds.length > 0
+        ? supabase.from('workers').select('id, full_name').in('id', workerIds)
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    setActorNameById(
+      ((actorRows as { id: string; full_name: string }[] | null) ?? []).reduce<
+        Record<string, string>
+      >((acc, r) => ({ ...acc, [r.id]: r.full_name }), {}),
+    );
+    setFeedProjectNameById(
+      ((projectRows as { id: string; name: string }[] | null) ?? []).reduce<Record<string, string>>(
+        (acc, r) => ({ ...acc, [r.id]: r.name }),
+        {},
+      ),
+    );
+    setFeedWorkerNameById(
+      ((workerRows as { id: string; full_name: string }[] | null) ?? []).reduce<
+        Record<string, string>
+      >((acc, r) => ({ ...acc, [r.id]: r.full_name }), {}),
+    );
+  }
+
+  /** Phase 8 §1.7 — one human-readable line per feed event. Kept as a plain
+   * function (not a component) since it only ever produces text, same
+   * reasoning requestingWorkerName()-style helpers use elsewhere in this
+   * app. */
+  function activityEventLabel(event: OrgActivityEvent): string {
+    const actor = event.actor_id ? (actorNameById[event.actor_id] ?? 'Quelqu’un') : 'L’équipe';
+    const project = event.project_id ? feedProjectNameById[event.project_id] : null;
+    switch (event.event_type) {
+      case 'site_log_added':
+        return `${actor} a ajouté une entrée au journal${project ? ` · ${project}` : ''}`;
+      case 'expense_recorded': {
+        const amount = event.metadata?.amount;
+        return `${actor} a enregistré une dépense${amount != null ? ` de ${amount} TND` : ''}${project ? ` · ${project}` : ''}`;
+      }
+      case 'safety_incident_reported': {
+        const severity = event.metadata?.severity as string | undefined;
+        const severityLabel =
+          severity === 'severe' ? 'grave' : severity === 'moderate' ? 'modéré' : 'mineur';
+        return `${actor} a signalé un incident (${severityLabel})${project ? ` · ${project}` : ''}`;
+      }
+      case 'dispatch_assigned': {
+        const workerId = event.metadata?.worker_id as string | undefined;
+        const workerName = workerId
+          ? (feedWorkerNameById[workerId] ?? 'Un travailleur')
+          : 'Un travailleur';
+        return `${workerName} dispatché${project ? ` · ${project}` : ''}`;
+      }
+      default:
+        return 'Activité';
+    }
+  }
+
+  function relativeTime(iso: string): string {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'À l’instant';
+    if (diffMin < 60) return `Il y a ${diffMin} min`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `Il y a ${diffH} h`;
+    const diffD = Math.floor(diffH / 24);
+    return `Il y a ${diffD} j`;
   }
 
   async function loadPayrollSummary(org: string | null) {
@@ -399,6 +562,7 @@ export default function DashboardScreen() {
               accessibilityRole="button"
               accessibilityLabel="Changer d'entreprise"
             >
+              <Avatar name={activeOrg.name} imageUrl={activeOrg.logo_url ?? undefined} size={20} />
               <Text fontSize={14} fontWeight="500">
                 {activeOrg.name}
               </Text>
@@ -415,6 +579,11 @@ export default function DashboardScreen() {
           activeOrgId={activeOrgId}
           onSelect={handleSelect}
         />
+
+        {/* Phase 12 (improvement-plan §10.7) — first-run guided
+            walkthrough. Renders nothing once every step is done or the
+            org has dismissed it — see its own header. */}
+        <OnboardingChecklist orgId={activeOrgId} />
 
         {/* Phase 27 — hero StatCard, the block Doc 05 §2.2 specs first and
             Phase 23 explicitly cut. */}
@@ -487,7 +656,13 @@ export default function DashboardScreen() {
                       accessibilityRole="button"
                       accessibilityLabel={`${worker.name}, ${dot.label}`}
                     >
-                      <Avatar name={worker.name} size={36} />
+                      <Avatar
+                        name={worker.name}
+                        imageUrl={
+                          worker.photoPath ? dispatchPhotoUrlByPath[worker.photoPath] : undefined
+                        }
+                        size={36}
+                      />
                       <Text fontSize={12.5} fontWeight="600" numberOfLines={1} textAlign="center">
                         {worker.name}
                       </Text>
@@ -577,6 +752,15 @@ export default function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={project.name}
                   >
+                    {project.cover_photo_url && projectPhotoUrlByPath[project.cover_photo_url] && (
+                      <Image
+                        src={projectPhotoUrlByPath[project.cover_photo_url]}
+                        width="100%"
+                        height={90}
+                        borderRadius={10}
+                        marginBottom="$1"
+                      />
+                    )}
                     <Text fontSize={15} fontWeight="600" numberOfLines={1}>
                       {project.name}
                     </Text>
@@ -666,7 +850,69 @@ export default function DashboardScreen() {
           </YStack>
         </XStack>
 
-        {/* Activity feed — still deliberately not built; see file header. */}
+        {/* Phase 8 §1.7 — activity feed, previously "still deliberately
+            not built" (see file header for the backend gap that blocked
+            it and how migration 0073 closes it). */}
+        <YStack gap="$2.5">
+          <Text
+            fontSize={13}
+            fontWeight="600"
+            color="$neutral500"
+            textTransform="uppercase"
+            letterSpacing={0.4}
+          >
+            Activité récente
+          </Text>
+          {loading ? (
+            <YStack gap="$2">
+              <SkeletonBlock width="100%" height={44} radius={12} />
+              <SkeletonBlock width="100%" height={44} radius={12} />
+            </YStack>
+          ) : activityFeed.length === 0 ? (
+            <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4">
+              <Text fontSize={13.5} color="$neutral500">
+                Aucune activité récente. Les nouvelles entrées de journal, dépenses, incidents et
+                dispatchs apparaîtront ici.
+              </Text>
+            </YStack>
+          ) : (
+            <YStack backgroundColor="$neutral0" borderRadius="$card" overflow="hidden">
+              {activityFeed.map((event, i) => {
+                const Icon = ACTIVITY_ICON[event.event_type];
+                return (
+                  <XStack
+                    key={event.id}
+                    alignItems="center"
+                    gap="$3"
+                    paddingHorizontal="$4"
+                    paddingVertical={12}
+                    borderTopWidth={i === 0 ? 0 : 1}
+                    borderTopColor="$neutral100"
+                  >
+                    <YStack
+                      width={32}
+                      height={32}
+                      borderRadius={16}
+                      backgroundColor="$accent50"
+                      alignItems="center"
+                      justifyContent="center"
+                    >
+                      <Icon size={16} weight="bold" color={color.accent[600]} />
+                    </YStack>
+                    <YStack flex={1} gap={2}>
+                      <Text fontSize={13.5} numberOfLines={2}>
+                        {activityEventLabel(event)}
+                      </Text>
+                      <Text fontSize={11.5} color="$neutral500">
+                        {relativeTime(event.created_at)}
+                      </Text>
+                    </YStack>
+                  </XStack>
+                );
+              })}
+            </YStack>
+          )}
+        </YStack>
       </ScrollView>
     </YStack>
   );

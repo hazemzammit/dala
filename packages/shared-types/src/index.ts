@@ -69,6 +69,24 @@ export interface Profile {
   expo_push_token: string | null; // migration 0025 — Doc 02 §2.9a
   notification_prefs: NotificationPrefs; // migration 0025 — Doc 03 §3.23 / Doc 02 §2.9a
   deletion_requested_at: string | null; // migration 0028 — Doc 03 §3.22 "Supprimer mon compte"
+  emergency_contact_name: string | null; // migration 0075 — Phase 10 §4.3
+  emergency_contact_phone: string | null; // migration 0075 — Phase 10 §4.3
+}
+
+/** migration 0075, Part 5 — the jsonb shape `get_profile_summary_for_org_member()`
+ *  returns: an org-scoped read of another member's profile, deliberately
+ *  narrower than the full `Profile` row (see that RPC's own comment —
+ *  never the full row, never auth.users.email itself). */
+export interface ProfileSummary {
+  full_name: string;
+  phone: string | null;
+  avatar_url: string | null;
+  email_verified_at: string | null;
+  last_login_at: string | null;
+  created_at: string;
+  profile_checklist_dismissed_at: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_phone: string | null;
 }
 
 /** migration 0025 — Doc 03 §3.23 per-category push toggles + Doc 02 §2.9a
@@ -83,6 +101,15 @@ export interface NotificationPrefs {
   safety: boolean;
   digest_frequency: DigestFrequency;
 }
+
+// migration 0075 — Phase 10 §4.2. Closed enums enforced by real CHECK
+// constraints on organizations.legal_form/workforce_size_bracket, which is
+// exactly why organization-settings.tsx uses a small local chip-row
+// control for these two instead of the free-text-fallback Select.tsx (see
+// that screen's own header for the reasoning).
+export type OrganizationLegalForm = 'personne_physique' | 'sarl' | 'suarl' | 'sa';
+export type WorkforceSizeBracket = '1' | '2_10' | '11_50' | '51_plus';
+export type OrganizationVerificationStatus = 'unverified' | 'pending' | 'verified';
 
 export interface Organization {
   id: string;
@@ -101,6 +128,17 @@ export interface Organization {
   updated_at: string;
   suspended_at: string | null; // 0019 — Doc 04 §4.3.3, admin-only write path
   deleted_at: string | null; // 0019 — Doc 04 §4.3.3, 30-day recoverable soft-delete
+  legal_form: OrganizationLegalForm | null; // migration 0075 — Phase 10 §4.2
+  workforce_size_bracket: WorkforceSizeBracket | null; // migration 0075 — Phase 10 §4.2, superseded for display by a live worker count once any exist (see organization-settings.tsx)
+  facebook_url: string | null; // migration 0075
+  instagram_url: string | null; // migration 0075
+  website_url: string | null; // migration 0075
+  service_area: string | null; // migration 0075 — free text ("zone d'intervention"), not geocoded
+  verification_status: OrganizationVerificationStatus; // migration 0075 — display-only in this phase, no self-service write path
+  // rib_encrypted/rib_last4 deliberately NOT modeled here — the ciphertext
+  // column is never selected by any client (see get_organization_rib_masked,
+  // migration 0075), and rib_last4 is read only through that RPC's own
+  // { has_rib, rib_last4 } shape, not as a plain organizations column read.
 }
 
 // ---------------------------------------------------------------------------
@@ -150,6 +188,7 @@ export interface Worker {
   user_id: string | null;
   created_at: string;
   deleted_at: string | null; // migration 0025 — Doc 02 §2.10, 30-day recoverable soft-delete (same pattern as Project.deleted_at)
+  photo_url: string | null; // migration 0070 — Phase 3 §1.5, storage path (never a direct URL — Doc 01 §1.3.11)
 }
 
 export interface WorkerInvitation {
@@ -196,6 +235,7 @@ export interface Project {
   created_by: string;
   created_at: string;
   updated_at: string;
+  cover_photo_url: string | null; // migration 0070 — Phase 3 §1.5, storage path (never a direct URL — Doc 01 §1.3.11)
 }
 
 export interface ProjectMembership {
@@ -241,6 +281,9 @@ export interface Vehicle {
   // vehicles was the one editable-record table §1.9 names that was
   // missing this column until this migration closed that gap.
   version: number;
+  photo_url: string | null; // migration 0070 — Phase 3 §1.3 item 1, storage path (never a direct URL — Doc 01 §1.3.11)
+  // migration 0076 — Phase 11 §9.2, 30-day recoverable soft-delete.
+  deleted_at: string | null;
 }
 
 export interface DispatchAssignment {
@@ -271,6 +314,9 @@ export interface AttendanceRecord {
   created_at: string;
   // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
   updated_at: string;
+  // migration 0071 — Phase 4 §1.1 step 4 / §3, optional context for an
+  // 'absent' status, storage path N/A (plain text, not a photo field).
+  absence_reason: string | null;
 }
 
 export interface Advance {
@@ -299,6 +345,10 @@ export interface ProjectExpense {
   expense_date: string;
   created_by: string;
   created_at: string;
+  // migration 0076 — Phase 11 §9.2, soft-delete backing the UndoToast's
+  // undo window on expenses.tsx. See that migration's own Part 2 header
+  // for why this is deliberately NOT wired into trash.tsx.
+  deleted_at: string | null;
 }
 
 /**
@@ -352,6 +402,10 @@ export interface Material {
   created_at: string;
   // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
   updated_at: string;
+  // migration 0073 — improvement-plan §1.9 item 2. Optional; when set
+  // alongside project_id, approving the request pushes a matching
+  // project_expenses row (category='materiaux'). See approve_material_request().
+  cost: number | null;
 }
 
 export interface SiteLog {
@@ -372,6 +426,13 @@ export interface SiteLog {
   created_at: string;
   // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
   updated_at: string;
+  // migration 0072 — improvement-plan Phase 6 (§1.2 step 4), 30-day
+  // recoverable soft-delete. Set only via soft_delete_site_log()/
+  // restore_site_log(); read here since journal.tsx queries this table
+  // live from Supabase and filters `.is('deleted_at', null)` client-side.
+  // Deliberately NOT mirrored onto the local WatermelonDB SiteLog model —
+  // see 0072's own migration header for why the two diverge.
+  deleted_at: string | null;
 }
 
 export interface SafetyIncident {
@@ -384,6 +445,10 @@ export interface SafetyIncident {
   photo_url: string | null;
   reported_by: string | null;
   created_at: string;
+  // migration 0071 — Phase 4 §3, closed list at the app layer so the
+  // future §2.3 safety chart can group by category; nullable at the DB
+  // layer only for pre-migration rows.
+  incident_type: string | null;
 }
 
 /** migration 0020 — Doc 03 §3.17 involved-worker multi-select, many-to-many. */
@@ -468,7 +533,9 @@ export interface DigestSummary {
  *  client-side from Project/Worker rows where deleted_at is not null, not
  *  a table of its own. */
 export interface TrashItem {
-  entity_type: 'project' | 'worker';
+  // Phase 11 §9.2 — 'vehicle'/'site_log' added, extending trash/restore
+  // coverage per that section's own wording.
+  entity_type: 'project' | 'worker' | 'vehicle' | 'site_log';
   id: string;
   label: string;
   deleted_at: string;
@@ -540,4 +607,77 @@ export interface OrgStorageUsage {
   file_count: number;
   total_bytes: number;
   overage_status: 'ok' | 'warning' | 'critical' | 'over_limit' | 'no_limit_defined';
+}
+
+/** `edge_function_invocations` table (migration 0057) — one row per
+ *  invocation of a user-triggered (not cron-invoked) Edge Function, written
+ *  by supabase/functions/_shared/logInvocation.ts's wrapper. Distinct from
+ *  ScheduledJobRun above: that table only ever gets a row from a pg_cron
+ *  tick; this one only ever gets a row from a synchronous, user-triggered
+ *  call (send-organization-invitation-email, generate-report, etc — see
+ *  0057's header for the full retrofitted list). function_name has no
+ *  DB-level CHECK constraint, same reasoning as ScheduledJobRun's
+ *  job_name — a newly-retrofitted function can start writing a new name
+ *  without a migration or a type change here. */
+export interface EdgeFunctionInvocation {
+  id: string;
+  function_name: string;
+  status: 'success' | 'error';
+  duration_ms: number | null;
+  error_message: string | null;
+  org_id: string | null;
+  invoked_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 8 (improvement-plan §1.7, §1.3 steps 2-3) — migration 0073
+// ---------------------------------------------------------------------------
+
+/** `org_activity_feed` (migration 0073) — improvement-plan §1.7. Populated
+ *  only by AFTER INSERT triggers on site_logs/project_expenses/
+ *  safety_incidents/dispatch_assignments; see that migration's own header
+ *  for why this is a dedicated table rather than RLS on audit_log.
+ *  `actor_id` is null for a 'dispatch_assigned' row (dispatch_assignments
+ *  has no "created by" column) — display code should fall back to a
+ *  generic "L'équipe" label for that one event type, same pattern
+ *  journal.tsx's loggedByName() already uses for an unresolved author. */
+export interface OrgActivityEvent {
+  id: string;
+  org_id: string;
+  event_type:
+    'site_log_added' | 'expense_recorded' | 'safety_incident_reported' | 'dispatch_assigned';
+  actor_id: string | null;
+  project_id: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+/** `vehicle_maintenance_log` (migration 0073) — improvement-plan §1.3 step
+ *  2. Append-only, owner/manager-insert only — see that migration's Part 3
+ *  header for why this and VehicleDocument below are both append-only. */
+export interface VehicleMaintenanceLogEntry {
+  id: string;
+  org_id: string;
+  vehicle_id: string;
+  log_date: string;
+  description: string;
+  cost: number | null;
+  logged_by: string | null;
+  created_at: string;
+}
+
+/** `vehicle_documents` (migration 0073) — improvement-plan §1.3 step 3.
+ *  Append-only, one row per recording; the currently-relevant document of
+ *  a given `document_type` for a vehicle is the most recent row for that
+ *  (vehicle_id, document_type) pair — resolve with DISTINCT ON at query
+ *  time, never assume the only row or the first row is current. */
+export interface VehicleDocument {
+  id: string;
+  org_id: string;
+  vehicle_id: string;
+  document_type: string;
+  document_url: string | null;
+  expires_at: string;
+  recorded_by: string | null;
+  created_at: string;
 }

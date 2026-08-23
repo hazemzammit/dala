@@ -641,3 +641,54 @@ Day-by-day breakdown for the current cycle (Présent/Absent/Demi-journée with T
 ## 4.6 Worker settings
 
 Minimal: Profil (name read-only — set by the org, not self-editable, to prevent identity drift from the roster record; avatar is self-editable, same crop/resize pipeline as contractor profiles, Doc 01 §1.3.12), Téléphone (editable, triggers the same SMS re-verification code as the contractor flow, §3.22.1), Email (editable, same dual-confirmation flow as contractor accounts — workers are full `profiles` records with the same account-security rules, not a lesser account type), Sécurité (change password, biometric toggle), Langue, Déconnexion. No org/billing sections — those don't exist for a worker account.
+
+---
+
+## Post-v4.0 New & Changed Screens (Gap-Fix Roadmap)
+
+_Added retroactively — screens and components built after this document's
+v4.0 baseline that were never folded back into the sections above._
+
+- **`analytics.tsx`** — new contractor screen: financial and operational
+  charts (§ see Doc 02 addendum), each card wrapped in a shared
+  `ChartCard.tsx`, capped at 10 bars per chart for readability.
+- **`dispatch-week.tsx`** — a weekly calendar view of dispatch
+  assignments, alongside the existing daily dispatch screen.
+- **`vehicle/[id].tsx`** — new vehicle detail screen, reusing the same
+  `WorkerHubTabs.tsx` two-tab pattern originally built for the worker
+  detail screen (Infos / Maintenance-and-Documents).
+- **Worker detail screen** — rebuilt as `WorkerHubTabs.tsx`, a tabbed hub
+  (Infos / Pointage / Avances / Dispatch) assembling logic already
+  present in `pointage.tsx`/`advances.tsx`/`dispatch.tsx`, filtered to one
+  worker, rather than a single flat screen.
+- **`AttendanceHistory.tsx`** — calendar/list toggle view showing each
+  attendance record's `source` (manual vs. dispatch check-in) and who
+  recorded it, with same-day conflicting-record ("Corrigé") detection.
+- **Unified `components/profile/ProfileScreen.tsx`** — parameterized by
+  role, replacing what were previously divergent profile screens per
+  contractor/manager/viewer; also backs the worker's own profile screen
+  (`(worker)/profile.tsx`), which previously only had an avatar-only stub.
+- **`feedback.tsx`** — new "Signaler un problème" screen (see Doc 02
+  addendum).
+- **`components/ui/Select.tsx`** — new shared bottom-sheet pick-or-specify
+  component (search field appears at ≥6 options; "Autre — préciser"
+  stores free text directly in the underlying column, no separate flag).
+- **`components/ui/UndoToast.tsx`** — new lower-stakes-delete pattern
+  (vehicle, expense) offering an inline undo before the soft-delete is
+  final.
+- **`NotificationRouter.tsx`** — deep-links a tapped push notification
+  (dispatch/material/safety) directly to the relevant record.
+- **`AppLockGate.tsx`** — biometric app-lock via `expo-local-authentication`
+  (needs a dev/production build; does not function in Expo Go).
+- **Journal (`journal.tsx`)** — gained date-grouped sections, a
+  contractor add-entry FAB (previously contractor-only via
+  `update-chantier.tsx`), edit-caption/soft-delete, and a voice-note
+  playback progress bar with tap-to-seek.
+- **Pointage / sync UX** — background sync (previously silent) now shows
+  a visible three-state status indicator (Synchronisation… / Synchronisé
+  / Échec + Réessayer); a past-date correction banner was added to
+  `pointage.tsx` alongside the new `AttendanceHistory.tsx`.
+- **Reports (`reports.tsx`)** — two-ended date-range picker with bounds
+  that can't invert or reach into the future; generated PDFs now embed
+  the org logo and, for every report type, a one-page bar-chart overview
+  before the data table.

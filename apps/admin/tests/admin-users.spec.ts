@@ -47,3 +47,52 @@ test.describe('Admin Users', () => {
     }
   });
 });
+
+/**
+ * Admin remediation Tier 1.2 — locked-out admin TOTP re-provisioning
+ * (Doc 04 §4.3.1 edge case / §4.3.11). Uses the dedicated adminResetTarget
+ * fixture (not adminA/adminSupport) so this test's de-enrollment doesn't
+ * leave a shared login fixture broken for other spec files.
+ */
+test.describe('Admin Users — TOTP reset', () => {
+  test('super_admin can reset another admin\u2019s TOTP; they show as not configured', async ({
+    page,
+  }) => {
+    const fixtures = loadFixtures();
+    await loginAsAdmin(page, fixtures.adminSuper);
+    await page.goto('/admin-users');
+
+    const row = page.getByRole('row', { name: new RegExp(fixtures.adminResetTarget.email) });
+    await row.getByRole('button', { name: 'R\u00e9initialiser 2FA' }).click();
+
+    const confirmButton = page
+      .getByRole('button', { name: 'R\u00e9initialiser', exact: true })
+      .last();
+    await expect(confirmButton).toBeDisabled();
+
+    await page.getByLabel(new RegExp('Tapez')).fill(fixtures.adminResetTarget.email);
+    await expect(confirmButton).toBeEnabled();
+    await confirmButton.click();
+
+    await expect(row.getByText('Non configur\u00e9e')).toBeVisible();
+  });
+
+  test('reset button is not shown for the acting admin\u2019s own row', async ({ page }) => {
+    const fixtures = loadFixtures();
+    await loginAsAdmin(page, fixtures.adminSuper);
+    await page.goto('/admin-users');
+
+    const ownRow = page.getByRole('row', { name: new RegExp(fixtures.adminSuper.email) });
+    await expect(ownRow.getByRole('button', { name: 'R\u00e9initialiser 2FA' })).toHaveCount(0);
+  });
+
+  test('admin (non-super) gets 403 resetting another admin\u2019s TOTP', async ({ page }) => {
+    const fixtures = loadFixtures();
+    await loginAsAdmin(page, fixtures.adminA);
+
+    const res = await page.request.post(`/api/admin/admins/${fixtures.adminResetTarget.id}`, {
+      data: { action: 'reset_totp' },
+    });
+    expect(res.status()).toBe(403);
+  });
+});

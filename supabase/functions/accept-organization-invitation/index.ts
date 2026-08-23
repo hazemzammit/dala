@@ -18,6 +18,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { checkInviteAcceptRateLimit, extractClientIp } from '../_shared/rateLimit.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -39,6 +40,25 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Phase 12 (improvement-plan §10.4) — same gap and same fix as
+    // accept-worker-invitation's own header comment: admin.createUser()
+    // via service role bypasses Supabase Auth's own rate limits. See
+    // migration 0077's Part 1 header for the full investigation.
+    const rateLimit = await checkInviteAcceptRateLimit(
+      admin,
+      {
+        functionName: 'accept-organization-invitation',
+        maxPerToken: 10,
+        maxPerIp: 20,
+        windowSeconds: 3600,
+      },
+      String(invitation_token),
+      extractClientIp(req),
+    );
+    if (!rateLimit.allowed) {
+      return jsonResponse({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
+    }
 
     const { data: invitation, error: invitationError } = await admin
       .from('organization_member_invitations')

@@ -1,15 +1,24 @@
 'use client';
 
 import { CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Card } from './Card';
 
 /**
- * apps/admin/src/components/ui/DataTable.tsx — mirrors apps/web's exactly.
- * Doc 05 §3.6: admin is "tables-first" — this is the single most-used
- * component in the whole admin app (Organizations, Users, Audit Log all
- * use it).
+ * apps/admin/src/components/ui/DataTable.tsx — mirrored from apps/web's
+ * copy as of this file's original authorship (Doc 05 §3.6: admin is
+ * "tables-first" — this is the single most-used component in the whole
+ * admin app: Organizations, Users, Audit Log all use it).
+ *
+ * Admin remediation Tier 4.1 — added the optional `pagination` prop
+ * below. apps/web has its OWN separate copy of this component (not a
+ * shared package — checked before writing this comment) — this change
+ * only touches apps/admin's copy, so as of this addition the two are no
+ * longer byte-identical. If apps/web wants the same pagination UI, that's
+ * a separate change on their side (collaborator-owned, same note as
+ * apps/web/AnnouncementBanner.tsx from Tier 2.2), not something this
+ * remediation pass propagates automatically.
  */
 export interface DataTableColumn<T> {
   key: string;
@@ -20,6 +29,13 @@ export interface DataTableColumn<T> {
   width?: string;
 }
 
+export interface DataTablePagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  onPageChange: (page: number) => void;
+}
+
 interface DataTableProps<T> {
   columns: DataTableColumn<T>[];
   rows: T[];
@@ -28,6 +44,12 @@ interface DataTableProps<T> {
   bulkActions?: (selectedIds: string[]) => React.ReactNode;
   onRowClick?: (row: T) => void;
   emptyState?: React.ReactNode;
+  // When provided, renders prev/next + a page indicator below the table.
+  // `rows` is still just the CURRENT page's rows — pagination here is
+  // server-driven (the caller's fetch already applied .range()), this
+  // component only renders the controls and calls onPageChange; it does
+  // not slice `rows` itself.
+  pagination?: DataTablePagination;
 }
 
 export function DataTable<T>({
@@ -38,10 +60,21 @@ export function DataTable<T>({
   bulkActions,
   onRowClick,
   emptyState,
+  pagination,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+
+  // Admin remediation Tier 4.3 — selection is scoped to the currently
+  // loaded `rows`, not persisted across a reload. Without this, a bulk
+  // action that succeeds and triggers the caller's own re-fetch would
+  // leave `selected` holding ids that may no longer be on the new page
+  // (or may not even exist anymore, e.g. a bulk delete), showing a
+  // "N selected" bar with nothing real behind it.
+  useEffect(() => {
+    setSelected(new Set());
+  }, [rows]);
 
   const sortedRows = useMemo(() => {
     const column = columns.find((c) => c.key === sortKey);
@@ -170,6 +203,39 @@ export function DataTable<T>({
           </tbody>
         </table>
       </Card>
+
+      {pagination && (
+        <div className="mt-3 flex items-center justify-between text-sm text-neutral-500">
+          <span>
+            {pagination.total === 0
+              ? '0 résultat'
+              : `${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(
+                  pagination.page * pagination.pageSize,
+                  pagination.total,
+                )} sur ${pagination.total}`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => pagination.onPageChange(pagination.page - 1)}
+              disabled={pagination.page <= 1}
+              className="rounded-control border border-neutral-300 px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Précédent
+            </button>
+            <span className="text-xs">
+              Page {pagination.page}/
+              {Math.max(1, Math.ceil(pagination.total / pagination.pageSize))}
+            </span>
+            <button
+              onClick={() => pagination.onPageChange(pagination.page + 1)}
+              disabled={pagination.page * pagination.pageSize >= pagination.total}
+              className="rounded-control border border-neutral-300 px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Suivant
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

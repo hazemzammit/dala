@@ -13,9 +13,18 @@
       "backgroundColor": "#FAFAFA"
     },
     "assetBundlePatterns": ["**/*"],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/97011893-3003-4c19-89df-699323ebea9b"
+    },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "tn.dala.app"
+      "bundleIdentifier": "tn.dala.app",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Dala utilise Face ID pour verrouiller l'application sur cet appareil, si vous activez cette option dans Sécurité."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -58,7 +67,8 @@
           }
         }
       ],
-      "@morrowdigital/watermelondb-expo-plugin"
+      "@morrowdigital/watermelondb-expo-plugin",
+      "@react-native-community/datetimepicker"
     ],
     "extra": {
       "eas": {

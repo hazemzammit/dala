@@ -30,125 +30,133 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { withInvocationLog } from '../_shared/logInvocation.ts';
 import { sendEmail } from '../_shared/resend.ts';
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return jsonResponse({ error: 'Authentification requise.' }, 401);
+Deno.serve(
+  withInvocationLog('send-project-invitation-email', async (req, ctx) => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
     }
 
-    const { invitation_id } = (await req.json()) ?? {};
-    if (!invitation_id || typeof invitation_id !== 'string') {
-      return jsonResponse({ error: 'invitation_id requis.' }, 400);
-    }
+    try {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return jsonResponse({ error: 'Authentification requise.' }, 401);
+      }
 
-    // Caller-scoped client (anon key + forwarded JWT) — resolves identity
-    // and role only, same separation as send-organization-invitation-email.
-    // Never used to read the invitation row itself, so this can't be
-    // tricked into confirming an invitation exists for a project the
-    // caller's org has no lead role on.
-    const callerClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+      const { invitation_id } = (await req.json()) ?? {};
+      if (!invitation_id || typeof invitation_id !== 'string') {
+        return jsonResponse({ error: 'invitation_id requis.' }, 400);
+      }
 
-    const {
-      data: { user },
-    } = await callerClient.auth.getUser();
-    if (!user) {
-      return jsonResponse({ error: 'Session invalide.' }, 401);
-    }
+      // Caller-scoped client (anon key + forwarded JWT) — resolves identity
+      // and role only, same separation as send-organization-invitation-email.
+      // Never used to read the invitation row itself, so this can't be
+      // tricked into confirming an invitation exists for a project the
+      // caller's org has no lead role on.
+      const callerClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
 
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+      const {
+        data: { user },
+      } = await callerClient.auth.getUser();
+      if (!user) {
+        return jsonResponse({ error: 'Session invalide.' }, 401);
+      }
 
-    const { data: invitation, error: invitationError } = await admin
-      .from('project_invitations')
-      .select('id, project_id, lead_org_id, invited_email, trade_type, sent_via, token, status')
-      .eq('id', invitation_id)
-      .maybeSingle();
+      const admin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
 
-    if (invitationError || !invitation) {
-      return jsonResponse({ error: 'Invitation introuvable.' }, 404);
-    }
+      const { data: invitation, error: invitationError } = await admin
+        .from('project_invitations')
+        .select('id, project_id, lead_org_id, invited_email, trade_type, sent_via, token, status')
+        .eq('id', invitation_id)
+        .maybeSingle();
 
-    // This function only ever sends the email channel — collaboration.tsx
-    // is expected to only invoke it when sent_via === 'email' in the first
-    // place, but the check is repeated here rather than trusted from the
-    // client, same "never trust the caller for anything security- or
-    // correctness-relevant" discipline as every other function in this
-    // codebase. whatsapp/sms rows are a no-op here, not an error — the row
-    // itself is still valid, there's just nothing this function does with it.
-    if (invitation.sent_via !== 'email') {
-      return jsonResponse({ error: 'not_email_channel' }, 409);
-    }
-    if (!invitation.invited_email) {
-      return jsonResponse({ error: 'no_invited_email' }, 409);
-    }
+      if (invitationError || !invitation) {
+        return jsonResponse({ error: 'Invitation introuvable.' }, 404);
+      }
 
-    // Owner/manager-only, matching invite_org_to_project's (0024) own
-    // permission check (`org_role_of(v_lead_org_id) in ('owner','manager')`)
-    // — checked via the caller-scoped client so this respects RLS exactly
-    // like every other authenticated request here, not a client-supplied
-    // org_id trusted at face value.
-    const { data: membership } = await callerClient
-      .from('organization_members')
-      .select('role')
-      .eq('org_id', invitation.lead_org_id)
-      .eq('user_id', user.id)
-      .maybeSingle();
+      // lead_org_id, not project_id — the invocation-log's org context is
+      // "which org triggered this," and this invite is sent on behalf of
+      // the lead org reaching out, not the (multi-org) project itself.
+      ctx.orgId = invitation.lead_org_id;
 
-    if (!membership || !['owner', 'manager'].includes(membership.role)) {
-      return jsonResponse({ error: 'Réservé au propriétaire ou manager.' }, 403);
-    }
+      // This function only ever sends the email channel — collaboration.tsx
+      // is expected to only invoke it when sent_via === 'email' in the first
+      // place, but the check is repeated here rather than trusted from the
+      // client, same "never trust the caller for anything security- or
+      // correctness-relevant" discipline as every other function in this
+      // codebase. whatsapp/sms rows are a no-op here, not an error — the row
+      // itself is still valid, there's just nothing this function does with it.
+      if (invitation.sent_via !== 'email') {
+        return jsonResponse({ error: 'not_email_channel' }, 409);
+      }
+      if (!invitation.invited_email) {
+        return jsonResponse({ error: 'no_invited_email' }, 409);
+      }
 
-    if (invitation.status !== 'pending') {
-      // Not fatal to the caller's flow — mirrors
-      // send-organization-invitation-email's own not_pending handling.
-      return jsonResponse({ error: 'not_pending' }, 409);
-    }
+      // Owner/manager-only, matching invite_org_to_project's (0024) own
+      // permission check (`org_role_of(v_lead_org_id) in ('owner','manager')`)
+      // — checked via the caller-scoped client so this respects RLS exactly
+      // like every other authenticated request here, not a client-supplied
+      // org_id trusted at face value.
+      const { data: membership } = await callerClient
+        .from('organization_members')
+        .select('role')
+        .eq('org_id', invitation.lead_org_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    const [{ data: project }, { data: leadOrg }] = await Promise.all([
-      admin.from('projects').select('name').eq('id', invitation.project_id).maybeSingle(),
-      admin.from('organizations').select('name').eq('id', invitation.lead_org_id).maybeSingle(),
-    ]);
+      if (!membership || !['owner', 'manager'].includes(membership.role)) {
+        return jsonResponse({ error: 'Réservé au propriétaire ou manager.' }, 403);
+      }
 
-    const projectName = project?.name ?? 'un chantier';
-    const leadOrgName = leadOrg?.name ?? 'une entreprise';
-    const tradeLabel = invitation.trade_type ? ` en tant que ${invitation.trade_type}` : '';
+      if (invitation.status !== 'pending') {
+        // Not fatal to the caller's flow — mirrors
+        // send-organization-invitation-email's own not_pending handling.
+        return jsonResponse({ error: 'not_pending' }, 409);
+      }
 
-    // dala:// deep link, mobile-only — same "no web fallback" scope
-    // boundary as send-organization-invitation-email, and for the same
-    // reason: this is mobile-contractor territory, apps/web has no
-    // equivalent accept page today, out of scope here (collaborator's side).
-    const acceptUrl = `dala://accept-org-invite?token=${invitation.token}`;
+      const [{ data: project }, { data: leadOrg }] = await Promise.all([
+        admin.from('projects').select('name').eq('id', invitation.project_id).maybeSingle(),
+        admin.from('organizations').select('name').eq('id', invitation.lead_org_id).maybeSingle(),
+      ]);
 
-    await sendEmail({
-      to: invitation.invited_email,
-      subject: `Invitation à collaborer sur ${projectName} — Dala`,
-      html: `
+      const projectName = project?.name ?? 'un chantier';
+      const leadOrgName = leadOrg?.name ?? 'une entreprise';
+      const tradeLabel = invitation.trade_type ? ` en tant que ${invitation.trade_type}` : '';
+
+      // dala:// deep link, mobile-only — same "no web fallback" scope
+      // boundary as send-organization-invitation-email, and for the same
+      // reason: this is mobile-contractor territory, apps/web has no
+      // equivalent accept page today, out of scope here (collaborator's side).
+      const acceptUrl = `dala://accept-org-invite?token=${invitation.token}`;
+
+      await sendEmail({
+        to: invitation.invited_email,
+        subject: `Invitation à collaborer sur ${projectName} — Dala`,
+        html: `
         <p><strong>${leadOrgName}</strong> vous invite à collaborer sur le chantier <strong>${projectName}</strong>${tradeLabel} sur Dala.</p>
         <p><a href="${acceptUrl}">Accepter l'invitation</a></p>
         <p>Ce lien nécessite l'application Dala installée sur votre téléphone. Il expire dans 7 jours.</p>
         <p>Si vous ne vous attendiez pas à cette invitation, vous pouvez ignorer cet e-mail.</p>
       `,
-    });
+      });
 
-    return jsonResponse({ success: true }, 200);
-  } catch (err) {
-    console.error('[send-project-invitation-email] unexpected error', err);
-    return jsonResponse({ error: 'Une erreur inattendue est survenue.' }, 500);
-  }
-});
+      return jsonResponse({ success: true }, 200);
+    } catch (err) {
+      console.error('[send-project-invitation-email] unexpected error', err);
+      return jsonResponse({ error: 'Une erreur inattendue est survenue.' }, 500);
+    }
+  }),
+);
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {

@@ -1,9 +1,6 @@
 import { useRef, useState } from 'react';
-import type { ElementRef, RefObject } from 'react';
 import { Modal, Pressable, View as RNView } from 'react-native';
 import { Text, View, YStack } from 'tamagui';
-
-type ViewRef = ElementRef<typeof RNView>;
 
 /**
  * apps/mobile/src/components/ui/Popover.tsx
@@ -23,7 +20,7 @@ type ViewRef = ElementRef<typeof RNView>;
 interface PopoverProps {
   visible: boolean;
   onClose: () => void;
-  anchorRef: RefObject<ViewRef | null>;
+  anchorRef: React.RefObject<RNView | null>;
   children: React.ReactNode;
   /** 'end' aligns the popover's right edge to the anchor's right edge
    * (the common case for a trailing "..." button); 'start' aligns left. */
@@ -42,7 +39,7 @@ export function Popover({
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   function measureAndShow() {
-    anchorRef.current?.measureInWindow((x, y, w, h) => {
+    anchorRef.current?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
       setPosition({
         top: y + h + 6,
         left: align === 'end' ? x + w - width : x,
@@ -121,5 +118,5 @@ export function PopoverItem({
 // Kept useRef import used for consumers that want the typed anchor ref
 // shape without redefining it per screen.
 export function usePopoverAnchor() {
-  return useRef<ViewRef>(null);
+  return useRef<RNView | null>(null);
 }

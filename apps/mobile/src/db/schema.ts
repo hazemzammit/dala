@@ -89,10 +89,15 @@ export const schema = appSchema({
     }),
 
     // Doc 04 attendance/pointage. Server: attendance_records (0007),
-    // updated_at added in 0045. Append-only per Doc 01 §1.9 — an offline
-    // write here is always a new row (a check-in event), never an update
-    // to an existing one, so there's no merge/conflict concept for this
-    // table at all.
+    // updated_at added in 0045, absence_reason added in 0071 (Phase 4
+    // §1.1 step 4 / §3). Append-only per Doc 01 §1.9 — an offline write
+    // here is always a new row (a check-in event), never an update to an
+    // existing one, so there's no merge/conflict concept for this table
+    // at all. absence_reason needs no special handling in the sync
+    // adapter beyond being declared here — pushChanges.ts's generic
+    // upsert path (attendance_records is in GENERIC_UPSERT_TABLES) already
+    // spreads every column present on the dirty record through to the
+    // Supabase upsert, so a new nullable column flows through automatically.
     tableSchema({
       name: 'attendance_records',
       columns: [
@@ -103,6 +108,7 @@ export const schema = appSchema({
         { name: 'status', type: 'string' }, // 'present'|'absent'|'half_day'
         { name: 'source', type: 'string' }, // 'dispatch_checkin'|'manual_pointage'
         { name: 'recorded_by', type: 'string', isOptional: true },
+        { name: 'absence_reason', type: 'string', isOptional: true },
         { name: 'created_at', type: 'number' },
         { name: 'updated_at', type: 'number', isIndexed: true },
       ],

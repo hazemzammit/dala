@@ -43,6 +43,11 @@ export function StatCard({
   loading = false,
   onPress,
 }: StatCardProps) {
+  // useTokenColor is a hook — must be called unconditionally, before the
+  // early loading-state return below, not after it (React Hooks must run
+  // in the same order every render).
+  const tc = useTokenColor();
+
   if (loading) {
     return (
       <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4" gap="$3">
@@ -54,7 +59,6 @@ export function StatCard({
   }
 
   const isPositive = (delta ?? 0) >= 0;
-  const tc = useTokenColor();
   const deltaColor = isPositive ? tc.success : tc.danger;
   // Dark-mode pass — this used to be a hand-picked light pastel
   // ('#EAF7EF'/'#FBEAE9') matching no token at all, so it stayed

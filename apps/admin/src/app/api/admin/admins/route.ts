@@ -26,7 +26,26 @@ export async function GET() {
     .order('created_at', { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ admins: data ?? [] });
+
+  // Admin remediation Tier 1.2 — the TOTP-reset row action needs the
+  // target admin's exact email for the confirm-typing dialog (same
+  // reasoning as api/admin/users/route.ts's own email-merge comment:
+  // email lives on auth.users, not platform_admins, and asking the admin
+  // to blind-type it via a native prompt() would mean the UI has no
+  // string to validate against before the server does). perPage: 1000,
+  // same cap users/route.ts already accepts at current scale.
+  const { data: authUsersPage } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+  const emailById = new Map<string, string>();
+  for (const u of authUsersPage?.users ?? []) {
+    if (u.email) emailById.set(u.id, u.email);
+  }
+
+  const admins = (data ?? []).map((a) => ({
+    ...a,
+    email: emailById.get(a.id as string) ?? null,
+  }));
+
+  return NextResponse.json({ admins });
 }
 
 export async function POST(request: Request) {

@@ -11,6 +11,33 @@ import { getPgPool } from '@/lib/db-explorer/pg-client';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
+import { setUserSuspended } from '@/lib/users/actions';
+
+/**
+ * Admin remediation Tier 4.8 — minimal GET added for the new user-detail
+ * (notes-only) page's header context. Deliberately thin (name/email/
+ * suspended state only) — matches the plan's own scope cut for this
+ * item; a fuller detail view (org membership, etc.) stays out of scope
+ * here.
+ */
+export async function GET(_request: Request, { params }: { params: { userId: string } }) {
+  const ctx = await getAdminSessionContext();
+  if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
+
+  const supabase = getAdminSupabaseClient();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('id, full_name, suspended_at')
+    .eq('id', params.userId)
+    .maybeSingle();
+
+  if (!profile) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+
+  const { data: authUsersPage } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+  const email = authUsersPage?.users.find((u) => u.id === profile.id)?.email ?? null;
+
+  return NextResponse.json({ user: { ...profile, email } });
+}
 
 type UserAction =
   'reset_password' | 'suspend' | 'unsuspend' | 'delete' | 'move_org' | 'revoke_sessions';
@@ -52,13 +79,12 @@ export async function POST(request: Request, { params }: { params: { userId: str
       break;
     }
     case 'suspend':
-      await supabase
-        .from('profiles')
-        .update({ suspended_at: new Date().toISOString() })
-        .eq('id', user.id);
+      // Admin remediation Tier 4.3 — now shared with the bulk route via
+      // lib/users/actions.ts.
+      await setUserSuspended(supabase, user.id as string, true);
       break;
     case 'unsuspend':
-      await supabase.from('profiles').update({ suspended_at: null }).eq('id', user.id);
+      await setUserSuspended(supabase, user.id as string, false);
       break;
     case 'delete': {
       const confirmEmail = typeof body?.confirmEmail === 'string' ? body.confirmEmail : '';

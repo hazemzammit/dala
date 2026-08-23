@@ -1,8 +1,13 @@
 import { color } from '@dala/design-tokens';
 import { changePasswordSchema, totpCodeSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
-import { ArrowLeftIcon, CheckCircleIcon, ShieldCheckIcon } from 'phosphor-react-native';
-import { useCallback, useState } from 'react';
+import {
+  ArrowLeftIcon,
+  CheckCircleIcon,
+  FingerprintIcon,
+  ShieldCheckIcon,
+} from 'phosphor-react-native';
+import { useCallback, useEffect, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { SvgXml } from 'react-native-svg';
 import { Text, XStack, YStack } from 'tamagui';
@@ -12,6 +17,12 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { FormField } from '@/components/ui/FormField';
 import { Sheet } from '@/components/ui/Sheet';
 import { useToast } from '@/components/ui/Toast';
+import { Toggle } from '@/components/ui/Toggle';
+import {
+  getBiometricLockEnabled,
+  isBiometricAvailable,
+  setBiometricLockEnabled,
+} from '@/lib/biometricLock';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -57,6 +68,31 @@ export default function SecuritySettingsScreen() {
   const [enrollCode, setEnrollCode] = useState('');
   const [enrollError, setEnrollError] = useState<string | null>(null);
   const [enrollBusy, setEnrollBusy] = useState(false);
+
+  // Phase 12 (improvement-plan §6.6) — biometric app lock. Device-local
+  // only (SecureStore), see lib/biometricLock.ts's own header for why
+  // this deliberately never touches `profiles`/organizations tables.
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricEnabled, setBiometricEnabled] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      setBiometricAvailable(await isBiometricAvailable());
+      setBiometricEnabled(await getBiometricLockEnabled());
+    })();
+  }, []);
+
+  async function handleToggleBiometric(next: boolean) {
+    setBiometricBusy(true);
+    await setBiometricLockEnabled(next);
+    setBiometricEnabled(next);
+    setBiometricBusy(false);
+    haptics.confirm();
+    toast.success(
+      next ? 'Verrouillage biométrique activé.' : 'Verrouillage biométrique désactivé.',
+    );
+  }
   const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
 
   useFocusEffect(
@@ -337,6 +373,30 @@ export default function SecuritySettingsScreen() {
               </Button>
             )}
           </YStack>
+
+          {/* Phase 12 (improvement-plan §6.6) — optional, opt-in, not a
+              forced gate. Hidden entirely (not shown disabled) when the
+              device has no usable biometric enrollment — see
+              lib/biometricLock.ts's isBiometricAvailable() for why. */}
+          {biometricAvailable && (
+            <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4" gap="$3">
+              <XStack alignItems="center" gap="$3">
+                <FingerprintIcon size={20} />
+                <YStack flex={1}>
+                  <Text fontSize={15}>Verrouillage biométrique</Text>
+                  <Text fontSize={12.5} color="$neutral500">
+                    Exiger Face ID / Touch ID pour rouvrir l&apos;application sur cet appareil.
+                  </Text>
+                </YStack>
+                <Toggle
+                  value={biometricEnabled}
+                  onChange={(v) => void handleToggleBiometric(v)}
+                  disabled={biometricBusy}
+                  accessibilityLabel="Verrouillage biométrique"
+                />
+              </XStack>
+            </YStack>
+          )}
         </YStack>
       </ScrollView>
 

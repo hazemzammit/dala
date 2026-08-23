@@ -1,7 +1,7 @@
 import { color } from '@dala/design-tokens';
 import type { TrashItem } from '@dala/shared-types';
 import { useFocusEffect } from 'expo-router';
-import { BuildingsIcon, HardHatIcon, TrashIcon } from 'phosphor-react-native';
+import { BuildingsIcon, CarIcon, HardHatIcon, NoteIcon, TrashIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
@@ -44,8 +44,35 @@ import { supabase } from '@/lib/supabase';
  * comment was out of date.
  *
  * 30-day window and purge_soft_deleted_records() are both server-side
- * (migrations 0013/0025) — this screen only shows what's already
+ * (migrations 0013/0025/0076) — this screen only shows what's already
  * recoverable, it doesn't compute the window itself.
+ *
+ * IMPROVEMENT-PLAN PHASE 11 (§9.2) — two more entity types added, exactly
+ * per that section's own "extend trash/restore to vehicles and journal
+ * entries" wording:
+ *   - `vehicles.deleted_at` (migration 0076, this phase) — vehicles.tsx
+ *     gained its own delete affordance this same phase (SwipeableRow +
+ *     ConfirmDialog, matching team.tsx's worker-delete precedent, since a
+ *     vehicle deletion — unlike a journal entry or an expense row — isn't
+ *     the "lower-stakes" case §9.2 carves out for the lighter undo-toast).
+ *   - `site_logs.deleted_at` (migration 0072, Phase 6) — `restore_site_log()`
+ *     was built back in Phase 6 but PHASE_6_BRIEF.md §2 explicitly
+ *     disclosed it was never wired into this screen ("added to trash.tsx
+ *     scope would be new UI beyond that list"). That disclosed gap is
+ *     closed here. NOTE: journal.tsx's own delete flow (this phase) uses
+ *     the lighter UndoToast pattern for its OWN immediate undo window —
+ *     this screen is the second-chance surface for an entry whose toast
+ *     already expired unactioned, exactly the same relationship
+ *     `pointage.tsx`'s 5s bulk-undo and this screen have for workers (a
+ *     short local undo AND a 30-day server-side one are not mutually
+ *     exclusive; they cover two different windows of time).
+ *   - `project_expenses` is deliberately NOT added here — see
+ *     migration 0076's own Part 2 header for the disclosed reason
+ *     (§9.2 names expenses only as an undo-toast example, not in its
+ *     "extend trash/restore to..." sentence).
+ *   - Journal entries show their caption/note text (truncated) as the
+ *     label, falling back to "Entrée sans légende" — `site_logs` has no
+ *     single "name" column the way projects/workers/vehicles do.
  */
 export default function TrashScreen() {
   const toast = useToast();
@@ -70,7 +97,12 @@ export default function TrashScreen() {
       return;
     }
 
-    const [{ data: deletedProjects }, { data: deletedWorkers }] = await Promise.all([
+    const [
+      { data: deletedProjects },
+      { data: deletedWorkers },
+      { data: deletedVehicles },
+      { data: deletedLogs },
+    ] = await Promise.all([
       supabase
         .from('projects')
         .select('id, name, deleted_at')
@@ -81,6 +113,37 @@ export default function TrashScreen() {
         .select('id, full_name, deleted_at')
         .eq('org_id', orgId)
         .not('deleted_at', 'is', null),
+      // Phase 11 §9.2 — vehicles (migration 0076).
+      supabase
+        .from('vehicles')
+        .select('id, name, deleted_at')
+        .eq('org_id', orgId)
+        .not('deleted_at', 'is', null),
+      // Phase 11 §9.2 — journal entries (site_logs.deleted_at, migration
+      // 0072, restore_site_log() finally wired here). site_logs has no
+      // org_id column directly (confirmed by re-reading 0008) — scoped
+      // via project_id in (org's own project ids) instead.
+      (async () => {
+        const { data: orgProjectIds } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('lead_org_id', orgId);
+        const ids = (orgProjectIds ?? []).map((p) => p.id);
+        if (ids.length === 0)
+          return {
+            data: [] as {
+              id: string;
+              caption: string | null;
+              note_text: string | null;
+              deleted_at: string;
+            }[],
+          };
+        return supabase
+          .from('site_logs')
+          .select('id, caption, note_text, deleted_at')
+          .in('project_id', ids)
+          .not('deleted_at', 'is', null);
+      })(),
     ]);
 
     const merged: TrashItem[] = [
@@ -96,6 +159,18 @@ export default function TrashScreen() {
         label: w.full_name,
         deleted_at: w.deleted_at as string,
       })),
+      ...(deletedVehicles ?? []).map((v) => ({
+        entity_type: 'vehicle' as const,
+        id: v.id,
+        label: v.name,
+        deleted_at: v.deleted_at as string,
+      })),
+      ...(deletedLogs ?? []).map((l) => ({
+        entity_type: 'site_log' as const,
+        id: l.id,
+        label: (l.caption || l.note_text || 'Entrée sans légende').slice(0, 60),
+        deleted_at: l.deleted_at as string,
+      })),
     ].sort((a, b) => (a.deleted_at < b.deleted_at ? 1 : -1));
 
     setItems(merged);
@@ -110,10 +185,16 @@ export default function TrashScreen() {
   }
 
   async function handleRestore(item: TrashItem) {
-    const rpcName = item.entity_type === 'project' ? 'restore_project' : 'restore_worker';
-    const paramName = item.entity_type === 'project' ? 'p_project_id' : 'p_worker_id';
+    const rpcByType: Record<TrashItem['entity_type'], { rpc: string; param: string }> = {
+      project: { rpc: 'restore_project', param: 'p_project_id' },
+      worker: { rpc: 'restore_worker', param: 'p_worker_id' },
+      // Phase 11 §9.2 additions.
+      vehicle: { rpc: 'restore_vehicle', param: 'p_vehicle_id' },
+      site_log: { rpc: 'restore_site_log', param: 'p_log_id' },
+    };
+    const { rpc, param } = rpcByType[item.entity_type];
 
-    const { error } = await supabase.rpc(rpcName, { [paramName]: item.id });
+    const { error } = await supabase.rpc(rpc, { [param]: item.id });
     if (error) {
       toast.error('Impossible de restaurer cet élément.');
       haptics.error();
@@ -139,7 +220,7 @@ export default function TrashScreen() {
           icon={TrashIcon}
           illustration="clean-up"
           title="La corbeille est vide"
-          description="Les chantiers et travailleurs supprimés apparaissent ici pendant 30 jours avant suppression définitive."
+          description="Les chantiers, travailleurs, véhicules et entrées de journal supprimés apparaissent ici pendant 30 jours avant suppression définitive."
         />
       </YStack>
     );
@@ -169,7 +250,14 @@ export default function TrashScreen() {
         <YStack gap="$2">
           {items.map((item) => {
             const remaining = daysRemaining(item.deleted_at);
-            const ItemIcon = item.entity_type === 'project' ? BuildingsIcon : HardHatIcon;
+            const ItemIcon =
+              item.entity_type === 'project'
+                ? BuildingsIcon
+                : item.entity_type === 'vehicle'
+                  ? CarIcon
+                  : item.entity_type === 'site_log'
+                    ? NoteIcon
+                    : HardHatIcon;
             return (
               <XStack
                 key={`${item.entity_type}-${item.id}`}

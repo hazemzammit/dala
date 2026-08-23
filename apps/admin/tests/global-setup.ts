@@ -52,6 +52,28 @@ export const TEST_FIXTURES = {
     password: 'e2e-test-password-S1!',
     role: 'support' as const,
   },
+  // Added for admin remediation Tier 1.1 — org restore is gated
+  // super_admin-only (same tier as soft_delete), and no existing fixture
+  // carried that role; adminA/adminB/adminSupport cover 'admin'/'support'
+  // but nothing previously exercised the super_admin path end-to-end.
+  adminSuper: {
+    email: 'e2e-admin-super@dala.tn',
+    password: 'e2e-test-password-SU1!',
+    role: 'super_admin' as const,
+  },
+  // Dedicated target for admin-users.spec.ts's reset_totp test — deliberately
+  // NOT adminA/adminB/adminSupport, since those are shared login fixtures
+  // used throughout the suite and this test intentionally disables TOTP
+  // enrollment on its target (that's the whole point of the action).
+  // Workers=1/fullyParallel=false (playwright.config.ts) makes tests run
+  // serially, but doesn't guarantee cross-file ordering, so a shared
+  // fixture left de-enrolled by this test could break a later spec file's
+  // loginAsAdmin() call.
+  adminResetTarget: {
+    email: 'e2e-admin-reset-target@dala.tn',
+    password: 'e2e-test-password-RT1!',
+    role: 'admin' as const,
+  },
   orgOwner: { email: 'e2e-org-owner@dala.tn', password: 'e2e-test-password-O1!' },
   targetWorker: { email: 'e2e-target-worker@dala.tn', password: 'e2e-test-password-W1!' },
   orgName: 'E2E Test Org — Playwright',
@@ -114,7 +136,13 @@ export default async function globalSetup() {
     // --- Two admins, both with a known, pre-encrypted TOTP secret so
     // tests can compute a valid code with `otpauth` directly instead of
     // going through the interactive first-login enrollment screen.
-    for (const admin of [TEST_FIXTURES.adminA, TEST_FIXTURES.adminB, TEST_FIXTURES.adminSupport]) {
+    for (const admin of [
+      TEST_FIXTURES.adminA,
+      TEST_FIXTURES.adminB,
+      TEST_FIXTURES.adminSupport,
+      TEST_FIXTURES.adminSuper,
+      TEST_FIXTURES.adminResetTarget,
+    ]) {
       const userId = await upsertAuthUser(supabase, admin.email, admin.password);
       const totpSecret = new OTPAuth.Secret({ size: 20 }).base32;
       const encryptedSecret = await encryptTotpSecretWithPool(pool, totpSecret);
@@ -131,6 +159,7 @@ export default async function globalSetup() {
       // itself — tests need it to compute a fresh 6-digit code at login
       // time (a TOTP code is time-based, so it can't be precomputed here).
       (admin as any).totpSecret = totpSecret;
+      (admin as any).id = userId;
     }
 
     // --- Test organization + owner + a lower-privilege target user.
@@ -184,6 +213,15 @@ export default async function globalSetup() {
           adminSupport: {
             ...TEST_FIXTURES.adminSupport,
             totpSecret: (TEST_FIXTURES.adminSupport as any).totpSecret,
+          },
+          adminSuper: {
+            ...TEST_FIXTURES.adminSuper,
+            totpSecret: (TEST_FIXTURES.adminSuper as any).totpSecret,
+          },
+          adminResetTarget: {
+            ...TEST_FIXTURES.adminResetTarget,
+            totpSecret: (TEST_FIXTURES.adminResetTarget as any).totpSecret,
+            id: (TEST_FIXTURES.adminResetTarget as any).id,
           },
           orgOwner: TEST_FIXTURES.orgOwner,
           targetWorker: TEST_FIXTURES.targetWorker,

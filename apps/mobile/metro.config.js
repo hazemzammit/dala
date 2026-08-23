@@ -13,6 +13,34 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
+// --- force a single React instance across the workspace ---
+// extraNodeModules is only a fallback for modules Metro can't otherwise
+// find — since react-query's nested react DOES resolve normally, that
+// fallback never triggers. resolveRequest runs unconditionally for every
+// module request, so it's the right tool to force a redirect.
+const canonicalReact = path.resolve(workspaceRoot, 'node_modules/react');
+const canonicalReactDom = path.resolve(workspaceRoot, 'node_modules/react-dom');
+
+config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (moduleName === 'react' || moduleName.startsWith('react/')) {
+    return context.resolveRequest(
+      { ...context, originModulePath: canonicalReact },
+      moduleName === 'react' ? canonicalReact : moduleName.replace('react', canonicalReact),
+      platform,
+    );
+  }
+  if (moduleName === 'react-dom' || moduleName.startsWith('react-dom/')) {
+    return context.resolveRequest(
+      { ...context, originModulePath: canonicalReactDom },
+      moduleName === 'react-dom'
+        ? canonicalReactDom
+        : moduleName.replace('react-dom', canonicalReactDom),
+      platform,
+    );
+  }
+  return context.resolveRequest(context, moduleName, platform);
+};
+
 // --- react-native-svg-transformer ---
 // Lets `import Illustration from './foo.svg'` return a React component
 // (via react-native-svg) instead of an asset URI. Only *adds* to the

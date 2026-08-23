@@ -1,12 +1,29 @@
+import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
+import { useEffect } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TamaguiProvider, YStack } from 'tamagui';
 
+import { AppLockGate } from '@/components/shell/AppLockGate';
 import { AutoSync } from '@/components/shell/AutoSync';
+import { ErrorBoundary } from '@/components/shell/ErrorBoundary';
+import { GlobalErrorBridge } from '@/components/shell/GlobalErrorBridge';
+import { NotificationRouter } from '@/components/shell/NotificationRouter';
+import { OtaUpdateChecker } from '@/components/shell/OtaUpdateChecker';
+import { AnnouncementBanner } from '@/components/ui/AnnouncementBanner';
 import { OfflineBanner } from '@/components/ui/OfflineBanner';
 import { ToastProvider } from '@/components/ui/Toast';
+import { attachQueryClientAppStateListener, queryClient } from '@/lib/queryClient';
+import { initSentry } from '@/lib/sentry';
 import tamaguiConfig from '@/lib/tamagui.config';
+
+// Phase 12 (improvement-plan §10.3) — called at module scope, the
+// earliest point in this app's own code that runs. See lib/sentry.ts's
+// own header for the disclosed limitation (a crash before expo-router's
+// own bootstrap loads this module is still not covered) and why
+// `Sentry.init()` had never been called anywhere before this phase.
+initSentry();
 
 /**
  * Doc 03 §3.1 — Splash checks app_version_check() before any session logic
@@ -71,17 +88,36 @@ function RootShell() {
       {/* Below the safe-area inset, above the Stack — visible across auth,
           contractor, and worker screens alike. Deliberately not
           `position: absolute`: it pushes content down rather than
-          floating over it, so it never covers a header/back button. */}
+          floating over it, so it never covers a header/back button.
+          PHASE 1 — now also carries the sync-status signal (offline /
+          syncing / synced / failed); see OfflineBanner.tsx's own header. */}
       <OfflineBanner />
+      {/* Admin remediation Tier 2.2 — deliberately below OfflineBanner, not
+          above/replacing it. See AnnouncementBanner.tsx's own header for
+          the stacking rationale (Doc 05 doesn't cover this new banner). */}
+      <AnnouncementBanner />
       {/* Phase 18 — Doc 03 §3.3/§3.9 offline sync. Renders nothing;
           triggers runSync() on app foreground and network reconnect.
           See its own header for why those two edges specifically. */}
       <AutoSync />
+      {/* PHASE 9 §2.2 — renders nothing; routes a tapped push notification
+          (live or cold-start) to the right screen. See its own header for
+          the routing table. */}
+      <NotificationRouter />
+      {/* Phase 12 (improvement-plan §6.4) — renders nothing; checks for
+          and applies an OTA update on foreground. See its own header for
+          the adopt-vs-defer decision. */}
+      <OtaUpdateChecker />
       {/* headerShown: false only — no `animation` override here, so
           expo-router keeps react-native-screens' native default stack
           transition (slide-from-right on iOS, platform default on
           Android) rather than an instant cut. */}
       <Stack screenOptions={{ headerShown: false }} />
+      {/* Phase 12 (improvement-plan §6.6) — absolutely positioned, above
+          the Stack in z-order so it can actually block interaction with
+          whatever screen is underneath when locked. Renders nothing when
+          the setting is off or the app isn't locked. See its own header. */}
+      <AppLockGate />
     </YStack>
   );
 }
@@ -100,15 +136,44 @@ function RootShell() {
  * Dispatch's drag-and-drop) silently fails to receive touches on Android.
  * This is the one required root-level change that comes with adding the
  * dependency — every consuming component itself needs no further setup.
+ *
+ * PHASE 1 (improvement-plan §5.1) — `QueryClientProvider` added as the
+ * outermost data-layer wrapper (needs to be an ancestor of every screen
+ * that will call `useQuery`/`useMutation`, same reasoning as every other
+ * provider here). `attachQueryClientAppStateListener()` is wired via a
+ * plain `useEffect` + cleanup in this component rather than at module
+ * scope in queryClient.ts, since `AppState.addEventListener` should have
+ * exactly one subscription for the app's lifetime, tied to this root
+ * component's mount, not to module import (which can re-run under fast
+ * refresh in dev).
  */
 export default function RootLayout() {
+  useEffect(() => attachQueryClientAppStateListener(), []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <TamaguiProvider config={tamaguiConfig} defaultTheme="light">
-          <ToastProvider>
-            <RootShell />
-          </ToastProvider>
+          <QueryClientProvider client={queryClient}>
+            <ToastProvider>
+              {/* Phase 12 (improvement-plan §10.3) — renders nothing;
+                  bridges lib/errorStatus.ts's external store (fed by
+                  ErrorBoundary below and sentry.ts's beforeSend hook) into
+                  a user-facing toast. Must be inside ToastProvider — see
+                  its own header for why. */}
+              <GlobalErrorBridge />
+              {/* Phase 12 (improvement-plan §10.3) — wraps RootShell, not
+                  the other providers above it: a crash inside
+                  TamaguiProvider/QueryClientProvider/ToastProvider
+                  themselves (vanishingly rare — none of them render
+                  app-specific content) would be uncatchable by a boundary
+                  nested inside them anyway. RootShell is where every
+                  actual screen renders, so it's the boundary that matters. */}
+              <ErrorBoundary>
+                <RootShell />
+              </ErrorBoundary>
+            </ToastProvider>
+          </QueryClientProvider>
         </TamaguiProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

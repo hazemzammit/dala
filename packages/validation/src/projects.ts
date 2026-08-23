@@ -59,7 +59,23 @@ export const createProjectExpenseSchema = z.object({
   category: z.enum(['materiaux', 'carburant', 'sous_traitance', 'autre']),
   amount: z.number().positive(),
   description: z.string().optional(),
-  receipt_photo_url: z.string().url().optional(),
+  // IMPROVEMENT-PLAN PHASE 3 (§1.8) FIX — was `z.string().url()`, which
+  // rejects every real value this field is ever set to: every photo_url-
+  // shaped column in this schema stores a bare Storage PATH
+  // (`{org_id}/{category}/{uuid}.jpg`), never a public/signed URL
+  // directly (Doc 01 §1.3.11, lib/storage.ts's own header). A `.url()`
+  // check requires a scheme (`https://...`) and fails on a bare path —
+  // confirmed with a standalone zod test before concluding this, not
+  // assumed. Since this phase is the first to actually wire a value into
+  // this field, the bug was latent (never exercised) until now. Fixed
+  // here because it's the exact field this phase's own work depends on;
+  // NOT fixed for the same `.url()` pattern on `submitSiteLogSchema`'s
+  // `photo_url`/`voice_note_url`/`thumbnail_url` or
+  // `createSafetyIncidentSchema`'s `photo_url` (packages/validation/src/
+  // fieldOps.ts) — those are outside every file this phase touches, and
+  // the plan's own guardrail is to fix what's in scope and flag the rest
+  // rather than pull unrelated fixes forward. See docs/PHASE_3_BRIEF.md.
+  receipt_photo_url: z.string().min(1).optional(),
   expense_date: z.string().date().optional(),
 });
 export type CreateProjectExpenseInput = z.infer<typeof createProjectExpenseSchema>;

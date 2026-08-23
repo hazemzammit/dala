@@ -17,9 +17,11 @@ const timeStringSchema = z
   .string()
   .regex(TIME_HH_MM_REGEX, 'Heure invalide — utilisez le format HH:MM, par exemple 07:30.');
 
-/** Same HH:MM(:SS) rule as `timeStringSchema`, exposed as a plain predicate
- *  for call sites (e.g. the mobile sync push boundary) that need to check
- *  an already-stored value rather than parse a Zod schema. */
+/** Same HH:MM(:SS) rule as `timeStringSchema` above, exposed as a plain
+ * predicate for `db/sync/pushChanges.ts`'s sync-boundary sanitization —
+ * that call site needs a boolean check, not a zod schema/parse-result, and
+ * reuses this regex rather than duplicating it so the two checks can never
+ * drift apart. */
 export function isValidTimeString(value: string): boolean {
   return TIME_HH_MM_REGEX.test(value);
 }
@@ -77,6 +79,32 @@ export const createVehicleSchema = z.object({
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
 /**
+ * Phase 8 (improvement-plan §1.3 step 2) — vehicle_maintenance_log
+ * (migration 0073). Append-only — no id/update variant exists because
+ * none is needed (see that migration's own Part 3 header).
+ */
+export const createVehicleMaintenanceLogSchema = z.object({
+  vehicle_id: z.string().uuid(),
+  log_date: z.string().min(1, 'Date requise.'),
+  description: z.string().min(1, 'Description requise.'),
+  cost: z.number().positive().optional(),
+});
+export type CreateVehicleMaintenanceLogInput = z.infer<typeof createVehicleMaintenanceLogSchema>;
+
+/**
+ * Phase 8 (improvement-plan §1.3 step 3) — vehicle_documents (migration
+ * 0073). Same append-only shape as the maintenance log above — a new
+ * recording, never an edit of a prior one.
+ */
+export const createVehicleDocumentSchema = z.object({
+  vehicle_id: z.string().uuid(),
+  document_type: z.string().min(1, 'Type de document requis.'),
+  document_url: z.string().optional(),
+  expires_at: z.string().min(1, "Date d'expiration requise."),
+});
+export type CreateVehicleDocumentInput = z.infer<typeof createVehicleDocumentSchema>;
+
+/**
  * Doc 03 §3.13.2 — add/invite worker.
  *
  * `email` was missing from this schema (and from the `workers` table itself
@@ -95,12 +123,35 @@ export const inviteWorkerSchema = z.object({
 });
 export type InviteWorkerInput = z.infer<typeof inviteWorkerSchema>;
 
-/** Doc 02 §2.2a — manual attendance / Pointage. */
+/**
+ * Phase 10 (§4.3) — job_title/hire_date, set from worker/[id].tsx after
+ * creation, same as photo_url (migration 0070) which also has no place in
+ * inviteWorkerSchema above and is set later from the worker detail screen
+ * instead. Kept as its own schema rather than added to inviteWorkerSchema
+ * for the same reason photo_url wasn't: these are edited on an EXISTING
+ * worker row, not supplied at invite time.
+ */
+export const updateWorkerProfileSchema = z.object({
+  job_title: z.string().optional(),
+  hire_date: z.string().optional(), // "YYYY-MM-DD", DatePicker's own value shape
+});
+export type UpdateWorkerProfileInput = z.infer<typeof updateWorkerProfileSchema>;
+
+/**
+ * Doc 02 §2.2a — manual attendance / Pointage. `absence_reason` — Phase 4
+ * (improvement-plan §1.1 step 4 / §3) — optional context for an 'absent'
+ * status (Maladie/Congé autorisé/Absence non justifiée, or a free-typed
+ * "Autre" value via Select.tsx). Not restricted to status='absent' here
+ * either — this schema validates a single already-shaped payload, not a
+ * cross-field business rule; pointage.tsx itself only ever populates the
+ * field when a row is toggled to Absent (see that screen's own header).
+ */
 export const markAttendanceSchema = z.object({
   worker_id: z.string().uuid(),
   record_date: z.string().date(),
   status: z.enum(['present', 'absent', 'half_day']),
   project_id: z.string().uuid().optional(),
+  absence_reason: z.string().optional(),
 });
 export type MarkAttendanceInput = z.infer<typeof markAttendanceSchema>;
 

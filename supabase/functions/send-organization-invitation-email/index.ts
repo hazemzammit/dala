@@ -23,115 +23,120 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { withInvocationLog } from '../_shared/logInvocation.ts';
 import { sendEmail } from '../_shared/resend.ts';
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return jsonResponse({ error: 'Authentification requise.' }, 401);
+Deno.serve(
+  withInvocationLog('send-organization-invitation-email', async (req, ctx) => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
     }
 
-    const { invitation_id } = (await req.json()) ?? {};
-    if (!invitation_id || typeof invitation_id !== 'string') {
-      return jsonResponse({ error: 'invitation_id requis.' }, 400);
-    }
+    try {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return jsonResponse({ error: 'Authentification requise.' }, 401);
+      }
 
-    // Caller-scoped client (anon key + forwarded JWT) — used only to
-    // resolve identity and role, same pattern as export-org-data. Never
-    // used to read the invitation row itself, so this can't be tricked
-    // into confirming an invitation exists for an org the caller isn't in.
-    const callerClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+      const { invitation_id } = (await req.json()) ?? {};
+      if (!invitation_id || typeof invitation_id !== 'string') {
+        return jsonResponse({ error: 'invitation_id requis.' }, 400);
+      }
 
-    const {
-      data: { user },
-    } = await callerClient.auth.getUser();
-    if (!user) {
-      return jsonResponse({ error: 'Session invalide.' }, 401);
-    }
+      // Caller-scoped client (anon key + forwarded JWT) — used only to
+      // resolve identity and role, same pattern as export-org-data. Never
+      // used to read the invitation row itself, so this can't be tricked
+      // into confirming an invitation exists for an org the caller isn't in.
+      const callerClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+        { global: { headers: { Authorization: authHeader } } },
+      );
 
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
+      const {
+        data: { user },
+      } = await callerClient.auth.getUser();
+      if (!user) {
+        return jsonResponse({ error: 'Session invalide.' }, 401);
+      }
 
-    const { data: invitation, error: invitationError } = await admin
-      .from('organization_member_invitations')
-      .select('id, org_id, invited_email, role, token, status')
-      .eq('id', invitation_id)
-      .maybeSingle();
+      const admin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
 
-    if (invitationError || !invitation) {
-      return jsonResponse({ error: 'Invitation introuvable.' }, 404);
-    }
+      const { data: invitation, error: invitationError } = await admin
+        .from('organization_member_invitations')
+        .select('id, org_id, invited_email, role, token, status')
+        .eq('id', invitation_id)
+        .maybeSingle();
 
-    // Owner-only, matching organization_member_invitations_insert_owner
-    // (0030) — the caller must currently own the SAME org the invitation
-    // belongs to, checked via the caller-scoped client so this respects
-    // RLS exactly like every other authenticated request, not just trusts
-    // a client-supplied org_id.
-    const { data: membership } = await callerClient
-      .from('organization_members')
-      .select('role')
-      .eq('org_id', invitation.org_id)
-      .eq('user_id', user.id)
-      .maybeSingle();
+      if (invitationError || !invitation) {
+        return jsonResponse({ error: 'Invitation introuvable.' }, 404);
+      }
 
-    if (!membership || membership.role !== 'owner') {
-      return jsonResponse({ error: 'Réservé au propriétaire.' }, 403);
-    }
+      ctx.orgId = invitation.org_id;
 
-    if (invitation.status !== 'pending') {
-      // Not fatal to the caller's flow (the invite row itself is fine) —
-      // just nothing to send. Mirrors accept-organization-invitation's
-      // already_accepted handling: a stale double-click, not an error.
-      return jsonResponse({ error: 'not_pending' }, 409);
-    }
+      // Owner-only, matching organization_member_invitations_insert_owner
+      // (0030) — the caller must currently own the SAME org the invitation
+      // belongs to, checked via the caller-scoped client so this respects
+      // RLS exactly like every other authenticated request, not just trusts
+      // a client-supplied org_id.
+      const { data: membership } = await callerClient
+        .from('organization_members')
+        .select('role')
+        .eq('org_id', invitation.org_id)
+        .eq('user_id', user.id)
+        .maybeSingle();
 
-    const { data: org } = await admin
-      .from('organizations')
-      .select('name')
-      .eq('id', invitation.org_id)
-      .maybeSingle();
+      if (!membership || membership.role !== 'owner') {
+        return jsonResponse({ error: 'Réservé au propriétaire.' }, 403);
+      }
 
-    const orgName = org?.name ?? 'votre organisation';
-    const roleLabel = invitation.role === 'manager' ? 'Manager' : 'Observateur';
+      if (invitation.status !== 'pending') {
+        // Not fatal to the caller's flow (the invite row itself is fine) —
+        // just nothing to send. Mirrors accept-organization-invitation's
+        // already_accepted handling: a stale double-click, not an error.
+        return jsonResponse({ error: 'not_pending' }, 409);
+      }
 
-    // Mobile-only deep link (dala:// scheme, app.json) — matches what
-    // accept-organization-invite.tsx already expects. No web fallback URL:
-    // this invite flow is mobile-contractor territory per Doc 03 §3.22,
-    // and apps/web has no equivalent accept page today (out of scope for
-    // this delivery — that's the collaborator's side, flagging rather than
-    // inventing a web route here). A recipient without the app installed
-    // will need it installed before the link resolves; a universal-link
-    // fallback is a real follow-up, not silently assumed solved.
-    const acceptUrl = `dala://accept-organization-invite?token=${invitation.token}`;
+      const { data: org } = await admin
+        .from('organizations')
+        .select('name')
+        .eq('id', invitation.org_id)
+        .maybeSingle();
 
-    await sendEmail({
-      to: invitation.invited_email,
-      subject: `Invitation à rejoindre ${orgName} sur Dala`,
-      html: `
+      const orgName = org?.name ?? 'votre organisation';
+      const roleLabel = invitation.role === 'manager' ? 'Manager' : 'Observateur';
+
+      // Mobile-only deep link (dala:// scheme, app.json) — matches what
+      // accept-organization-invite.tsx already expects. No web fallback URL:
+      // this invite flow is mobile-contractor territory per Doc 03 §3.22,
+      // and apps/web has no equivalent accept page today (out of scope for
+      // this delivery — that's the collaborator's side, flagging rather than
+      // inventing a web route here). A recipient without the app installed
+      // will need it installed before the link resolves; a universal-link
+      // fallback is a real follow-up, not silently assumed solved.
+      const acceptUrl = `dala://accept-organization-invite?token=${invitation.token}`;
+
+      await sendEmail({
+        to: invitation.invited_email,
+        subject: `Invitation à rejoindre ${orgName} sur Dala`,
+        html: `
         <p>Vous avez été invité(e) à rejoindre <strong>${orgName}</strong> sur Dala en tant que <strong>${roleLabel}</strong>.</p>
         <p><a href="${acceptUrl}">Accepter l'invitation</a></p>
         <p>Ce lien nécessite l'application Dala installée sur votre téléphone. Il expire dans 7 jours.</p>
         <p>Si vous ne vous attendiez pas à cette invitation, vous pouvez ignorer cet e-mail.</p>
       `,
-    });
+      });
 
-    return jsonResponse({ success: true }, 200);
-  } catch (err) {
-    console.error('[send-organization-invitation-email] unexpected error', err);
-    return jsonResponse({ error: 'Une erreur inattendue est survenue.' }, 500);
-  }
-});
+      return jsonResponse({ success: true }, 200);
+    } catch (err) {
+      console.error('[send-organization-invitation-email] unexpected error', err);
+      return jsonResponse({ error: 'Une erreur inattendue est survenue.' }, 500);
+    }
+  }),
+);
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {

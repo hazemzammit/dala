@@ -4,6 +4,9 @@
       "eas": {
         "projectId": "97011893-3003-4c19-89df-699323ebea9b"
       }
+    },
+    "android": {
+      "package": "com.hazemzammit.dala"
     }
   }
 }

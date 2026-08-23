@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation';
 
+import { AnnouncementBanner } from './AnnouncementBanner';
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 
@@ -48,15 +49,22 @@ export async function AppShell({ children }: { children: React.ReactNode }) {
     .single();
 
   return (
-    <div className="bg-neutral-25 flex h-screen">
-      <Sidebar
-        organizationName={organization?.name ?? '—'}
-        userName={profile.full_name}
-        userAvatarUrl={profile.avatar_url ?? undefined}
-      />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar userName={profile.full_name} userAvatarUrl={profile.avatar_url ?? undefined} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+    <div className="flex h-screen flex-col">
+      {/* Admin remediation Tier 2.2 — full-width, above Sidebar too, so it
+          reads as "across every screen" the same way Doc 04 §4.2.1's
+          unverified-email banner and the mobile OfflineBanner both do,
+          not scoped to just the main content column. */}
+      <AnnouncementBanner />
+      <div className="bg-neutral-25 flex flex-1 overflow-hidden">
+        <Sidebar
+          organizationName={organization?.name ?? '—'}
+          userName={profile.full_name}
+          userAvatarUrl={profile.avatar_url ?? undefined}
+        />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopBar userName={profile.full_name} userAvatarUrl={profile.avatar_url ?? undefined} />
+          <main className="flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
     </div>
   );

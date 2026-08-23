@@ -84,6 +84,40 @@ export async function getSignedUrl(
 }
 
 /**
+ * IMPROVEMENT-PLAN PHASE 3 — every screen this phase joins a photo into
+ * (dispatch chips, pointage rows, team list, dashboard chips, journal
+ * authorship) renders a LIST of identities, not a single one — the
+ * existing `getSignedUrl` above (proven in profile-settings.tsx/
+ * journal.tsx's detail sheet) is the right primitive for "one path, one
+ * URL," but calling it once per row serially isn't wrong so much as
+ * slower than it needs to be, and every existing list-screen caller would
+ * otherwise hand-roll its own `Promise.all` + path-to-url map (journal.tsx
+ * already does exactly this inline for `thumbUrls` — see its `loadLogs`).
+ * This is that same pattern, extracted once so every new Phase 3 caller
+ * shares it rather than re-copying it a fifth time.
+ *
+ * De-dupes paths before minting (two rows can share the same worker photo
+ * path, e.g. two dispatch assignments for the same worker on the same
+ * day) and drops nulls/failures rather than surfacing them — same
+ * "return null, don't throw" contract as `getSignedUrl` itself, so a list
+ * screen never crashes over one bad/missing photo.
+ */
+export async function getSignedUrlMap(
+  paths: (string | null | undefined)[],
+  expiresInSeconds = 3600,
+): Promise<Record<string, string>> {
+  const uniquePaths = Array.from(new Set(paths.filter((p): p is string => !!p)));
+  const entries = await Promise.all(
+    uniquePaths.map(async (p) => [p, await getSignedUrl(p, expiresInSeconds)] as const),
+  );
+  const map: Record<string, string> = {};
+  for (const [p, url] of entries) {
+    if (url) map[p] = url;
+  }
+  return map;
+}
+
+/**
  * Phase 6 — Billing storage-usage bar (Doc 01 §1.6's 1GB free-tier limit,
  * cut from Phase 5's billing.tsx precisely because this recursive listing
  * didn't exist yet — see that file's header).

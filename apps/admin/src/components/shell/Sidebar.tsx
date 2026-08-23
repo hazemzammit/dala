@@ -4,9 +4,12 @@ import {
   BuildingsIcon,
   ClipboardTextIcon,
   DatabaseIcon,
+  DeviceMobileIcon,
+  FlagIcon,
   GaugeIcon,
   HardDrivesIcon,
   MegaphoneIcon,
+  MonitorIcon,
   PulseIcon,
   ReceiptIcon,
   ShieldCheckIcon,
@@ -37,8 +40,20 @@ const NAV_ITEMS = [
   { href: '/billing', label: 'Facturation', icon: ReceiptIcon },
   { href: '/storage', label: 'Stockage', icon: HardDrivesIcon },
   { href: '/services-health', label: 'Santé des services', icon: PulseIcon },
+  // Admin remediation Tier 2.5 — grouped right after Services Health per
+  // the plan: same "operational lever" category (Doc 01 §1.8.2), not
+  // user/org/billing data management.
+  { href: '/app-versions', label: "Versions de l'app", icon: DeviceMobileIcon },
+  // Admin remediation Tier 4.10 — grouped near App Versions: same
+  // "operational lever" category as that item (Tier 2.5), not user/org
+  // data management.
+  { href: '/feature-flags', label: 'Feature flags', icon: FlagIcon },
   { href: '/announcements', label: 'Annonces', icon: MegaphoneIcon },
   { href: '/admin-users', label: 'Gestion des admins', icon: ShieldCheckIcon },
+  // Admin remediation Tier 4.9 — grouped right after admin-users: same
+  // "admin account management" category (Doc 04 §4.3.11), not user/org
+  // data management.
+  { href: '/admin-sessions', label: 'Sessions admin', icon: MonitorIcon },
 ] as const;
 
 function AdminNavItem({ href, label, icon: IconComponent }: (typeof NAV_ITEMS)[number]) {

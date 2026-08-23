@@ -17,6 +17,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { checkInviteAcceptRateLimit, extractClientIp } from '../_shared/rateLimit.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -38,6 +39,30 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
+
+    // Phase 12 (improvement-plan §10.4) — this function calls
+    // admin.auth.admin.createUser() below via a service-role client,
+    // which bypasses Supabase Auth's own platform rate limits entirely
+    // (those only cover the public GoTrue endpoints, not admin.createUser).
+    // See migration 0077's own Part 1 header for the full investigation.
+    // 10/hour per token (a legitimate retry after a typo'd password),
+    // 20/hour per IP (bounds how many different tokens one source can
+    // hammer). Checked BEFORE the invitation lookup so a blocked request
+    // never even queries worker_invitations.
+    const rateLimit = await checkInviteAcceptRateLimit(
+      admin,
+      {
+        functionName: 'accept-worker-invitation',
+        maxPerToken: 10,
+        maxPerIp: 20,
+        windowSeconds: 3600,
+      },
+      String(invitation_token),
+      extractClientIp(req),
+    );
+    if (!rateLimit.allowed) {
+      return jsonResponse({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
+    }
 
     const { data: invitation, error: invitationError } = await admin
       .from('worker_invitations')

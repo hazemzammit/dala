@@ -37,8 +37,132 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
-      - name: Test
-        run: pnpm test
+      # Admin remediation Tier 2.6 — apps/admin's own test suite is
+      # Playwright e2e, not a unit-test task turbo can run stateless like
+      # every other package's "test" here: it needs a live Supabase stack
+      # (migrations applied, a TOTP Vault key, real seeded fixtures) or it
+      # just fails/hangs with no DB behind it. That's the admin-e2e job
+      # below, not this one — excluded here so this job stays fast and
+      # doesn't need Supabase/Docker at all.
+      - name: Test (excluding admin — see admin-e2e job)
+        run: pnpm exec turbo run test --filter='!admin'
 
       - name: Format check
         run: pnpm format:check
+
+  # Admin remediation Tier 2.6 — closes the gap every prior delivery
+  # round's own caveat named: "typecheck passes," "tests pass," and
+  # "migrations apply cleanly" were all claims verified by hand
+  # (`tsc --noEmit`) and never actually re-checked by anything automatic.
+  # Separate job (not folded into lint-typecheck-test above) because it
+  # needs a real Supabase stack, which the fast job above deliberately
+  # doesn't stand up.
+  admin-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: pnpm
+
+      - name: Install dependencies (admin + its workspace deps only)
+        run: pnpm install --filter admin...
+
+      - name: Typecheck
+        run: pnpm --filter admin typecheck
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase stack
+        # Runs from the repo root — supabase/config.toml already exists
+        # (this is an established project, not a fresh `supabase init`),
+        # so this alone is enough; no `supabase init` step needed.
+        run: supabase start
+
+      - name: Reset DB (fresh migration apply)
+        run: supabase db reset
+
+      - name: Export local Supabase connection details
+        # DATABASE_URL is deterministic from config.toml's fixed local
+        # `[db] port = 54322` and the Supabase CLI's standard local
+        # Postgres credentials — hardcoded here rather than parsed out of
+        # `supabase status`, since (per the official supabase/setup-cli
+        # marketplace README's own example) that command's `-o env`
+        # override list only documents api.url/auth.service_role_key, not
+        # a db.url field — and this exact area has genuinely broken
+        # between CLI versions before (supabase/cli#4211: anon_key/
+        # service_role_key briefly disappeared from `supabase status`
+        # output entirely between 2.40.x and 2.45.x). The two auth keys
+        # below ARE pulled dynamically for that reason — they're the part
+        # that's actually project/JWT-secret-dependent, not deterministic
+        # from config.toml alone.
+        run: |
+          echo "DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres" >> apps/admin/.env.local
+          echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321" >> apps/admin/.env.local
+          echo "NEXT_PUBLIC_APP_URL=http://localhost:3001" >> apps/admin/.env.local
+          echo "ADMIN_SESSION_SECRET=ci-only-dummy-session-secret-$(openssl rand -hex 16)" >> apps/admin/.env.local
+          # Deliberately empty/unset — auth.spec.ts's own header comment
+          # already documents this as the recommended local/CI setting
+          # ("gate effectively disabled for localhost").
+          echo "ADMIN_IP_ALLOWLIST=" >> apps/admin/.env.local
+          supabase status -o env \
+            --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
+            >> apps/admin/.env.local
+
+      - name: Verify required env vars are actually populated
+        # Fail fast with a clear message here rather than letting an
+        # empty NEXT_PUBLIC_SUPABASE_ANON_KEY (say, from the exact kind of
+        # CLI-version drift noted above) cascade into a wall of confusing,
+        # unrelated Playwright failures ten minutes later. If this step
+        # ever fails, check `supabase status -o env` output directly
+        # (add `--override-name` for whatever field name the installed
+        # CLI version actually uses) rather than assuming the tests
+        # themselves regressed.
+        run: |
+          set -e
+          for var in NEXT_PUBLIC_SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY DATABASE_URL NEXT_PUBLIC_SUPABASE_URL; do
+            value=$(grep "^${var}=" apps/admin/.env.local | cut -d= -f2-)
+            if [ -z "$value" ]; then
+              echo "::error::${var} is empty in apps/admin/.env.local — supabase status's output shape may have changed. See this step's comment in ci.yml."
+              exit 1
+            fi
+          done
+
+      - name: Generate TOTP Vault encryption key
+        # One-time-per-environment bootstrap (scripts/generate-totp-vault-key.ts's
+        # own header) — a fresh `supabase db reset` DB has no Vault entry
+        # yet, and every admin-login Playwright test needs one to complete
+        # TOTP setup/verification.
+        run: pnpm generate-totp-vault-key
+        working-directory: apps/admin
+
+      - name: Install Playwright browsers
+        # Not spelled out in the remediation plan's own step list, but a
+        # fresh CI runner has no browser binaries at all — `playwright
+        # test` fails immediately without this, so it's a genuine
+        # prerequisite for "tests pass" to mean anything here, not scope
+        # creep beyond what the plan asked for.
+        run: pnpm --filter admin exec playwright install --with-deps chromium
+
+      - name: Run Playwright suite
+        run: pnpm --filter admin test
+        env:
+          CI: true
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-playwright-report
+          path: apps/admin/playwright-report/
+          retention-days: 14

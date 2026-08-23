@@ -7,8 +7,11 @@ import { useEffect, useState } from 'react';
 import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
+
+const PAGE_SIZE = 50;
 
 interface OrgRow {
   id: string;
@@ -37,9 +40,14 @@ export function OrganizationsTable() {
   const role = session?.admin.role;
   const canSuspend = role === 'super_admin' || role === 'admin';
   const canSoftDelete = role === 'super_admin';
+  const canBulkChangePlan = role === 'super_admin' || role === 'admin';
 
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [q, setQ] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     org: OrgRow;
     action: 'suspend' | 'soft_delete';
@@ -47,15 +55,95 @@ export function OrganizationsTable() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/organizations');
+    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+    if (q) params.set('q', q);
+    const res = await fetch(`/api/admin/organizations?${params.toString()}`);
     const data = await res.json();
     setOrgs(data.organizations ?? []);
+    setTotal(data.total ?? 0);
     setLoading(false);
   }
 
   useEffect(() => {
     load();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, q]);
+
+  function handleSearchChange(value: string) {
+    setQ(value);
+    setPage(1); // Tier 4.1's own pattern: any filter change resets to page 1.
+  }
+
+  // Admin remediation Tier 4.3 — the two safest bulk actions only (see
+  // this file's own bulk route header for why suspend/soft-delete aren't
+  // here). window.confirm() rather than the heavier ConfirmTypingDialog —
+  // deliberate: these two actions aren't in the destructive tier
+  // (change_plan is reversible, export is read-only), so the same typed-
+  // confirmation weight the single-org suspend/delete flows use would be
+  // disproportionate here.
+  async function runBulkChangePlan(orgIds: string[]) {
+    const plan = window.prompt(
+      `Nouveau plan pour ${orgIds.length} organisation(s) — "free", "pro" ou "business" :`,
+    );
+    if (!plan || !['free', 'pro', 'business'].includes(plan)) return;
+    if (!window.confirm(`Changer le plan de ${orgIds.length} organisation(s) vers "${plan}" ?`))
+      return;
+
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/admin/organizations/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'change_plan', targetIds: orgIds, plan }),
+      });
+      const data = await res.json();
+      if (data.failureCount > 0) {
+        alert(
+          `${data.failureCount} échec(s) sur ${orgIds.length}. Voir la console pour le détail.`,
+        );
+        console.error(
+          '[bulk change_plan] failures:',
+          data.results?.filter((r: any) => !r.ok),
+        );
+      }
+      await load();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function runBulkExport(orgIds: string[]) {
+    setBulkBusy(true);
+    try {
+      const res = await fetch('/api/admin/organizations/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'export', targetIds: orgIds }),
+      });
+      const data = await res.json();
+      if (data.failureCount > 0) {
+        alert(
+          `${data.failureCount} échec(s) sur ${orgIds.length}. Les exports réussis seront tout de même téléchargés.`,
+        );
+      }
+      // Client-side download — the bulk route returns the combined JSON
+      // inline rather than as a file (see that route's own comment on
+      // why there's no single sensible Content-Disposition for a
+      // multi-org result); building the downloadable file is this
+      // screen's job instead.
+      const blob = new Blob([JSON.stringify(data.exports ?? [], null, 2)], {
+        type: 'application/json',
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `dala-bulk-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   async function runAction(reason: string) {
     if (!pendingAction) return;
@@ -153,24 +241,54 @@ export function OrganizationsTable() {
     },
   ];
 
-  if (loading) {
-    return <p className="text-sm text-neutral-500">Chargement…</p>;
-  }
-
   return (
     <>
-      <DataTable
-        columns={columns}
-        rows={orgs}
-        getRowId={(r) => r.id}
-        emptyState={
-          <EmptyState
-            icon={BuildingsIcon}
-            title="Aucune organisation"
-            description="Les organisations créées par les contractants apparaîtront ici."
-          />
-        }
-      />
+      <div className="mb-4">
+        <SearchInput onChange={handleSearchChange} placeholder="Rechercher par nom…" />
+      </div>
+
+      {loading ? (
+        <p className="text-sm text-neutral-500">Chargement…</p>
+      ) : (
+        <DataTable
+          columns={columns}
+          rows={orgs}
+          getRowId={(r) => r.id}
+          selectable
+          bulkActions={(ids) => (
+            <>
+              {canBulkChangePlan && (
+                <button
+                  onClick={() => runBulkChangePlan(ids)}
+                  disabled={bulkBusy}
+                  className="text-accent-700 text-xs font-medium hover:underline disabled:opacity-60"
+                >
+                  Changer le plan
+                </button>
+              )}
+              <button
+                onClick={() => runBulkExport(ids)}
+                disabled={bulkBusy}
+                className="text-accent-700 text-xs font-medium hover:underline disabled:opacity-60"
+              >
+                Exporter (JSON)
+              </button>
+            </>
+          )}
+          pagination={{ page, pageSize: PAGE_SIZE, total, onPageChange: setPage }}
+          emptyState={
+            <EmptyState
+              icon={BuildingsIcon}
+              title="Aucune organisation"
+              description={
+                q
+                  ? 'Aucune organisation ne correspond à cette recherche.'
+                  : 'Les organisations créées par les contractants apparaîtront ici.'
+              }
+            />
+          }
+        />
+      )}
 
       {pendingAction && (
         <ConfirmTypingDialog

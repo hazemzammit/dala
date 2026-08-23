@@ -18,11 +18,19 @@
  *      produces a scheduled_job_runs row to monitor.
  *   2. Infra reachability grid — real as of migration 0032, backed by
  *      `service_health_checks` (ping-service-health, cron every 5 min).
+ *      0056 (Tier 1.3) added supabase_realtime to the checked set.
  *      Konnect is deliberately absent — see that migration's header, and
  *      note it's STILL absent after this phase: paymentProvider.ts's
  *      Konnect branch is still a stub that throws (confirmed by reading
  *      it), not real provider-calling code, despite migration 0043
  *      existing — there's genuinely nothing real to ping yet.
+ *
+ * Tier 4.6 — MONITORED_JOBS below is duplicated (not imported) into
+ * supabase/functions/ping-service-health/index.ts, which uses the same
+ * list + lastTwoFailed condition to actually fire a Slack alert on
+ * failure, not just color this screen's badge. Keep both lists in sync
+ * by hand if either changes — no shared-module story between this
+ * Next.js app and that separate Deno runtime.
  */
 import { NextResponse } from 'next/server';
 
@@ -32,16 +40,38 @@ import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 const MONITORED_JOBS = [
   'send_impersonation_notifications',
   'send_digest_notifications',
-  'send_announcement_notifications',
-  // Added this remediation phase — 0053's daily pg_cron job, the only
+  'send_announcement_notifications', // Added this remediation phase — 0053's daily pg_cron job, the only
   // real caller of cleanup_audit_log_retention(). cleanup_orphaned_files()
   // (0051) is deliberately NOT listed here: it's on-demand only (Doc 04
   // §4.3.8 — triggered by an admin button, never scheduled), so it never
   // writes a scheduled_job_runs row to monitor.
   'audit_log_retention_cleanup',
+  // Tier 2.1's own oversight, fixed here while touching this array again
+  // for Tier 2.7: 0057's daily retention job was scheduled but never
+  // added to this list, so it was silently unmonitored since that tier.
+  'edge_function_invocations_retention_cleanup',
+  // Tier 2.7 — rotate-totp-encryption-key (0061), twice-yearly. A failed
+  // rotation should show up here the same way every other job failure
+  // does, even though it fires far less often than the others on this list.
+  'totp_key_rotation',
+  // Tier 4.5 Phase A — snapshot_platform_metrics (0062), daily. Feeds
+  // platform_metrics_daily; a silently-failing snapshot would mean a
+  // future Phase B trend chart has a gap for that day with nothing
+  // flagging why.
+  'snapshot_platform_metrics',
+  // Tier 4.7 — email_delivery_events' own daily retention job (0064),
+  // same pattern as audit_log/edge_function_invocations' retention jobs
+  // above.
+  'email_delivery_events_retention_cleanup',
 ];
 
-const MONITORED_SERVICES = ['supabase_auth', 'supabase_storage', 'resend', 'expo_push'] as const;
+const MONITORED_SERVICES = [
+  'supabase_auth',
+  'supabase_storage',
+  'supabase_realtime',
+  'resend',
+  'expo_push',
+] as const;
 
 export async function GET() {
   const ctx = await getAdminSessionContext();

@@ -6,7 +6,7 @@ this once before your first PR.
 ## Branching model
 
 - `main` — always deployable. Protected: no direct pushes, PR + 1 approval
-  + passing CI required.
+  - passing CI required.
 - `develop` (if you set it up per `docs/SETUP_GUIDE.md` §2.3) — integration
   branch, merges to `main` in batches.
 - Feature branches: `feat/<short-name>`, `fix/<short-name>`,
@@ -70,6 +70,7 @@ like. This is slower for thirty seconds and saves real debugging time.
 Per Doc 00 §0.4, a contractor module isn't "done" until it ships on both
 mobile and web (workers remain mobile-only by design — that's not drift,
 it's the spec). If you're picking up a module solo, either:
+
 - build both platforms in your PR, or
 - build one platform and open a tracking issue (use
   `.github/ISSUE_TEMPLATE/module.md`) for the other platform before merging,
@@ -94,8 +95,11 @@ it's the spec). If you're picking up a module solo, either:
   commit one, don't just delete it in a follow-up commit — the secret is
   still in git history. Rotate the actual key in the provider's dashboard
   immediately, then scrub history if needed.
-- Never paste a real Supabase service-role key, Resend key, or Konnect key
-  into a GitHub issue, PR description, or chat, even in a private repo.
+- Never paste a real Supabase service-role key, Resend key, Konnect key,
+  `RESEND_WEBHOOK_SECRET`, or `ADMIN_ALERT_WEBHOOK_URL` (Slack incoming
+  webhook — apps/admin's proactive alerting, `supabase/functions/
+ping-service-health`) into a GitHub issue, PR description, or chat,
+  even in a private repo.
 
 ## Testing expectations
 
@@ -108,5 +112,24 @@ pnpm typecheck
 pnpm test
 ```
 
-CI runs the same three on every PR — a red CI check blocks merge (once
+`pnpm test` runs every package's own test task via Turborepo. For most
+packages that's a fast, stateless unit-test run. `apps/admin` is the one
+exception: its `test` script is a Playwright e2e suite that needs a real
+local Supabase stack (migrations applied, a TOTP Vault key bootstrapped,
+seeded fixtures) — running it standalone with `pnpm test` from the repo
+root will just fail with no DB behind it. To run admin's suite locally:
+
+```powershell
+supabase start
+supabase db reset
+pnpm generate-totp-vault-key --filter admin   # one-time per environment
+pnpm --filter admin exec playwright install --with-deps chromium
+pnpm --filter admin test
+```
+
+CI reflects this split (`.github/workflows/ci.yml`): the
+`lint-typecheck-test` job runs `pnpm lint` / `pnpm typecheck` /
+`turbo run test --filter='!admin'` (no Supabase needed); a separate
+`admin-e2e` job stands up the Supabase stack above and runs admin's suite
+on its own. Both must pass — a red check on either blocks merge (once
 branch protection is fully configured per the setup guide).

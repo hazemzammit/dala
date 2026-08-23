@@ -94,3 +94,59 @@ export async function registerForPushNotifications(): Promise<PushResult> {
 
   return { token };
 }
+
+/**
+ * PHASE 9 §2.2 — notification-tap deep linking. Mirrors
+ * registerForPushNotifications()'s own dynamic-import + Expo-Go/Android
+ * guard above (see that function's header comment for exactly why: a
+ * static `expo-notifications` import at module scope crashes under Expo
+ * Go on Android regardless of whether push was ever registered — the
+ * `addNotificationResponseReceivedListener` API lives in the same module,
+ * so it needs the identical guard, not a lighter one just because this
+ * half doesn't mint a token).
+ *
+ * Handles BOTH ways a tap can reach the app:
+ *   1. App already running (foreground/background, not killed) — a tap
+ *      fires `addNotificationResponseReceivedListener` immediately.
+ *   2. App was fully killed — the tap is what LAUNCHES the app, and by
+ *      the time this function's caller (NotificationRouter, mounted in
+ *      the root layout) runs its first effect, the tap has already
+ *      happened and the listener above would never fire for it.
+ *      `getLastNotificationResponse()` is Expo's own answer to this exact
+ *      case — checked once on mount, alongside the live listener, not
+ *      instead of it.
+ * Both paths route through the SAME `onResponse` callback — the caller
+ * doesn't need to know or care which path fired.
+ */
+export async function setupNotificationResponseListener(
+  onResponse: (data: Record<string, unknown>) => void,
+): Promise<() => void> {
+  if (
+    Constants.executionEnvironment === ExecutionEnvironment.StoreClient &&
+    Platform.OS === 'android'
+  ) {
+    return () => {};
+  }
+
+  const Notifications = await import('expo-notifications');
+
+  // Cold start: the app was launched BY this tap. Checked once, before
+  // the live listener is attached below — if this resolves to a real
+  // response, that response has already "happened" and would never reach
+  // the live listener. `getLastNotificationResponseAsync()`, not the
+  // deprecated sync `getLastNotificationResponse()` — same "SDK 54's
+  // current API, not the legacy one" discipline reports.tsx's own header
+  // already documents for `expo-file-system`.
+  const lastResponse = await Notifications.getLastNotificationResponseAsync();
+  if (lastResponse) {
+    const data = lastResponse.notification.request.content.data as Record<string, unknown>;
+    onResponse(data ?? {});
+  }
+
+  const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
+    const data = response.notification.request.content.data as Record<string, unknown>;
+    onResponse(data ?? {});
+  });
+
+  return () => subscription.remove();
+}

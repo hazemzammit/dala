@@ -361,3 +361,41 @@ Use this to review any screen before calling it done:
 ## 6. On the Figma links
 
 Those four community files under `q_id=1a14f511…` and three under `q_id=a2172b1f…` are Figma's own "resources/community" URLs — they sit behind Figma's account/session wall, so I wasn't able to open them from here to extract specifics. If there's something particular in one of them you want reflected (a component style, a specific chart treatment, a specific onboarding pattern), the fastest path is to either screenshot the frames you like — the way you did for the seven images above — or duplicate the file into your own Figma account and share that direct link, since community-resource links generally require the viewer to already be signed into Figma.
+
+---
+
+## Post-v4.0 Component Additions (Gap-Fix Roadmap)
+
+_Added retroactively — new shared components introduced after this
+document's v4.0 baseline, described here so future screens reuse them
+rather than reinventing an equivalent pattern._
+
+- **`Select.tsx`** — bottom-sheet pick-or-specify component, modeled on
+  the existing `DatePicker.tsx` sheet pattern. A search field appears
+  automatically once a list reaches ≥6 options; selecting "Autre —
+  préciser" reveals a free-text field whose value is stored directly in
+  the same underlying column (no separate "is custom" flag column).
+- **`UndoToast.tsx`** — for lower-stakes deletes (vehicle, expense — not
+  yet extended to every deletable entity), a toast with an inline undo
+  action appears before a soft-delete is treated as final. Distinct from
+  the 30-day recoverable soft-delete/Trash pattern already documented
+  elsewhere — this is the immediate-undo layer sitting in front of it.
+- **`ChartCard.tsx`** + chart primitives — single-series bar/line only;
+  a "grouped" or "stacked" comparison is achieved by placing multiple
+  `ChartCard` instances side by side, not a native multi-series chart
+  type. `MAX_BARS = 10` is a hard cap for on-screen readability, not a
+  data limitation — a query returning more than 10 buckets truncates for
+  display purposes only.
+- **`WorkerHubTabs.tsx`** — a reusable two/four-tab hub layout, first
+  built for the worker detail screen (Infos/Pointage/Avances/Dispatch)
+  and reused as-is for the vehicle detail screen (Infos/Maintenance).
+- **`ErrorState.tsx`** — a shared component for a failed data fetch,
+  distinct from the existing empty-state pattern (§ empty states above) —
+  an empty state means "no data yet," an error state means "the fetch
+  failed," and the two should never be visually interchangeable.
+- **Sync-status indicator** — a three-state visible indicator
+  (Synchronisation… / Synchronisé / Échec + Réessayer) replacing what was
+  previously a fully silent background sync with no user-visible state
+  at all.
+- **Voice-note playback** — a progress bar with tap-to-seek, built on
+  `expo-audio`'s `useAudioPlayerStatus`, first used in the Journal screen.

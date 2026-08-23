@@ -1,6 +1,7 @@
 'use client';
 
 import { ClipboardTextIcon } from '@phosphor-icons/react';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
@@ -27,9 +28,16 @@ interface Entry {
 // both null, so filtering on them naturally excludes pre-0052 history
 // rather than silently misreporting it.
 export function AuditLogTable() {
+  // Admin remediation Tier 4.4 — GlobalSearch links here with `?action=`
+  // to deep-link a pre-filtered view. Read once on mount, same "this
+  // screen's own filter state becomes the source of truth from here on,
+  // not kept in sync with the URL afterward" reasoning as UsersTable.tsx.
+  const searchParams = useSearchParams();
+  const initialAction = searchParams.get('action') ?? '';
+
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState('');
+  const [actionFilter, setActionFilter] = useState(initialAction);
   const [tableFilter, setTableFilter] = useState('');
   const [actorIdFilter, setActorIdFilter] = useState('');
   const [orgIdFilter, setOrgIdFilter] = useState('');

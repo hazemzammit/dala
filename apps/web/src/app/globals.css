@@ -10,3 +10,20 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Improvement-plan Phase 11 (§9.5) — client-portal-only design tokens.
+ * Deliberately scoped to these two classes, not added to
+ * @dala/design-tokens or the Tailwind preset — no other screen in this
+ * app needs either. See apps/web/src/app/portail/[token]/page.tsx's own
+ * header for the full reasoning (distinct from the internal app's own
+ * Sora display face + cooler neutral-25 background, and why this is a
+ * system-font stack rather than a loaded webfont).
+ */
+.portal-bg {
+  background-color: #faf7f2;
+}
+
+.portal-display {
+  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+}

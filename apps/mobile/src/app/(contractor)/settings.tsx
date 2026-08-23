@@ -4,6 +4,7 @@ import {
   BellIcon,
   BuildingsIcon,
   CaretRightIcon,
+  ChatCircleIcon,
   GlobeIcon,
   ReceiptIcon,
   ShieldIcon,
@@ -12,12 +13,9 @@ import {
   UserIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native';
-import { useState } from 'react';
 import { Alert } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { Sheet } from '@/components/ui/Sheet';
-import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -35,37 +33,36 @@ import { supabase } from '@/lib/supabase';
  * from the existing team.tsx (workers — field employees, Doc 03 §3.13) —
  * see team-members.tsx's own header for why those are two different
  * entities the spec's one line item conflates.
+ *
+ * IMPROVEMENT-PLAN PHASE 1 (§8) — DECISION, stated plainly: this row used
+ * to open a sheet offering Français/العربية/English, writing the choice to
+ * `profiles.preferred_locale` — but no i18n library exists anywhere in
+ * this app (every screen's text is hardcoded French), so picking Arabic or
+ * English changed nothing. That's worse than not offering the choice at
+ * all: it actively promised a working translation the app didn't deliver,
+ * to exactly the audience (workers more comfortable in Arabic than French)
+ * this app most needs to serve well.
+ *
+ * Chose "strip to what's real" over "build i18n now": full i18n (string
+ * extraction across ~50 screens, RTL layout support and mirrored-screen
+ * testing for Arabic) is explicitly a **Big** item with no dependency on
+ * anything else in Phase 1's foundation work, and the plan frames this
+ * section as a decision to make now, not a build to schedule now. The
+ * "Langue" row stays (removing it entirely would erase the setting's
+ * existence rather than being honest about its current state) but the
+ * sheet no longer offers Arabic/English — it shows a single, disabled,
+ * pre-selected "Français" row plus a short explanatory line, so nothing
+ * on screen promises functionality that doesn't exist. `preferred_locale`
+ * itself is left alone (still `'fr'` for every existing profile; no
+ * migration needed) — real i18n, whenever it's built, can start from
+ * there rather than needing a data backfill.
  */
-const LOCALE_OPTIONS: { value: 'fr' | 'ar' | 'en'; label: string }[] = [
-  { value: 'fr', label: 'Français' },
-  { value: 'ar', label: 'العربية' },
-  { value: 'en', label: 'English' },
-];
-
 export default function SettingsScreen() {
-  const [langSheetOpen, setLangSheetOpen] = useState(false);
-  const [savingLocale, setSavingLocale] = useState(false);
-
-  async function handleLocaleChange(locale: 'fr' | 'ar' | 'en') {
-    setSavingLocale(true);
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (session) {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ preferred_locale: locale })
-        .eq('id', session.user.id);
-      if (error) {
-        Alert.alert('Erreur', 'Impossible de mettre à jour la langue.');
-        haptics.error();
-        setSavingLocale(false);
-        return;
-      }
-    }
-    haptics.confirm();
-    setSavingLocale(false);
-    setLangSheetOpen(false);
+  function showLanguageInfo() {
+    Alert.alert(
+      'Langue',
+      "Dala est disponible en français uniquement pour le moment. Une prise en charge de l'arabe est prévue.",
+    );
   }
 
   function confirmSignOut() {
@@ -105,13 +102,27 @@ export default function SettingsScreen() {
       label: 'Notifications',
       onPress: () => router.push('/notification-settings' as never),
     },
-    { icon: GlobeIcon, label: 'Langue', onPress: () => setLangSheetOpen(true) },
+    // PHASE 1 (§8) — was `onPress: () => setLangSheetOpen(true)`, opening
+    // a sheet with three locale options only one of which actually did
+    // anything. Now surfaces an honest one-line explanation instead of a
+    // picker with two dead options. See file header for the full decision.
+    { icon: GlobeIcon, label: 'Langue', onPress: showLanguageInfo },
     {
       icon: UsersThreeIcon,
       label: "Membres de l'équipe",
       onPress: () => router.push('/team-members' as never),
     },
     { icon: ReceiptIcon, label: 'Facturation', onPress: () => router.push('/billing' as never) },
+    // PHASE 9 §2.8 — "Signaler un problème." Placed here rather than a
+    // floating in-app button (e.g. PlusSheet.tsx) since this is a
+    // deliberately low-frequency, low-urgency action — the plan's own
+    // wording ranks §2.7/§2.8 "lowest priority" of Phase 9 — not
+    // something that needs one-tap access from every screen.
+    {
+      icon: ChatCircleIcon,
+      label: 'Signaler un problème',
+      onPress: () => router.push('/feedback' as never),
+    },
     {
       icon: SignOutIcon,
       label: 'Déconnexion',
@@ -161,26 +172,6 @@ export default function SettingsScreen() {
           </XStack>
         ))}
       </YStack>
-
-      <Sheet visible={langSheetOpen} onClose={() => setLangSheetOpen(false)} title="Langue">
-        <YStack gap="$2">
-          {LOCALE_OPTIONS.map((opt) => (
-            <XStack
-              key={opt.value}
-              paddingVertical={14}
-              paddingHorizontal="$2"
-              justifyContent="space-between"
-              alignItems="center"
-              onPress={() => void handleLocaleChange(opt.value)}
-              accessibilityRole="button"
-              accessibilityLabel={opt.label}
-              opacity={savingLocale ? 0.6 : 1}
-            >
-              <Text fontSize={15}>{opt.label}</Text>
-            </XStack>
-          ))}
-        </YStack>
-      </Sheet>
     </YStack>
   );
 }

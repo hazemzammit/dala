@@ -5,6 +5,12 @@ import { supabase } from './supabase';
 // genuinely worth pinning with a test: it's easy to accidentally regress
 // into "network error => treat as needing a forced update", which would
 // lock an offline-first user out of an app they're already running.
+//
+// jest.mock() calls are hoisted above imports by babel-plugin-jest-hoist
+// regardless of source position, so grouping the imports together above
+// (rather than interleaving them with the mocks, as before) doesn't change
+// runtime behavior — the mocks still apply before `supabase`/`expo-constants`
+// are ever evaluated.
 jest.mock('./supabase', () => ({
   supabase: { rpc: jest.fn() },
 }));

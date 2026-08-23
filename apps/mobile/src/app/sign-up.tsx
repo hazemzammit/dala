@@ -1,13 +1,37 @@
 import { signUpSchema } from '@dala/validation';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { ScrollView, Text, YStack } from 'tamagui';
+import { Linking } from 'react-native';
+import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
+import { Toggle } from '@/components/ui/Toggle';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
+
+/**
+ * Phase 12 (improvement-plan §10.5) — FINDING: `signUpSchema` (validated
+ * above in `handleSubmit`) has no privacy-consent field, and no privacy-
+ * policy checkbox or link existed anywhere on this screen before this
+ * phase — confirmed by reading this file in full before writing anything.
+ * Both app stores require a privacy policy to be presented before/at
+ * account creation for an app that collects personal data (this one
+ * collects phone numbers, photos, financial data — see
+ * docs/PRIVACY_POLICY.md, this same phase). Added as a client-side gate
+ * only (the `Button` below stays disabled until checked) — NOT wired into
+ * `signUpSchema`/the `sign-up` Edge Function, since changing that shared
+ * validation schema is a larger, cross-cutting change (it's also used by
+ * `accept-org-invite.tsx`'s own flow) that deserves its own review rather
+ * than being folded into this phase's document-writing scope. Flagged in
+ * PHASE_12_BRIEF.md as a disclosed, deliberate partial fix: the UI gate
+ * is real and effective for this screen, but a determined API caller
+ * bypassing the app entirely could still hit `sign-up` without ever
+ * having agreed — closing that fully is server-side schema work, not
+ * done here.
+ */
+const PRIVACY_POLICY_URL = 'https://dala.tn/confidentialite';
 
 /**
  * Doc 01 §1.3.3 — same Edge Function as web (supabase/functions/sign-up),
@@ -48,6 +72,7 @@ export default function SignUpScreen() {
   });
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
 
   function update<K extends keyof typeof form>(key: K, value: string) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -147,7 +172,29 @@ export default function SignUpScreen() {
 
         {error && <Text color="$danger">{error}</Text>}
 
-        <Button onPress={handleSubmit} loading={loading}>
+        {/* Phase 12 (improvement-plan §10.5) — see this file's own header
+            for why this is a client-side gate, not a schema change. */}
+        <XStack alignItems="center" gap="$2.5">
+          <Toggle
+            value={privacyAccepted}
+            onChange={setPrivacyAccepted}
+            accessibilityLabel="J'accepte la politique de confidentialité"
+          />
+          <Text
+            flex={1}
+            fontSize={13}
+            color="$neutral500"
+            onPress={() => Linking.openURL(PRIVACY_POLICY_URL)}
+          >
+            J&apos;accepte la{' '}
+            <Text color="$accent600" textDecorationLine="underline">
+              politique de confidentialité
+            </Text>
+            .
+          </Text>
+        </XStack>
+
+        <Button onPress={handleSubmit} loading={loading} disabled={!privacyAccepted}>
           Créer mon compte
         </Button>
 

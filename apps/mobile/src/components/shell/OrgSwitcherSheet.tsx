@@ -94,7 +94,7 @@ export function OrgSwitcherSheet({
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
             >
-              <Avatar name={org.name} />
+              <Avatar name={org.name} imageUrl={org.logo_url ?? undefined} />
               <YStack flex={1}>
                 <Text fontSize={15.5} fontWeight="500">
                   {org.name}

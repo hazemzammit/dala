@@ -1,11 +1,20 @@
 import { color } from '@dala/design-tokens';
 import type { ExpenseCategory, Project, ProjectExpense } from '@dala/shared-types';
 import { createProjectExpenseSchema } from '@dala/validation';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ArrowLeftIcon, CoinsIcon, PlusIcon } from 'phosphor-react-native';
+import {
+  ArrowLeftIcon,
+  CameraIcon,
+  CoinsIcon,
+  ImageIcon,
+  MagnifyingGlassIcon,
+  PlusIcon,
+  TrashIcon,
+} from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { RefreshControl, ScrollView, TextInput } from 'react-native';
+import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
@@ -17,10 +26,14 @@ import { NumericText } from '@/components/ui/NumericText';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
+import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { useToast } from '@/components/ui/Toast';
+import { useUndoToast, UndoToast } from '@/components/ui/UndoToast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 import { haptics } from '@/lib/haptics';
+import { processPhoto } from '@/lib/photoPipeline';
+import { uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -51,6 +64,24 @@ import { supabase } from '@/lib/supabase';
  * (called out in this file's own prior comment as a deferred item) with
  * the new `DatePicker` — same native dependency already added for
  * `TimeInput`, no new module.
+ *
+ * IMPROVEMENT-PLAN PHASE 11 (§9.1, §9.2) —
+ *
+ *   - Search: a field above the category chip row, client-side over the
+ *     already-fetched `expenses` list (`project_expenses` has no
+ *     `search_vector` column — confirmed by reading its `create table` in
+ *     migration 0007 directly — so this takes the same client-side route
+ *     journal.tsx/materials.tsx do this phase, not vehicles.tsx's
+ *     search_all route). Matches on category label + description.
+ *   - Delete: §9.2 names an expense row as ITS OWN "lower-stakes delete"
+ *     example — same UndoToast pattern as journal.tsx this phase (see that
+ *     file's header for the full timing model), backed by
+ *     `soft_delete_expense`/`restore_expense` (migration 0076). DISCLOSED
+ *     SCOPE CUT: unlike vehicles/journal, this delete is NOT surfaced in
+ *     trash.tsx — see migration 0076's own Part 2 header for why. `load()`
+ *     Expenses query now also filters `.is('deleted_at', null)`, same
+ *     convention this file's own `projects.deleted_at` filter above
+ *     already uses.
  */
 const CATEGORY_CHART_COLOR: Record<ExpenseCategory, string> = {
   materiaux: color.accent[600],
@@ -94,6 +125,22 @@ export default function ExpensesScreen() {
   const [expenseDate, setExpenseDate] = useState(todayISO());
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  // Phase 3 §1.8 — receiptLocalUri is a local preview of a freshly-picked-
+  // but-not-yet-uploaded photo (uploaded at save time, same
+  // upload-on-save-not-on-pick pattern as vehicles.tsx, so a cancelled
+  // sheet never orphans a Storage file).
+  const [receiptLocalUri, setReceiptLocalUri] = useState<string | null>(null);
+  const [processingReceipt, setProcessingReceipt] = useState(false);
+
+  // Phase 11 §9.1 — client-side search state, see file header.
+  const [search, setSearch] = useState('');
+
+  // Phase 11 §9.2 — optimistic soft-delete + UndoToast state, mirroring
+  // journal.tsx's own pendingDeleteLog/undoToast pair exactly (see that
+  // file's header for the full timing model this mirrors).
+  const undoToast = useUndoToast();
+  const [pendingDeleteExpense, setPendingDeleteExpense] = useState<ProjectExpense | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -145,6 +192,10 @@ export default function ExpensesScreen() {
       .from('project_expenses')
       .select('*')
       .eq('project_id', projectId)
+      // Phase 11 §9.2 — project_expenses.deleted_at (migration 0076); no
+      // SELECT-policy change needed, filtered client-side same convention
+      // this file's own load() already applies to projects.deleted_at.
+      .is('deleted_at', null)
       .order('expense_date', { ascending: false })
       .order('created_at', { ascending: false });
     setExpenses(data ?? []);
@@ -175,12 +226,85 @@ export default function ExpensesScreen() {
       .sort((a, b) => b.value - a.value);
   }, [expenses]);
 
+  // IMPROVEMENT-PLAN PHASE 4 (§3, prefill/suggestion layer) — "a remembered
+  // last-amount hint for recurring expense categories (expenses.tsx — likely
+  // the most recent amount for the same category+project_id)."
+  // Derived from the already-loaded `expenses` (already sorted by
+  // expense_date desc, created_at desc, so the first match per category
+  // IS the most recent one) — no new query needed.
+  const lastAmountByCategory = useMemo((): Partial<Record<ExpenseCategory, number>> => {
+    const result: Partial<Record<ExpenseCategory, number>> = {};
+    for (const e of expenses) {
+      if (!(e.category in result)) {
+        result[e.category] = Number(e.amount);
+      }
+    }
+    return result;
+  }, [expenses]);
+
+  const suggestedAmount = selectedProjectId ? (lastAmountByCategory[category] ?? null) : null;
+
+  // Phase 11 §9.1 — search applies only to the RENDERED list, not to
+  // consumedTotal/categoryBreakdown above (both intentionally still
+  // computed over the full `expenses` list — a search filter narrowing
+  // which rows are visible should never make the budget summary lie).
+  const filteredExpenses = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return expenses;
+    return expenses.filter((e) => {
+      const haystack = `${CATEGORY_LABEL[e.category]} ${e.description ?? ''}`.toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [expenses, search]);
+
+  // Phase 11 §9.2 — optimistic soft-delete + UndoToast. Same timing model
+  // as journal.tsx's handleDeleteLog/handleUndoDeleteLog/handleDeleteLog
+  // Expired trio this same phase (see UndoToast.tsx's own header) — the
+  // RPC fires immediately, the row is pulled from `expenses` right away,
+  // and "Annuler" calls restore_expense to reverse both.
+  async function handleDeleteExpense(expense: ProjectExpense) {
+    try {
+      const { error } = await supabase.rpc('soft_delete_expense', { p_expense_id: expense.id });
+      if (error) throw error;
+      haptics.confirm();
+      setExpenses((prev) => prev.filter((e) => e.id !== expense.id));
+      setPendingDeleteExpense(expense);
+      undoToast.show(expense.id, 'Dépense supprimée.');
+    } catch (e: any) {
+      haptics.error();
+      toast.error(e?.message ?? 'Impossible de supprimer cette dépense.');
+    }
+  }
+
+  async function handleUndoDeleteExpense() {
+    if (!pendingDeleteExpense) return;
+    const restored = pendingDeleteExpense;
+    try {
+      const { error } = await supabase.rpc('restore_expense', { p_expense_id: restored.id });
+      if (error) throw error;
+      haptics.confirm();
+      toast.success('Dépense restaurée.');
+      setPendingDeleteExpense(null);
+      undoToast.clear();
+      if (selectedProjectId) await loadExpenses(selectedProjectId);
+    } catch (e: any) {
+      haptics.error();
+      toast.error(e?.message ?? 'Impossible de restaurer cette dépense.');
+    }
+  }
+
+  function handleDeleteExpenseExpired() {
+    setPendingDeleteExpense(null);
+    undoToast.clear();
+  }
+
   function openSheet() {
     setCategory('materiaux');
     setAmount('');
     setDescription('');
     setExpenseDate(todayISO());
     setError(null);
+    setReceiptLocalUri(null);
     setSheetOpen(true);
   }
 
@@ -214,6 +338,16 @@ export default function ExpensesScreen() {
       } = await supabase.auth.getSession();
       if (!session) throw new Error('Session expirée.');
 
+      // Phase 3 §1.8 — the gap this screen's own prior comment flagged:
+      // upload now happens, using the exact pipeline every other photo
+      // field in this app uses (processPhoto — general-purpose, not
+      // processAvatarPhoto's square identity crop; a receipt is a
+      // document photo, not an avatar).
+      let receiptPath: string | null = null;
+      if (receiptLocalUri) {
+        receiptPath = await uploadOrgFile(orgId, 'expenses', receiptLocalUri, 'jpg', 'image/jpeg');
+      }
+
       const { error: insertError } = await supabase.from('project_expenses').insert({
         org_id: orgId,
         project_id: parsed.data.project_id,
@@ -222,18 +356,50 @@ export default function ExpensesScreen() {
         description: parsed.data.description ?? null,
         expense_date: parsed.data.expense_date ?? todayISO(),
         created_by: session.user.id,
+        receipt_photo_url: receiptPath,
       });
       if (insertError) throw insertError;
 
       haptics.confirm();
       toast.success('Dépense enregistrée.');
       setSheetOpen(false);
+      setReceiptLocalUri(null);
       await loadExpenses(parsed.data.project_id);
     } catch (e: any) {
       haptics.error();
       setError(e?.message ?? 'Une erreur est survenue. Réessayez.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function pickReceipt(source: 'camera' | 'library') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error(
+        source === 'camera'
+          ? "Autorisez l'accès à l'appareil photo pour prendre une photo."
+          : "Autorisez l'accès à vos photos pour en choisir une.",
+      );
+      return;
+    }
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setProcessingReceipt(true);
+    try {
+      const processed = await processPhoto(result.assets[0].uri);
+      setReceiptLocalUri(processed.uri);
+    } catch {
+      toast.error('Impossible de traiter la photo. Réessayez.');
+    } finally {
+      setProcessingReceipt(false);
     }
   }
 
@@ -385,29 +551,70 @@ export default function ExpensesScreen() {
           />
         ) : (
           <YStack gap="$2">
-            {expenses.map((e) => (
-              <XStack
-                key={e.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$3"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <YStack flex={1}>
-                  <Text fontSize={15} fontWeight="600">
-                    {CATEGORY_LABEL[e.category]}
-                  </Text>
-                  <Text fontSize={12} color="$neutral500">
-                    {e.expense_date}
-                    {e.description ? ` · ${e.description}` : ''}
-                  </Text>
-                </YStack>
-                <NumericText fontSize={15.5} fontWeight="600">
-                  {Number(e.amount).toFixed(0)} TND
-                </NumericText>
-              </XStack>
-            ))}
+            {/* Phase 11 §9.1 — search field, above the expense list. */}
+            <XStack
+              backgroundColor="$neutral0"
+              borderRadius="$control"
+              paddingHorizontal={12}
+              paddingVertical={9}
+              alignItems="center"
+              gap="$2"
+              borderWidth={1}
+              borderColor="$neutral300"
+              marginBottom="$1"
+            >
+              <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
+              <TextInput
+                placeholder="Rechercher une dépense"
+                placeholderTextColor={color.neutral[500]}
+                value={search}
+                onChangeText={setSearch}
+                style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
+                accessibilityLabel="Rechercher dans les dépenses"
+              />
+            </XStack>
+            {filteredExpenses.length === 0 ? (
+              <Text color="$neutral500" fontSize={14} textAlign="center" marginTop="$4">
+                Aucune dépense ne correspond à cette recherche.
+              </Text>
+            ) : (
+              filteredExpenses.map((e) => (
+                <SwipeableRow
+                  key={e.id}
+                  rightAction={
+                    canWrite
+                      ? {
+                          label: 'Supprimer',
+                          color: color.status.danger,
+                          icon: TrashIcon,
+                          onPress: () => void handleDeleteExpense(e),
+                        }
+                      : undefined
+                  }
+                >
+                  <XStack
+                    backgroundColor="$neutral0"
+                    borderRadius="$card"
+                    padding="$3"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <YStack flex={1}>
+                      <Text fontSize={15} fontWeight="600">
+                        {CATEGORY_LABEL[e.category]}
+                      </Text>
+                      <Text fontSize={12} color="$neutral500">
+                        {e.expense_date}
+                        {e.description ? ` · ${e.description}` : ''}
+                      </Text>
+                    </YStack>
+                    <NumericText fontSize={15.5} fontWeight="600">
+                      {Number(e.amount).toFixed(0)} TND
+                    </NumericText>
+                  </XStack>
+                </SwipeableRow>
+              ))
+            )}
           </YStack>
         )}
       </ScrollView>
@@ -425,12 +632,34 @@ export default function ExpensesScreen() {
             <SegmentedControl value={category} onChange={setCategory} options={CATEGORY_OPTIONS} />
           </YStack>
 
-          <FormField
-            label="Montant (TND)"
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="numeric"
-          />
+          <YStack gap="$1.5">
+            <FormField
+              label="Montant (TND)"
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="numeric"
+            />
+            {/* IMPROVEMENT-PLAN PHASE 4 (§3) — last-amount hint: shown only
+                while the field is still empty, so it never overwrites a
+                value the user already typed. Same tap-to-fill pattern as
+                team.tsx's trade rate hint — suggestion, not a hard prefill. */}
+            {suggestedAmount !== null && !amount && (
+              <XStack
+                alignItems="center"
+                gap={4}
+                onPress={() => setAmount(String(suggestedAmount))}
+                accessibilityRole="button"
+              >
+                <Text fontSize={12.5} color="$neutral500">
+                  Dernier montant pour {CATEGORY_LABEL[category]} : {suggestedAmount.toFixed(0)} TND
+                  ·
+                </Text>
+                <Text fontSize={12.5} fontWeight="600" color="$accent600">
+                  Utiliser
+                </Text>
+              </XStack>
+            )}
+          </YStack>
 
           <FormField
             label="Description (optionnel)"
@@ -439,13 +668,48 @@ export default function ExpensesScreen() {
             maxLength={200}
           />
 
-          {/* Doc 03 §3.10.3a also specs a photo receipt here. Deferred in
-              this pass — the receipt photo needs the same capture/
-              compress/EXIF-strip pipeline as site logs (Doc 02 §2.5),
-              which is scheduled for Phase 3 alongside Journal; building a
-              one-off version just for this screen would fork that
-              pipeline rather than reuse it. The date field itself is no
-              longer deferred — see file header. */}
+          {/* IMPROVEMENT-PLAN PHASE 3 (§1.8) — the gap flagged in this
+              comment's prior text is closed: same processPhoto/
+              uploadOrgFile pipeline every other photo field in this app
+              uses, upload deferred to save time (handleSave), not pick
+              time, so a cancelled sheet never orphans a Storage file. */}
+          <YStack gap="$2">
+            <Text fontSize={14} fontWeight="500">
+              Photo du reçu
+            </Text>
+            {receiptLocalUri ? (
+              <XStack alignItems="center" gap="$3">
+                <Image source={{ uri: receiptLocalUri }} width={72} height={72} borderRadius={12} />
+                <Button
+                  variant="secondary"
+                  fullWidth={false}
+                  onPress={() => setReceiptLocalUri(null)}
+                >
+                  Retirer
+                </Button>
+              </XStack>
+            ) : (
+              <XStack gap="$2">
+                <Button
+                  variant="secondary"
+                  icon={CameraIcon}
+                  loading={processingReceipt}
+                  onPress={() => void pickReceipt('camera')}
+                >
+                  Appareil photo
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={ImageIcon}
+                  loading={processingReceipt}
+                  onPress={() => void pickReceipt('library')}
+                >
+                  Galerie
+                </Button>
+              </XStack>
+            )}
+          </YStack>
+
           <DatePicker
             label="Date"
             value={expenseDate}
@@ -460,6 +724,14 @@ export default function ExpensesScreen() {
           </Button>
         </YStack>
       </Sheet>
+
+      {/* Phase 11 §9.2 — undo-toast for the delete flow above. */}
+      <UndoToast
+        visible={!!undoToast.pending}
+        message={undoToast.pending?.message ?? ''}
+        onUndo={handleUndoDeleteExpense}
+        onExpire={handleDeleteExpenseExpired}
+      />
     </YStack>
   );
 }

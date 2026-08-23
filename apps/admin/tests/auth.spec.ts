@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { createClient } from '@supabase/supabase-js';
 
 import { loadFixtures } from './helpers/fixtures';
 import { loginAsAdmin } from './helpers/login';
@@ -72,5 +73,46 @@ test.describe('Admin auth', () => {
 
     await page.goto('/dashboard');
     await expect(page).toHaveURL(/\/login$/);
+  });
+});
+
+/**
+ * Admin remediation Tier 2.3 — closes the gap 0053's own header flagged:
+ * login/logout previously never wrote an audit_log row, so the 1-year
+ * security-event retention tier had nothing to retain for either. Reads
+ * audit_log directly via the service-role client rather than the admin
+ * UI (AuditLogTable needed no changes — its filters already work
+ * generically off the `action` column, per the plan).
+ */
+test.describe('Admin auth — audit log', () => {
+  test('login writes an admin.login row; logout writes an admin.logout row', async ({ page }) => {
+    const fixtures = loadFixtures();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const since = new Date().toISOString();
+
+    await loginAsAdmin(page, fixtures.adminB);
+
+    const { data: loginRows } = await supabase
+      .from('audit_log')
+      .select('id, action, actor_id, target_id')
+      .eq('actor_id', fixtures.adminB.id)
+      .eq('action', 'admin.login')
+      .gte('created_at', since);
+    expect(loginRows?.length).toBeGreaterThanOrEqual(1);
+    expect(loginRows?.[0].target_id).toBe(fixtures.adminB.id);
+
+    await page.getByRole('button', { name: 'Déconnexion' }).click();
+    await expect(page).toHaveURL(/\/login$/);
+
+    const { data: logoutRows } = await supabase
+      .from('audit_log')
+      .select('id, action, actor_id')
+      .eq('actor_id', fixtures.adminB.id)
+      .eq('action', 'admin.logout')
+      .gte('created_at', since);
+    expect(logoutRows?.length).toBeGreaterThanOrEqual(1);
   });
 });

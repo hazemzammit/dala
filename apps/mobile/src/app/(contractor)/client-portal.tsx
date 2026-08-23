@@ -2,13 +2,22 @@ import { color } from '@dala/design-tokens';
 import type { ClientPortal, Project } from '@dala/shared-types';
 import { setClientPortalPinSchema } from '@dala/validation';
 import * as Clipboard from 'expo-clipboard';
+import { File, Paths } from 'expo-file-system';
 import { useFocusEffect } from 'expo-router';
-import { CopyIcon, HandshakeIcon, LinkIcon } from 'phosphor-react-native';
+import * as Sharing from 'expo-sharing';
+import {
+  CopyIcon,
+  DownloadSimpleIcon,
+  FileTextIcon,
+  HandshakeIcon,
+  LinkIcon,
+} from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -34,14 +43,38 @@ import { supabase } from '@/lib/supabase';
  * into PlusSheet for a single settings panel.
  *
  * What's genuinely NOT in scope here, stated plainly:
- *  - The actual client-facing portal page (what a client sees when they
- *    open the generated link, PIN entry, session handling) is web/portal
- *    territory — this screen only ever writes to `client_portals` via
- *    owner/manager-gated RPCs, it never renders the client-facing view.
  *  - PIN hashing uses bcrypt (pgcrypto), not the Argon2id the spec names
  *    — see migration 0020's header for the full reasoning; this is a
  *    deliberate interim substitution, not an oversight.
+ *
+ * IMPROVEMENT-PLAN PHASE 9 (§2.5 "Client-facing invoicing"): the note that
+ * used to sit here ("the actual client-facing portal page... is web/
+ * portal territory") is now stale in one important way — that page now
+ * EXISTS (apps/web/src/app/portail/[token]/page.tsx, this phase; see
+ * migration 0074's Part 2 header for the fuller Step 1 finding this
+ * closes). This screen's own scope is unchanged — it still only ever
+ * writes to `client_portals`/`invoices` via owner/manager-gated RPCs, it
+ * still never renders the client-facing view itself — but "generate an
+ * invoice" is now a real action here: `create_invoice()` snapshots
+ * `project_expenses` for a chosen period, and the resulting PDF (fetched
+ * via `generate-invoice-pdf`, same authenticated-org-member path
+ * generate-report already established) can be shared the same way
+ * reports.tsx shares a PDF (native share sheet, `expo-file-system`'s
+ * SDK 54 `File`/`Paths` API — see that file's own header for why this
+ * app doesn't use the legacy functional API for binary writes).
  */
+interface Invoice {
+  id: string;
+  invoice_number: string;
+  issued_at: string;
+  due_date: string;
+  subtotal: number;
+}
+
+function isoDate(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 export default function ClientPortalScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
@@ -55,6 +88,25 @@ export default function ClientPortalScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+
+  // Phase 9 §2.5 — invoicing state, scoped to whichever project's Sheet
+  // is currently open (mirrors detailPortal's own "only meaningful while
+  // a detail Sheet is open" shape, not a global list).
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [invoiceFormOpen, setInvoiceFormOpen] = useState(false);
+  const [periodFrom, setPeriodFrom] = useState(() => {
+    const d = new Date();
+    d.setDate(1);
+    return isoDate(d);
+  });
+  const [periodTo, setPeriodTo] = useState(() => isoDate(new Date()));
+  const [dueDate, setDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 15);
+    return isoDate(d);
+  });
+  const [invoiceBusy, setInvoiceBusy] = useState(false);
+  const [downloadingInvoiceId, setDownloadingInvoiceId] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,6 +153,83 @@ export default function ClientPortalScreen() {
     setPin('');
     setError(null);
     setLinkCopied(false);
+    setInvoiceFormOpen(false);
+    void loadInvoices(project.id);
+  }
+
+  async function loadInvoices(projectId: string) {
+    const { data } = await supabase
+      .from('invoices')
+      .select('id, invoice_number, issued_at, due_date, subtotal')
+      .eq('project_id', projectId)
+      .order('issued_at', { ascending: false });
+    setInvoices((data as Invoice[] | null) ?? []);
+  }
+
+  async function handleGenerateInvoice() {
+    if (!detailProjectId) return;
+    setInvoiceBusy(true);
+    setError(null);
+    try {
+      const { error: rpcError } = await supabase.rpc('create_invoice', {
+        p_project_id: detailProjectId,
+        p_period_from: periodFrom,
+        p_period_to: periodTo,
+        p_due_date: dueDate,
+      });
+      if (rpcError) throw rpcError;
+      haptics.confirm();
+      toast.success('Facture générée.');
+      setInvoiceFormOpen(false);
+      await loadInvoices(detailProjectId);
+    } catch (e: any) {
+      haptics.error();
+      setError(e?.message ?? 'Impossible de générer la facture.');
+    } finally {
+      setInvoiceBusy(false);
+    }
+  }
+
+  async function handleDownloadInvoice(invoiceId: string) {
+    setDownloadingInvoiceId(invoiceId);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (!session) throw new Error('Session invalide.');
+
+      // Same explicit-fetch-not-invoke() reasoning as reports.tsx's own
+      // header — a binary application/pdf body, not the json/text shape
+      // supabase.functions.invoke() auto-detects around.
+      const response = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/generate-invoice-pdf`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`,
+            apikey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY!,
+          },
+          body: JSON.stringify({ invoice_id: invoiceId }),
+        },
+      );
+      if (!response.ok) throw new Error('Impossible de générer le PDF.');
+
+      const buffer = await response.arrayBuffer();
+      const file = new File(Paths.cache, `facture-${invoiceId}.pdf`);
+      file.create({ overwrite: true });
+      file.write(new Uint8Array(buffer));
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(file.uri, { mimeType: 'application/pdf' });
+      } else {
+        toast.success(`Fichier enregistré : ${file.uri}`);
+      }
+    } catch (e: any) {
+      haptics.error();
+      toast.error(e?.message ?? 'Impossible de télécharger la facture.');
+    } finally {
+      setDownloadingInvoiceId(null);
+    }
   }
 
   async function handleGenerateLink() {
@@ -320,6 +449,91 @@ export default function ClientPortalScreen() {
           <Button onPress={handleSavePin} loading={busy}>
             Enregistrer
           </Button>
+
+          {/* PHASE 9 §2.5 — invoicing, deliberately its own section below
+              the PIN form rather than a separate Sheet: both belong to
+              "this project's client portal," and this screen already
+              uses one Sheet per project for the PIN half, so a second
+              nested Sheet for invoicing would be an inconsistent second
+              interaction pattern for the same conceptual object. */}
+          <YStack
+            gap="$2"
+            marginTop="$4"
+            borderTopWidth={1}
+            borderTopColor="$neutral100"
+            paddingTop="$4"
+          >
+            <Text fontSize={14} fontWeight="500">
+              Factures
+            </Text>
+
+            {invoices.length > 0 && (
+              <YStack gap="$2">
+                {invoices.map((inv) => (
+                  <XStack
+                    key={inv.id}
+                    alignItems="center"
+                    justifyContent="space-between"
+                    backgroundColor="$neutral25"
+                    borderRadius="$control"
+                    padding="$3"
+                  >
+                    <YStack flex={1}>
+                      <Text fontSize={13.5} fontWeight="600">
+                        {inv.invoice_number}
+                      </Text>
+                      <Text fontSize={12} color="$neutral500">
+                        {Number(inv.subtotal).toFixed(2)} TND · échéance {inv.due_date}
+                      </Text>
+                    </YStack>
+                    <XStack
+                      onPress={() => handleDownloadInvoice(inv.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Télécharger ${inv.invoice_number}`}
+                    >
+                      {downloadingInvoiceId === inv.id ? (
+                        <Text fontSize={12} color="$neutral500">
+                          …
+                        </Text>
+                      ) : (
+                        <DownloadSimpleIcon size={18} color="#0F9D8E" />
+                      )}
+                    </XStack>
+                  </XStack>
+                ))}
+              </YStack>
+            )}
+
+            {!invoiceFormOpen ? (
+              <Button
+                variant="secondary"
+                icon={FileTextIcon}
+                onPress={() => setInvoiceFormOpen(true)}
+              >
+                Générer une facture
+              </Button>
+            ) : (
+              <YStack gap="$3" backgroundColor="$neutral25" borderRadius="$control" padding="$3">
+                <DatePicker
+                  label="Période — du"
+                  value={periodFrom}
+                  onChange={setPeriodFrom}
+                  maximumDate={new Date(periodTo)}
+                />
+                <DatePicker
+                  label="Période — au"
+                  value={periodTo}
+                  onChange={setPeriodTo}
+                  minimumDate={new Date(periodFrom)}
+                  maximumDate={new Date()}
+                />
+                <DatePicker label="Date d'échéance" value={dueDate} onChange={setDueDate} />
+                <Button onPress={handleGenerateInvoice} loading={invoiceBusy}>
+                  Générer
+                </Button>
+              </YStack>
+            )}
+          </YStack>
         </YStack>
       </Sheet>
     </YStack>

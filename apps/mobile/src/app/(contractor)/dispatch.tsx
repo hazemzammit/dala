@@ -32,6 +32,7 @@ import DispatchAssignmentConflictModel from '@/db/models/DispatchAssignmentConfl
 import { runSync } from '@/db/sync';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
+import { getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -178,6 +179,11 @@ import { supabase } from '@/lib/supabase';
  */
 type EnrichedAssignment = DispatchAssignment & {
   workerName: string;
+  // Phase 3 §1.5/§4.1 — the assigned worker's own photo_url (storage
+  // path), joined in the same query as workerName below rather than a
+  // second round trip. Resolved to a signed URL separately (see
+  // `photoUrlByPath`), same batched pattern as team.tsx/vehicles.tsx.
+  workerPhotoPath: string | null;
 };
 
 function toISO(date: Date): string {
@@ -202,11 +208,23 @@ function frLabel(iso: string): { weekday: string; day: string } {
 
 export default function DispatchScreen() {
   const toast = useToast();
-  const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
+  const { project_id: deepLinkProjectId, date: deepLinkDate } = useLocalSearchParams<{
+    project_id?: string;
+    date?: string;
+  }>();
   const [orgId, setOrgId] = useState<string | null>(null);
-  const [selectedDate, setSelectedDate] = useState(toISO(new Date()));
+  // PHASE 9 §2.4 — optional `date` param, set only when arriving from the
+  // new week view (dispatch-week.tsx) via "tap a day to jump into its
+  // detail view." Falls back to today exactly as before when absent —
+  // every other entry point into this screen (tab bar, project hub) is
+  // unaffected.
+  const [selectedDate, setSelectedDate] = useState(deepLinkDate ?? toISO(new Date()));
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
+  // Phase 3 §1.5/§4.1 — signed URL per distinct worker photo path, for
+  // both the board chips (EnrichedAssignment.workerPhotoPath) and the
+  // worker-picker sheet (Worker.photo_url directly, same map).
+  const [photoUrlByPath, setPhotoUrlByPath] = useState<Record<string, string>>({});
   const [projects, setProjects] = useState<Project[]>([]);
   const [assignments, setAssignments] = useState<EnrichedAssignment[]>([]);
   // Only populated in project-scoped mode — fetched directly by id (not via
@@ -280,7 +298,7 @@ export default function DispatchScreen() {
 
     let assignmentQuery = supabase
       .from('dispatch_assignments')
-      .select('*, workers(full_name)')
+      .select('*, workers(full_name, photo_url)')
       .eq('org_id', org)
       .eq('assignment_date', selectedDate);
     if (deepLinkProjectId) {
@@ -311,8 +329,16 @@ export default function DispatchScreen() {
       (assignmentRows ?? []).map((a: any) => ({
         ...a,
         workerName: a.workers?.full_name ?? 'Ouvrier',
+        workerPhotoPath: a.workers?.photo_url ?? null,
       })),
     );
+    // Phase 3 — one batched signed-URL mint covering both the board
+    // chips (assigned workers) and the picker sheet (every org worker),
+    // same pattern as team.tsx/vehicles.tsx.
+    void getSignedUrlMap([
+      ...(assignmentRows ?? []).map((a: any) => a.workers?.photo_url ?? null),
+      ...(workerRows ?? []).map((w: any) => w.photo_url ?? null),
+    ]).then(setPhotoUrlByPath);
     await loadConflictCount();
     await loadDensity(org);
     setLoading(false);
@@ -817,6 +843,8 @@ export default function DispatchScreen() {
                 alignItems="center"
                 backgroundColor={active ? '$accent600' : '$neutral0'}
                 onPress={() => setSelectedDate(iso)}
+                accessibilityRole="button"
+                accessibilityLabel={`Sélectionner le ${iso}`}
               >
                 <Text fontSize={11} color={active ? 'white' : '$neutral500'}>
                   {weekday}
@@ -852,14 +880,44 @@ export default function DispatchScreen() {
         </Text>
         <XStack alignItems="center" gap="$3">
           {conflictCount > 0 && (
-            <XStack onPress={() => setConflictsSheetOpen(true)}>
+            <XStack
+              onPress={() => setConflictsSheetOpen(true)}
+              accessibilityRole="button"
+              accessibilityLabel={`${conflictCount} affectations modifiées ailleurs, afficher les conflits`}
+            >
               <StatusBadge variant="warning">
                 {`${conflictCount} modifié${conflictCount > 1 ? 's' : ''} ailleurs`}
               </StatusBadge>
             </XStack>
           )}
+          {/* PHASE 9 §2.4 — only in the GLOBAL board, not project-scoped
+              mode: this screen's own header already states project-scoped
+              mode deliberately keeps "the same date strip, not [...] a
+              Monday–Sunday grid" (see this file's top-of-file comment) —
+              that decision stands unchanged here. The week view is a
+              separate global planning screen, not a retrofit of this
+              one. */}
+          {!deepLinkProjectId && (
+            <Text
+              fontSize={13}
+              color="$accent600"
+              fontWeight="500"
+              onPress={() => router.push('/(contractor)/dispatch-week')}
+              accessibilityRole="button"
+              accessibilityLabel="Voir la vue semaine du dispatch"
+            >
+              Vue semaine
+            </Text>
+          )}
           {!readOnly && (
-            <Text fontSize={13} color="$accent600" fontWeight="500" onPress={copyPreviousWeek}>
+            <Text
+              fontSize={13}
+              color="$accent600"
+              fontWeight="500"
+              onPress={copyPreviousWeek}
+              accessibilityRole="button"
+              accessibilityLabel="Copier les affectations de la semaine précédente"
+            >
               Copier semaine précédente
             </Text>
           )}
@@ -1012,7 +1070,13 @@ export default function DispatchScreen() {
                             paddingVertical={2}
                             onPress={() => openEditExisting(a)}
                           >
-                            <Avatar name={a.workerName} size={26} />
+                            <Avatar
+                              name={a.workerName}
+                              imageUrl={
+                                a.workerPhotoPath ? photoUrlByPath[a.workerPhotoPath] : undefined
+                              }
+                              size={26}
+                            />
                             <Text fontSize={13.5} flex={1}>
                               {a.workerName}
                             </Text>
@@ -1143,7 +1207,11 @@ export default function DispatchScreen() {
                             worker-chip pattern used everywhere else
                             (Team, AvatarStack) instead of this one screen
                             inventing a plainer row. */}
-                        <Avatar name={w.full_name} size={28} />
+                        <Avatar
+                          name={w.full_name}
+                          imageUrl={w.photo_url ? photoUrlByPath[w.photo_url] : undefined}
+                          size={28}
+                        />
                         <Text flex={1} fontSize={14.5}>
                           {w.full_name}
                         </Text>

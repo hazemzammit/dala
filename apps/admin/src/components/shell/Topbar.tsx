@@ -1,5 +1,7 @@
 'use client';
 
+import { GlobalSearch } from './GlobalSearch';
+
 import { useAdminSession } from '@/lib/use-admin-session';
 
 const ROLE_LABELS: Record<string, string> = {
@@ -18,7 +20,7 @@ export function Topbar() {
 
   return (
     <header className="bg-neutral-0 flex items-center justify-between border-b border-neutral-200 px-6 py-3">
-      <div />
+      <GlobalSearch />
       <div className="flex items-center gap-4">
         {data && (
           <span className="text-sm text-neutral-500">

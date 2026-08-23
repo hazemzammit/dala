@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -22,6 +23,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
+import { INCIDENT_TYPE_OPTIONS, INSURANCE_COVERAGE_OPTIONS } from '@/lib/pickerOptions';
 import { getSignedUrl, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
@@ -103,6 +105,12 @@ export default function SafetyScreen() {
   const [incidentSheetOpen, setIncidentSheetOpen] = useState(false);
   const [description, setDescription] = useState('');
   const [severity, setSeverity] = useState<SeverityValue>('minor');
+  // IMPROVEMENT-PLAN PHASE 4 (§3) — new field, migration 0071. Defaults to
+  // the list's first option (same pattern `severity` already uses,
+  // defaulting to 'minor') rather than starting unset — every new incident
+  // should carry a category, per the plan's own "closed list... required"
+  // framing for chartability.
+  const [incidentType, setIncidentType] = useState(INCIDENT_TYPE_OPTIONS[0]!.value);
   const [location, setLocation] = useState('');
   const [involvedWorkerIds, setInvolvedWorkerIds] = useState<string[]>([]);
   const [incidentPhotoUri, setIncidentPhotoUri] = useState<string | null>(null);
@@ -180,6 +188,7 @@ export default function SafetyScreen() {
   function openIncidentSheet() {
     setDescription('');
     setSeverity('minor');
+    setIncidentType(INCIDENT_TYPE_OPTIONS[0]!.value);
     setLocation('');
     setInvolvedWorkerIds([]);
     setIncidentPhotoUri(null);
@@ -218,6 +227,7 @@ export default function SafetyScreen() {
     const parsed = createSafetyIncidentSchema.safeParse({
       description,
       severity,
+      incident_type: incidentType,
       location: location || undefined,
       involved_worker_ids: involvedWorkerIds.length > 0 ? involvedWorkerIds : undefined,
     });
@@ -244,6 +254,7 @@ export default function SafetyScreen() {
           org_id: orgId,
           description: parsed.data.description,
           severity: parsed.data.severity,
+          incident_type: parsed.data.incident_type,
           location: parsed.data.location ?? null,
           photo_url: photoPath,
           reported_by: session?.user.id ?? null,
@@ -399,6 +410,7 @@ export default function SafetyScreen() {
                     </Text>
                     <Text fontSize={12} color="$neutral500">
                       {new Date(incident.created_at).toLocaleDateString('fr-TN')}
+                      {incident.incident_type ? ` · ${incident.incident_type}` : ''}
                       {incident.location ? ` · ${incident.location}` : ''}
                     </Text>
                   </YStack>
@@ -465,6 +477,18 @@ export default function SafetyScreen() {
         title="Nouvel incident"
       >
         <YStack gap="$3">
+          {/* IMPROVEMENT-PLAN PHASE 4 (§3) — new field (migration 0071);
+              placed first so the contractor classifies the incident type
+              before writing the free-text description, keeping the closed
+              list's value (chartability by category, §2.3) intact even
+              when descriptions later vary between incidents. */}
+          <Select
+            label="Type d'incident"
+            value={incidentType}
+            onChange={setIncidentType}
+            options={INCIDENT_TYPE_OPTIONS}
+            otherLabel="Autre — préciser"
+          />
           <FormField
             label="Description"
             value={description}
@@ -539,10 +563,15 @@ export default function SafetyScreen() {
             value={policyNumber}
             onChangeText={setPolicyNumber}
           />
-          <FormField
+          {/* IMPROVEMENT-PLAN PHASE 4 (§3) — coverage_type was a
+              free FormField; now a Select with the closed list from
+              §3's table. Optional (nothing is pre-selected when the
+              sheet opens); leaving it empty is allowed by the schema. */}
+          <Select
             label="Type de couverture (optionnel)"
-            value={coverageType}
-            onChangeText={setCoverageType}
+            value={coverageType || null}
+            onChange={setCoverageType}
+            options={INSURANCE_COVERAGE_OPTIONS}
           />
           <FormField
             label="Date d'expiration (AAAA-MM-JJ)"
@@ -583,7 +612,17 @@ export default function SafetyScreen() {
               />
             )}
             <Text fontSize={14.5}>{detailIncident.description}</Text>
-            <XStack gap="$4">
+            <XStack gap="$4" flexWrap="wrap">
+              {/* Phase 4 §3 — incident_type shown first; nullable only for
+                  pre-migration rows (new rows always carry it). */}
+              {detailIncident.incident_type && (
+                <YStack>
+                  <Text fontSize={13} color="$neutral500">
+                    Type
+                  </Text>
+                  <Text fontSize={14.5}>{detailIncident.incident_type}</Text>
+                </YStack>
+              )}
               <YStack>
                 <Text fontSize={13} color="$neutral500">
                   Gravité

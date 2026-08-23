@@ -38,21 +38,16 @@ export function Slider({
   const [width, setWidth] = useState(trackWidth);
   const position = useSharedValue((value / 100) * trackWidth);
 
-  function clampToPercent(x: number): number {
-    const clamped = Math.max(0, Math.min(x, width));
-    return Math.round((clamped / width) * 100);
-  }
-
   const pan = Gesture.Pan()
-    .onUpdate((e: { x: number }) => {
+    .onUpdate((e) => {
       'worklet';
       const next = Math.max(0, Math.min(e.x, width));
       position.value = next;
     })
-    .onEnd((e: { x: number }) => {
+    .onEnd((e) => {
       'worklet';
       const next = Math.max(0, Math.min(e.x, width));
-      const pct = clampToPercent(next);
+      const pct = Math.round((next / width) * 100);
       position.value = withSpring(next, { damping: 20, stiffness: 260 });
       if (onChange) {
         // Reporting back to JS from a worklet callback is fine for a plain

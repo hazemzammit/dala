@@ -19,13 +19,14 @@ interface ServiceStatus {
   latest: HealthCheck | null;
 }
 
-// Doc 06 §6.3 — display labels for the four services actually checked
-// (migration 0032). Konnect is intentionally excluded — see that
-// migration's header for why (no existing Konnect integration code in
-// this repo to base a real check on).
+// Doc 06 §6.3 — display labels for the services actually checked
+// (migration 0032; supabase_realtime added by 0056). Konnect is
+// intentionally excluded — see that migration's header for why (no
+// existing Konnect integration code in this repo to base a real check on).
 const SERVICE_LABELS: Record<string, string> = {
   supabase_auth: 'Supabase Auth',
   supabase_storage: 'Supabase Storage',
+  supabase_realtime: 'Temps réel (Realtime)',
   resend: 'Resend',
   expo_push: 'Expo Push',
 };

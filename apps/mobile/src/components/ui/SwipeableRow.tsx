@@ -44,13 +44,13 @@ export function SwipeableRow({ children, rightAction, actionWidth = 88 }: Swipea
   const pan = Gesture.Pan()
     .activeOffsetX([-10, 10])
     .failOffsetY([-8, 8])
-    .onUpdate((e: { translationX: number }) => {
+    .onUpdate((e) => {
       if (!rightAction) return;
       // Only allow a left-swipe (negative translate) to reveal the
       // right-side action — no left-side action exists yet, so clamp at 0.
       translateX.value = Math.max(-actionWidth, Math.min(0, e.translationX));
     })
-    .onEnd((e: { translationX: number; velocityX: number }) => {
+    .onEnd((e) => {
       if (!rightAction) return;
       const shouldOpen = e.translationX < -actionWidth / 2 || e.velocityX < -600;
       translateX.value = withSpring(shouldOpen ? -actionWidth : 0, { damping: 18, stiffness: 220 });

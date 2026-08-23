@@ -1,4 +1,5 @@
 # Dala — Cahier des Charges v4.0
+
 ## Document 04 — Screen-by-Screen Breakdown: Web App
 
 > Two entirely separate applications live in this document: the
@@ -39,6 +40,7 @@ de l'entreprise, Type d'activité, CGU checkbox. Same rules, same error
 copy, enforced by the same shared Zod schema.
 
 **Web-specific behavior**:
+
 - Tab order follows visual top-to-bottom field order; Enter key submits from the last field.
 - Autofill/password-manager attributes (`autoComplete="new-password"` etc.) set correctly so browser password managers offer to save the credential — a convenience mobile handles via the OS keychain automatically but web must declare explicitly.
 - "Créer mon compte" button shows a loading spinner inline (no full-page transition) to avoid layout jump.
@@ -365,3 +367,59 @@ targeting mistake before it goes out.
 Super-Admin-only actions: invite new admin (email-based, admin
 completes their own TOTP setup on first login), change role, revoke
 access, re-provision a locked-out admin's TOTP (§4.3.1's edge case).
+
+---
+
+## Post-v4.0 Admin Remediation Additions
+
+_Added retroactively — from the apps/admin audit and remediation plan
+(`dala-admin-remediation-plan.md`) carried out against this document's
+§4.3 sections. Only items confirmed shipped in code are listed; items
+still pending are called out explicitly rather than omitted._
+
+**Shipped:**
+
+- **Services Health** (§4.3.9) gained a fourth check, Supabase Realtime,
+  alongside the existing Auth/Storage/Resend/Expo-push checks — Realtime's
+  websocket layer can fail independently of the REST/Auth path the other
+  checks exercise.
+- **Edge function invocation log** — a new `edge_function_invocations`
+  table backs a log view that this document's §4.3.9 spec described but
+  that was never actually built until this remediation pass.
+- **Org restore** — `restore_organization()` (an RPC that already existed,
+  migration 0021) now has an admin UI action; previously the org detail
+  page showed "Supprimée (récupérable)" with no way to actually invoke it.
+- **Admin login/logout audit rows** — `audit_log` now records
+  `admin.login`/`admin.logout` actions; previously only
+  `platform_admins.last_login_at`/`admin_sessions` tracked this, and no
+  audit trail existed for it at all.
+- **Per-org/per-user internal notes** (`admin_notes`) — a lightweight
+  CRM-style note field on organization and user detail pages.
+- **Second-admin-approval requirement** for Database Explorer mutations
+  (`admin_approval_requests`, §4.3.5) — this table existed since migration
+  0021 but is confirmed here as now enforced, not merely modeled.
+- **TOTP key-rotation automation** (`totp_encryption_key_state`,
+  `totp_key_rotation_log`) — encrypts admin TOTP secrets behind a
+  rotatable key rather than the original plaintext-secret column.
+- **Daily platform metrics** (`platform_metrics_daily`) — a scheduled
+  snapshot (org/user/project counts, MRR, storage) feeding whatever
+  dashboard trend charts get built on top of it.
+
+**Confirmed still NOT built, as of the last review** (do not assume these
+exist just because their supporting table does):
+
+- Announcement **email** delivery channel — `announcements.channels` has
+  allowed `'email'` as a value since migration 0022, but only the push
+  channel actually sends; no email delivery path exists yet.
+- The **in-app announcement banner** itself — `get_active_in_app_announcements()`
+  (migration 0030) has no consumer anywhere in `apps/web` or `apps/mobile`,
+  so an `'in_app'`-channel announcement is silently never seen by anyone.
+- **Konnect billing integration** — still a stub that throws in
+  `paymentProvider.ts` despite the `billing_cycles` schema (migration 0043) existing and being fully seedable/testable at the data layer.
+- **Dashboard trend charts, DAU/MAU, invite-acceptance rate, churn rate,
+  plan-distribution donut** — no charting library is installed and no
+  event/time-series aggregation beyond `platform_metrics_daily`'s raw
+  daily snapshot exists.
+- **CI pipeline** — none exists anywhere in the repo.
+- A **Playwright spec for the Dashboard/Metrics and Audit Log** admin
+  pages — the other 10 admin areas each have one; these two don't.

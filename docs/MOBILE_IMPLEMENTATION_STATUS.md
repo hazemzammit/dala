@@ -8,6 +8,21 @@
 > proposed structure to merge against, not a guaranteed source of truth —
 > flag that explicitly when opening the PR.
 
+> **Relationship to the former `docs/PHASE_1_BRIEF.md`–`PHASE_12_BRIEF.md`
+> files**: this file's "Phase N" numbering (0 through 24 below) tracks the
+> ORIGINAL feature-build phases — scaffolding through UI/UX polish. Those
+> twelve brief files tracked a SEPARATE "Phase N" series covering
+> `DALA_GAPS_AND_FIXES_PLAN.md`'s post-launch gap-fix roadmap (§11) — its
+> own Phase 1 was "Foundation" (React Query, error/sync-status UX, list
+> virtualization), not a continuation of the build phase numbered 25 here.
+> The two tracks were deliberately never renumbered into one sequence.
+> **The twelve brief files have since been consolidated into this
+> document** (see "Gap-Fix Roadmap Track" below) and deleted from `docs/`
+> — their content is preserved there in condensed form, section-numbered
+> to match the original files (§11's Phase 1–12) rather than continuing
+> this file's own 0–24 sequence, for the same reason the two tracks were
+> never merged into one numbering to begin with.
+
 Scope: `apps/mobile` only. Web (`apps/web`) is out of scope for this
 document and this branch.
 
@@ -3241,3 +3256,252 @@ both clean.
 `docs/MOBILE_IMPLEMENTATION_STATUS.md` (this section).
 
 **Files deleted**: none.
+
+---
+
+# Gap-Fix Roadmap Track (consolidated from `PHASE_1_BRIEF.md`–`PHASE_12_BRIEF.md`)
+
+_This section replaces the twelve standalone brief files, which have been deleted from
+`docs/`. Content is condensed (file-by-file manifests and per-phase "judgment call"
+tables trimmed) but every shipped feature, every migration, and every still-open
+verification item is preserved. Numbering here (Phase 1–12) is `DALA_GAPS_AND_FIXES_PLAN.md`
+§11's own roadmap numbering — a separate track from this document's own Phase 0–24 above,
+per the header note._
+
+## Gap-Fix Phase 1 — Foundation
+
+CNSS report-type cleanup (§7): removed `cnss_declaration` (a per-worker attendance
+report mislabeled as a CNSS filing) from `packages/validation/src/exports.ts`,
+`generate-report`'s switch, and `reports.tsx`'s picker. React Query adopted as the
+shared data layer (scoped to `vehicles.tsx`/`pointage.tsx` only, deliberately not
+repo-wide this phase). New `ErrorState.tsx` component. `pointage.tsx`/`AutoSync.tsx`'s
+silent background syncs turned into a visible status indicator (`lib/syncStatus.ts`).
+No migration — code-only. Next migration number after this phase: `0069`.
+
+## Gap-Fix Phase 2 — Wiring pass
+
+Org logo surfaced in `OrgSwitcherSheet` and the dashboard org pill (§1.4 items 1–2;
+"feed the existing `imageUrl` prop", no schema change). Pointage date picker (§1.1
+step 1) via the existing `DatePicker.tsx`. Journal date-grouped sections + contractor
+add-entry FAB (§1.2 steps 1–2), extracting a shared `SiteLogForm.tsx` from
+`update-chantier.tsx`. **Migration `0069_contractor_site_log_entries.sql`** — fixed a
+real permission gap found while wiring the FAB: `submit_site_log_entry()` rejected
+contractor-authored entries, meaning the new FAB would have silently failed for every
+contractor before this fix.
+
+## Gap-Fix Phase 3 — Photo infrastructure
+
+**Migration `0070_phase3_photo_infrastructure.sql`**: `photo_url` added to `workers` and
+`vehicles`, `cover_photo_url` added to `projects`, `receipt_photo_url` validator fixed.
+Vehicle photo (§1.3 item 1), worker & project photos (§1.5), worker self-serve photo
+upload joined app-wide with `profiles.avatar_url` (§4.1 steps 1–2 — worker's own photo
+takes priority over a contractor-set one), expense receipt photo (§1.8). New
+`getSignedUrlMap` batch-signing helper in `lib/storage.ts`. Screens touched: `vehicles.tsx`,
+`team.tsx`, `worker/[id].tsx`, `(worker)/settings.tsx` (rewritten), `dispatch.tsx`,
+`pointage.tsx`, `dashboard.tsx`, `journal.tsx`, `expenses.tsx`, `projects.tsx`.
+
+## Gap-Fix Phase 4 — Smart inputs
+
+New `components/ui/Select.tsx` — bottom-sheet pick-or-specify component modeled on
+`DatePicker.tsx`'s sheet pattern (search field appears at ≥6 options; "Autre — préciser"
+stores free text directly in the same column, no separate flag column). New
+`lib/pickerOptions.ts` centralizing option lists for six call sites (trade type,
+worker trade, insurance type, incident type, materials, absence reason). **Migration
+`0071_phase4_smart_inputs.sql`**. Also: prefill/suggestion layer — recent
+addresses/client-name chips on `projects.tsx`, last-amount-by-category hint on
+`expenses.tsx`, average-daily-rate suggestion for new workers (all suggestions, not
+hard pickers — free text still allowed).
+
+## Gap-Fix Phase 5 — Export completion
+
+No migration — code-only, confirmed no RLS/schema change was needed before starting.
+`generate-report`'s PDF branch rewritten: (1) org logo embedded top-left on every PDF
+page, corrected from the plan's assumed `org-logos` bucket to the real `org-files`
+bucket; (2) `payroll_summary` extended to PDF with an italic disclaimer that it's an
+aggregation, not a certified filing — CSV output kept byte-identical via a dedicated
+serializer, not the generic `tableToCSV()` (which would have silently changed quoting
+behavior); (3) a one-page bar-chart "vue d'ensemble" added before the data table for
+all three PDF-eligible report types (progression, payroll_summary, safety_summary),
+built directly in `pdf-lib` primitives (no SVG/canvas support in the Deno Edge
+Function context). `reports.tsx` got two-ended DatePicker bounds so the range can't
+invert or reach into the future.
+
+## Gap-Fix Phase 6 — History & correction
+
+**Migration `0072_phase6_history_correction.sql`**: `site_logs.deleted_at` (30-day
+recoverable soft-delete) plus `soft_delete_site_log`/`restore_site_log`/
+`update_site_log_caption` RPCs (author or owner/manager gated in-function, since
+`site_logs` has no UPDATE/DELETE RLS policy by design). New `AttendanceHistory.tsx`
+(calendar/list view showing `source` — manual vs. dispatch check-in — and who
+recorded it, with "Corrigé" detection for same-day conflicting rows) and a past-date
+correction banner in `pointage.tsx`. Worker-detail screen rebuilt as a tabbed hub
+(`WorkerHubTabs.tsx`: Infos/Pointage/Avances/Dispatch) — mostly assembly of logic
+already in `pointage.tsx`/`advances.tsx`/`dispatch.tsx`, filtered to one worker.
+Journal got edit-caption/soft-delete for the contractor and a voice-note progress bar
+with tap-to-seek (`expo-audio`'s `useAudioPlayerStatus`).
+
+## Gap-Fix Phase 7 — Analytics
+
+No migration — confirmed every §2.3 data set is already computable from existing
+tables with read-only queries. New `analytics.tsx` screen assembling `Chart.tsx`
+(`BarChart`/`LineChart`, each single-series only — no grouped/stacked variant exists,
+a real constraint worked around by stacking multiple chart instances per card) against
+eight data sets: financial (cost-per-project, budget-vs-actual), operations
+(headcount trend, safety severity by month), and others. `MAX_BARS = 10` cap for
+readability. New `ChartCard.tsx` wrapper.
+
+## Gap-Fix Phase 8 — Backend-blocked items
+
+**Migration `0073_phase8_backend_blocked.sql`**: new `org_activity_feed` table (not
+RLS-on-`audit_log` — that table is platform-admin-only by design and grepping every
+`logAdminAction()` call site confirmed zero org-level events are ever written to it)
+with four insert triggers (site log, expense, safety incident, dispatch assignment)
+feeding the new dashboard activity feed. `materials` gained a cost field that pushes
+into `project_expenses` on approval (via `approve_material_request()`, idempotency-key
+gated). Vehicle maintenance log (`vehicle_maintenance_log` table) and document/
+insurance expiry tracking with a due-soon badge, both surfaced on a new
+`vehicle/[id].tsx` detail screen reusing `WorkerHubTabs` for its two tabs.
+Assignment-history summary (§1.3 step 4) explicitly out of this phase's scope.
+
+## Gap-Fix Phase 9 — New modules
+
+**Migration `0074_phase9_new_modules.sql`**. Largest net-new-surface phase. Instant
+push notifications for dispatch/material/safety events, fired via `pg_net.http_post`
+triggers calling Expo's push API directly and synchronously from Postgres (following
+the precedent already set by `request_phone_change()` in migration 0028) — no RPC
+choke point existed for any of the three source tables, so triggers were the only
+option. Notification-tap deep linking (`NotificationRouter.tsx`,
+`setupNotificationResponseListener()`). New weekly dispatch/calendar view
+(`dispatch-week.tsx`). Client-facing invoicing (`create_invoice()`, `generate-invoice-pdf`
+Edge Function, new anonymous portal route `apps/web/src/app/portail/[token]/page.tsx`)
+— an org-per-month sequential invoice numbering scheme with a disclosed,
+low-probability non-atomicity under concurrent generation. Weather widget
+(`lib/weather.ts`, Open-Meteo) and an in-app feedback screen (`feedback.tsx`) as the
+two lowest-priority items.
+
+## Gap-Fix Phase 10 — Complete profiles
+
+**Migration `0075_phase10_complete_profiles.sql`**: `workers_select_self` RLS policy,
+RIB (bank account) field with Vault-backed `pgcrypto` encryption (a genuinely new
+pattern in this codebase — the plan's assumed "CIN precedent" for Vault encryption
+turned out to be fictional; 0023 is the only real precedent, for TOTP secrets).
+Unified `components/profile/ProfileScreen.tsx` (parameterized by role) replaces
+divergent profile screens for contractor/manager/viewer and adds a full worker
+profile screen (`(worker)/profile.tsx`) beyond Phase 3's avatar-only stub. Emergency
+contact, job title, hire date added for individuals; legal form, workforce size,
+socials, service area added for organizations. Profile-completion checklist +
+progress bar on both `ProfileScreen.tsx` and `organization-settings.tsx`.
+**Flagged hard prerequisite, not yet done:** `organization_get_rib_encryption_key()`
+needs a one-time bootstrap script inserting the real key into `vault.secrets` — RIB
+cannot work in any real environment until that script is written and run.
+
+## Gap-Fix Phase 11 — Interaction polish
+
+No migration. Search extended per-screen rather than uniformly: `vehicles.tsx` calls
+the existing `search_all` RPC (has a `search_vector` column already); `materials.tsx`/
+`expenses.tsx`/`journal.tsx` stay client-side filtered (no `search_vector` column on
+`materials`/`project_expenses`/`site_logs` — a migration for zero real benefit at
+these list sizes). Org logo added to the client-portal page via new
+`get_org_logo_signed_url()` SQL function. New `UndoToast.tsx` for lower-stakes
+deletes (vehicle, expense) with matching `soft_delete_vehicle`/`soft_delete_expense`.
+Accessibility label pass across touched screens.
+
+## Gap-Fix Phase 12 — Launch readiness
+
+_(Named "Phase 12" purely as a file-numbering convention — §11's own text calls §10 +
+§6.4/§6.6 "ongoing, not a phase.")_ **Migration `0077_phase12_launch_readiness.sql`**:
+rate limiting (`check_rate_limit()`) added to both invite-accept Edge Functions.
+**Critical bug found and fixed before any of this phase's own work**: `db/index.ts`
+and `db/sync/index.ts` had their content swapped — `db/index.ts` (imported by 7
+screens as `{ database }`) held a stale sync-orchestrator copy, meaning the app could
+not have compiled. Fixed independently in a separate real-repo session (outside this
+sandbox) with a verified `pnpm --filter mobile typecheck` (0 errors, was 98) — this
+phase built on that already-fixed baseline rather than re-touching either file.
+Also shipped: `scripts/smoke-test-sync.ts`, `docs/SYNC_VERIFICATION_RUNBOOK.md`,
+`docs/DETOX_VERIFICATION.md` runbook, Sentry wiring (`lib/sentry.ts`), biometric
+app-lock (`AppLockGate.tsx`, `expo-local-authentication` — needs a dev/production
+build, doesn't work in Expo Go), an OTA/`expo-updates` checker, and a first-run
+onboarding checklist mirroring the existing org-completion-nudge pattern.
+
+## Consolidated outstanding manual-verification backlog (Gap-Fix Phases 1–12)
+
+Every item below needs a live Supabase instance, a real device/simulator, or both —
+none can be closed by further reading/writing code. Grouped by area rather than by
+phase (the original per-phase P#-V# numbering is dropped since nothing here is
+phase-specific anymore):
+
+**Offline sync & data layer**
+
+- Live-device WatermelonDB offline sync round-trip (create offline → go online →
+  server receives correct columns); JSI native linking on a real device.
+- OfflineBanner show/hide on real NetInfo events; sync-status indicator's three-state
+  sequence (Synchronisation… / Synchronisé / Échec + Réessayer).
+- `absence_reason`, `incident_type`, and every WatermelonDB-synced new column flow
+  correctly through the full offline push → Supabase row round-trip.
+
+**Native pickers & UI on real devices**
+
+- `DatePicker` renders the correct native OS widget on both Android and iOS,
+  including the two-ended range bounds on `reports.tsx` reacting live to the other
+  field's change.
+- `Select.tsx` bottom-sheet keyboard behavior, search-at-≥6-options, "Autre" commit.
+- Voice-note progress bar tap-to-seek and playback re-render smoothness.
+- WorkerHubTabs / vehicle-detail two-tab reuse layout at the smallest targeted phone
+  widths; tab-state reset behavior across expo-router navigation.
+- `UndoToast`'s Reanimated timing under rapid repeated deletes.
+- Biometric app-lock on a real enrolled device (dev/production build required).
+
+**Photos & Storage**
+
+- Camera-capture pipeline (all photo fields) against a live Storage bucket; no
+  orphaned objects on cancelled sheets.
+- Worker's own `avatar_url` correctly takes priority over a contractor-set
+  `photo_url` when both are populated, across every screen that joins them.
+- Org-logo signed-URL rendering, both in-app and via `get_org_logo_signed_url()` on
+  the client portal.
+
+**PDF / reports**
+
+- Logo embed for both PNG and JPEG uploads at correct aspect ratio.
+- Payroll PDF's CSV byte-for-byte match against the pre-Phase-5 output.
+- Each chart type's zero-row fallback, and the safety chart's >60-day month-bucketing,
+  visually confirmed.
+- Disclaimer and invoice/payslip page-overflow branches on real long datasets.
+
+**Backend / RLS / RPCs against a live instance**
+
+- `workers_select_self`, `is_org_participant`, and every new RLS policy against real
+  authenticated sessions per role.
+- `org_activity_feed` triggers firing correctly on real inserts; actor-name resolution
+  when the actor has since left the org.
+- `approve_material_request()`'s idempotency-key replay path.
+- `verify_client_portal_access()`'s 5-attempts/15-minute lockout against real repeated
+  wrong-PIN submissions; `generate-invoice-pdf`'s cross-project `invoice_id` rejection.
+- `create_invoice()`'s sequential numbering under genuine concurrent generation.
+- **RIB encryption is blocked end-to-end** until the Vault bootstrap script
+  (`organization_rib_encryption_key_v1`) is written and run against a real instance —
+  currently, no environment can successfully call `update_organization_rib()`.
+- Push notifications (dispatch/material/safety triggers) reaching a real device via
+  Expo's push service; cold-start notification-tap deep linking.
+- `fetchWeeklyForecast()`'s Open-Meteo response parsing against real API responses.
+
+**Analytics**
+
+- All eight `analytics.tsx` charts against real multi-month/multi-project/multi-worker
+  data; the financial screen's cost-per-project figure cross-checked against
+  `generate-report`'s own `payroll_summary` numbers for the same period.
+- `trailingMonthKeys()`/`trailingWeekStarts()`'s behavior across a real
+  calendar-year rollover (e.g. querying in early January).
+
+**Whole-project**
+
+- **Full `pnpm install` + `tsc --noEmit` across the entire monorepo has still never
+  been run in a position to also cover Gap-Fix Phases 4–12's own files** — Phase 12's
+  external fix session verified 0 errors for the `db/` swap bug specifically, but that
+  run predates most of Phases 4–12's own new files. This is flagged, across every
+  brief from Phase 4 onward, as the single most important outstanding item.
+- Detox e2e has a written runbook (`docs/DETOX_VERIFICATION.md`) but has never
+  actually been executed against a real simulator/device.
+- App-store readiness items requiring App Store Connect / Play Console access.
+- `expo-updates`/OTA behavior requires a real native build before it can be exercised
+  at all.

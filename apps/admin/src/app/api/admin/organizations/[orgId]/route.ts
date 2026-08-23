@@ -9,6 +9,7 @@
 import { NextResponse } from 'next/server';
 
 import { logAdminAction } from '@/lib/audit-log';
+import { changeOrgPlan } from '@/lib/organizations/actions';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
@@ -35,7 +36,7 @@ export async function GET(_request: Request, { params }: { params: { orgId: stri
   return NextResponse.json({ organization, members: members ?? [] });
 }
 
-type OrgAction = 'suspend' | 'unsuspend' | 'soft_delete' | 'change_plan';
+type OrgAction = 'suspend' | 'unsuspend' | 'soft_delete' | 'change_plan' | 'restore';
 
 export async function POST(request: Request, { params }: { params: { orgId: string } }) {
   const ctx = await getAdminSessionContext();
@@ -49,10 +50,14 @@ export async function POST(request: Request, { params }: { params: { orgId: stri
   // Doc 04 §4.3 intro — Support has no data/billing changes at all; every
   // org action here is a mutation, so Support is blocked outright.
   // Soft-delete is further restricted to Super Admin only ("Admin (...)
-  // except (...) deleting orgs" — the one Admin-can't-do item).
+  // except (...) deleting orgs" — the one Admin-can't-do item). Restore is
+  // held to the same Super-Admin-only tier as soft-delete rather than the
+  // wider suspend/unsuspend/change_plan tier — it's the reversal of a
+  // Super-Admin-only action, so gating it any looser would let a plain
+  // Admin undo something only a Super Admin was allowed to do.
   const roleError = requireRole(
     ctx,
-    action === 'soft_delete' ? ['super_admin'] : ['super_admin', 'admin'],
+    action === 'soft_delete' || action === 'restore' ? ['super_admin'] : ['super_admin', 'admin'],
   );
   if (roleError) return roleError;
 
@@ -94,10 +99,22 @@ export async function POST(request: Request, { params }: { params: { orgId: stri
     case 'soft_delete':
       await supabase.rpc('soft_delete_organization', { p_org_id: org.id });
       break;
+    case 'restore':
+      // restore_organization() (0021) is itself a no-op past the 30-day
+      // window (its own `where deleted_at > now() - interval '30 days'`
+      // clause) — that's the real gate; the client's disabled-state
+      // countdown is just UX, not the source of truth. No reason/
+      // confirmName check here: per the plan, typed confirmation is
+      // reserved for destructive actions, and undoing a soft-delete
+      // within its recovery window isn't one.
+      await supabase.rpc('restore_organization', { p_org_id: org.id });
+      break;
     case 'change_plan': {
       const plan = typeof body?.plan === 'string' ? body.plan : null;
       if (!plan) return NextResponse.json({ error: 'plan requis' }, { status: 400 });
-      await supabase.from('organizations').update({ plan }).eq('id', org.id);
+      // Admin remediation Tier 4.3 — now shared with the bulk route via
+      // lib/organizations/actions.ts, same reasoning as that file's header.
+      await changeOrgPlan(supabase, org.id as string, plan);
       break;
     }
     default:

@@ -20,6 +20,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -27,6 +28,8 @@ import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
+import { TRADE_OPTIONS } from '@/lib/pickerOptions';
+import { getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -120,6 +123,12 @@ export default function TeamScreen() {
   const [deleteTarget, setDeleteTarget] = useState<WorkerRow | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  // Phase 3 §1.5/§4.1 — resolved-photo storage path per worker id (already
+  // applying the profiles.avatar_url-over-workers.photo_url priority
+  // documented in worker/[id].tsx), then a signed URL per distinct path.
+  const [photoPathByWorkerId, setPhotoPathByWorkerId] = useState<Record<string, string>>({});
+  const [photoUrlByPath, setPhotoUrlByPath] = useState<Record<string, string>>({});
+
   useFocusEffect(
     useCallback(() => {
       void load();
@@ -159,6 +168,24 @@ export default function TeamScreen() {
     setWorkers(merged);
     setLoading(false);
     setRefreshing(false);
+
+    // Phase 3 — resolve each worker's display photo (linked profile's own
+    // avatar_url first, falling back to workers.photo_url — same priority
+    // as worker/[id].tsx) in one batched pass rather than per-row calls.
+    const linkedUserIds = merged.filter((w) => w.user_id).map((w) => w.user_id as string);
+    const { data: profileRows } = linkedUserIds.length
+      ? await supabase.from('profiles').select('id, avatar_url').in('id', linkedUserIds)
+      : { data: [] as { id: string; avatar_url: string | null }[] };
+    const avatarByUserId: Record<string, string> = {};
+    for (const p of profileRows ?? []) if (p.avatar_url) avatarByUserId[p.id] = p.avatar_url;
+
+    const pathByWorkerId: Record<string, string> = {};
+    for (const w of merged) {
+      const path = (w.user_id && avatarByUserId[w.user_id]) || w.photo_url;
+      if (path) pathByWorkerId[w.id] = path;
+    }
+    setPhotoPathByWorkerId(pathByWorkerId);
+    setPhotoUrlByPath(await getSignedUrlMap(Object.values(pathByWorkerId)));
   }
 
   function openInvite() {
@@ -292,6 +319,30 @@ export default function TeamScreen() {
     );
   }, [workers, query]);
 
+  // IMPROVEMENT-PLAN PHASE 4 (§3, prefill/suggestion layer) — "a suggested
+  // daily rate by trade when adding a worker... reading an average/
+  // most-common daily_rate for workers sharing the same trade value, now
+  // that trade is a closed list from item 2 above." Average, not mode —
+  // simpler to compute correctly from a small in-memory roster and the
+  // plan's own wording lists it first ("average/most-common"). Computed
+  // from whatever's already loaded in `workers` (org-wide, not just the
+  // currently-filtered/grouped view), no new query.
+  const avgDailyRateByTrade = useMemo(() => {
+    const sums: Record<string, { total: number; count: number }> = {};
+    workers.forEach((w) => {
+      if (!w.trade || w.daily_rate == null) return;
+      const bucket = (sums[w.trade] ??= { total: 0, count: 0 });
+      bucket.total += w.daily_rate;
+      bucket.count += 1;
+    });
+    const result: Record<string, number> = {};
+    for (const [t, { total, count }] of Object.entries(sums)) {
+      result[t] = Math.round((total / count) * 100) / 100;
+    }
+    return result;
+  }, [workers]);
+  const suggestedDailyRate = trade ? (avgDailyRateByTrade[trade] ?? null) : null;
+
   const grouped = useMemo(() => {
     const active: WorkerRow[] = [];
     const pending: WorkerRow[] = [];
@@ -354,6 +405,8 @@ export default function TeamScreen() {
             fontSize={14}
             fontWeight="500"
             onPress={() => router.push('/pointage')}
+            accessibilityRole="button"
+            accessibilityLabel="Aller au pointage"
           >
             Pointage
           </Text>
@@ -460,7 +513,14 @@ export default function TeamScreen() {
                       onPress={() => router.push(`/worker/${worker.id}` as never)}
                     >
                       <XStack gap="$3" alignItems="center" flex={1}>
-                        <Avatar name={worker.full_name} />
+                        <Avatar
+                          name={worker.full_name}
+                          imageUrl={
+                            photoPathByWorkerId[worker.id]
+                              ? photoUrlByPath[photoPathByWorkerId[worker.id]]
+                              : undefined
+                          }
+                        />
                         <YStack gap="$1" flex={1}>
                           <Text fontSize={15.5} fontWeight="600">
                             {worker.full_name}
@@ -482,6 +542,8 @@ export default function TeamScreen() {
                               e.stopPropagation?.();
                               handleResend(worker);
                             }}
+                            accessibilityRole="button"
+                            accessibilityLabel={`Renvoyer l'invitation à ${worker.full_name}`}
                           >
                             <PaperPlaneTiltIcon size={12} color={color.accent[600]} />
                             <Text fontSize={12} color="$accent600" fontWeight="500">
@@ -548,19 +610,40 @@ export default function TeamScreen() {
             keyboardType="phone-pad"
             error={fieldErrors.phone}
           />
-          <FormField
+          <Select
             label="Métier (optionnel)"
-            value={trade}
-            onChangeText={setTrade}
+            value={trade || null}
+            onChange={setTrade}
+            options={TRADE_OPTIONS}
             error={fieldErrors.trade}
           />
-          <FormField
-            label="Taux journalier (TND, optionnel)"
-            value={dailyRate}
-            onChangeText={setDailyRate}
-            keyboardType="numeric"
-            error={fieldErrors.daily_rate}
-          />
+          <YStack gap="$1.5">
+            <FormField
+              label="Taux journalier (TND, optionnel)"
+              value={dailyRate}
+              onChangeText={setDailyRate}
+              keyboardType="numeric"
+              error={fieldErrors.daily_rate}
+            />
+            {/* IMPROVEMENT-PLAN PHASE 4 (§3) — prefill suggestion, not a
+                hard picker: shown only while the field is still empty, so
+                it never silently overwrites something already typed. */}
+            {suggestedDailyRate !== null && !dailyRate && (
+              <XStack
+                alignItems="center"
+                gap={4}
+                onPress={() => setDailyRate(String(suggestedDailyRate))}
+                accessibilityRole="button"
+              >
+                <Text fontSize={12.5} color="$neutral500">
+                  Taux moyen pour {trade} : {suggestedDailyRate} TND/jour ·
+                </Text>
+                <Text fontSize={12.5} fontWeight="600" color="$accent600">
+                  Utiliser
+                </Text>
+              </XStack>
+            )}
+          </YStack>
 
           <YStack gap="$1.5">
             <Text fontSize={14} fontWeight="500">

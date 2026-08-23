@@ -23,72 +23,75 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { withInvocationLog } from '../_shared/logInvocation.ts';
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const { email, password, recovery_code } = await req.json();
-    if (!email || !password || !recovery_code) {
-      return jsonResponse({ error: 'Champs manquants.' }, 400);
+Deno.serve(
+  withInvocationLog('mfa-recover', async (req) => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
     }
 
-    const anonClient = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-    );
+    try {
+      const { email, password, recovery_code } = await req.json();
+      if (!email || !password || !recovery_code) {
+        return jsonResponse({ error: 'Champs manquants.' }, 400);
+      }
 
-    // Step 1 — verify the password. This succeeds even with a TOTP factor
-    // enrolled (Supabase issues the session at aal1 regardless; a pending
-    // aal2 challenge is a client-side concern, not a login-rejection one —
-    // see migration 0029's header for why that's true by design).
-    const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (signInError || !signInData.user) {
-      return jsonResponse({ error: 'E-mail ou mot de passe incorrect.' }, 401);
+      const anonClient = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_ANON_KEY')!,
+      );
+
+      // Step 1 — verify the password. This succeeds even with a TOTP factor
+      // enrolled (Supabase issues the session at aal1 regardless; a pending
+      // aal2 challenge is a client-side concern, not a login-rejection one —
+      // see migration 0029's header for why that's true by design).
+      const { data: signInData, error: signInError } = await anonClient.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signInError || !signInData.user) {
+        return jsonResponse({ error: 'E-mail ou mot de passe incorrect.' }, 401);
+      }
+
+      const admin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+
+      // Step 2 — verify + consume the recovery code (migration 0029's
+      // service-role-only RPC; single-use, marked used_at on match).
+      const { data: codeValid, error: codeError } = await admin.rpc(
+        'verify_and_consume_recovery_code',
+        { p_user_id: signInData.user.id, p_code: String(recovery_code).toUpperCase().trim() },
+      );
+      if (codeError || !codeValid) {
+        return jsonResponse({ error: 'Code de récupération invalide ou déjà utilisé.' }, 401);
+      }
+
+      // Step 3 — disable 2FA: remove every verified TOTP factor for this
+      // user via the admin API (the only way to remove a factor without
+      // already holding an aal2 session, which is exactly the case here).
+      const { data: factorsData } = await admin.auth.admin.mfa.listFactors({
+        userId: signInData.user.id,
+      });
+      for (const factor of factorsData?.factors ?? []) {
+        await admin.auth.admin.mfa.deleteFactor({ id: factor.id, userId: signInData.user.id });
+      }
+
+      return jsonResponse(
+        {
+          session: signInData.session,
+          message:
+            "L'authentification à deux facteurs a été désactivée sur ce compte. Réactivez-la depuis Sécurité si vous le souhaitez.",
+        },
+        200,
+      );
+    } catch {
+      return jsonResponse({ error: 'Une erreur est survenue.' }, 500);
     }
-
-    const admin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
-    );
-
-    // Step 2 — verify + consume the recovery code (migration 0029's
-    // service-role-only RPC; single-use, marked used_at on match).
-    const { data: codeValid, error: codeError } = await admin.rpc(
-      'verify_and_consume_recovery_code',
-      { p_user_id: signInData.user.id, p_code: String(recovery_code).toUpperCase().trim() },
-    );
-    if (codeError || !codeValid) {
-      return jsonResponse({ error: 'Code de récupération invalide ou déjà utilisé.' }, 401);
-    }
-
-    // Step 3 — disable 2FA: remove every verified TOTP factor for this
-    // user via the admin API (the only way to remove a factor without
-    // already holding an aal2 session, which is exactly the case here).
-    const { data: factorsData } = await admin.auth.admin.mfa.listFactors({
-      userId: signInData.user.id,
-    });
-    for (const factor of factorsData?.factors ?? []) {
-      await admin.auth.admin.mfa.deleteFactor({ id: factor.id, userId: signInData.user.id });
-    }
-
-    return jsonResponse(
-      {
-        session: signInData.session,
-        message:
-          "L'authentification à deux facteurs a été désactivée sur ce compte. Réactivez-la depuis Sécurité si vous le souhaitez.",
-      },
-      200,
-    );
-  } catch {
-    return jsonResponse({ error: 'Une erreur est survenue.' }, 500);
-  }
-});
+  }),
+);
 
 function jsonResponse(body: unknown, status: number) {
   return new Response(JSON.stringify(body), {

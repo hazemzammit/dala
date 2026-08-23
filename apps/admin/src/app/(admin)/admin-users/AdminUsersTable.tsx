@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { FormField } from '@/components/ui/FormField';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -12,6 +13,7 @@ import { useAdminSession } from '@/lib/use-admin-session';
 interface AdminRow {
   id: string;
   full_name: string;
+  email: string | null;
   role: 'super_admin' | 'admin' | 'support';
   totp_enabled: boolean;
   last_login_at: string | null;
@@ -31,6 +33,7 @@ export function AdminUsersTable() {
   const [role, setRole] = useState<AdminRow['role']>('support');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [resetTarget, setResetTarget] = useState<AdminRow | null>(null);
 
   async function load() {
     const res = await fetch('/api/admin/admins');
@@ -67,6 +70,22 @@ export function AdminUsersTable() {
 
   const isSuperAdmin = session?.admin.role === 'super_admin';
 
+  async function resetTotp() {
+    if (!resetTarget) return;
+    const res = await fetch(`/api/admin/admins/${resetTarget.id}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'reset_totp' }),
+    });
+    const data = await res.json().catch(() => null);
+    setResetTarget(null);
+    if (res.ok) {
+      await load();
+    } else {
+      alert(data?.error ?? 'Impossible de réinitialiser la 2FA de cet admin.');
+    }
+  }
+
   const columns: DataTableColumn<AdminRow>[] = [
     { key: 'name', header: 'Nom', render: (a) => a.full_name },
     {
@@ -89,6 +108,26 @@ export function AdminUsersTable() {
       header: 'Dernière connexion',
       render: (a) =>
         a.last_login_at ? new Date(a.last_login_at).toLocaleDateString('fr-FR') : '—',
+    },
+    {
+      // Doc 04 §4.3.1 edge case / §4.3.11 — locked-out admin recovery.
+      // Only Super Admin sees this, only when the target actually has
+      // TOTP enabled (nothing to reset otherwise), and never for the
+      // acting admin's own row (mirrors the route's own self-reset
+      // guard — disabling it here too rather than letting someone click
+      // it and only find out server-side that it's blocked).
+      key: 'actions',
+      header: '',
+      align: 'right',
+      render: (a) =>
+        isSuperAdmin && a.totp_enabled && a.id !== session?.admin.id ? (
+          <button
+            onClick={() => setResetTarget(a)}
+            className="text-danger text-xs font-medium hover:underline"
+          >
+            Réinitialiser 2FA
+          </button>
+        ) : null,
     },
   ];
 
@@ -133,6 +172,17 @@ export function AdminUsersTable() {
             </Button>
           </form>
         </Card>
+      )}
+
+      {resetTarget && (
+        <ConfirmTypingDialog
+          title="Réinitialiser la 2FA"
+          description={`${resetTarget.full_name} devra reconfigurer son authentificateur à sa prochaine connexion. Cette action est journalisée dans le journal d'audit.`}
+          confirmValue={resetTarget.email ?? resetTarget.full_name}
+          confirmLabel="Réinitialiser"
+          onConfirm={resetTotp}
+          onCancel={() => setResetTarget(null)}
+        />
       )}
     </div>
   );

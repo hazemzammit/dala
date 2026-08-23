@@ -494,3 +494,61 @@ to run at all first (still unconfirmed as of Phase 13; see
 `docs/MOBILE_IMPLEMENTATION_STATUS.md`). The Playwright/web and Admin
 rows are out of scope for this document entirely (web/admin are
 separate branches/apps).
+
+---
+
+## Post-roadmap Implementation Addendum (Gap-Fix Phases 1–12)
+
+_Added retroactively. The roadmap sections above predate a full second
+implementation pass that shipped 12 further gap-fix phases against this
+same spec (see `docs/MOBILE_IMPLEMENTATION_STATUS.md`'s "Gap-Fix Roadmap
+Track" for the full detail). Summarized here by feature area rather than
+by phase number, since the phase numbering is its own separate track._
+
+- **Analytics** (new `analytics.tsx` screen): financial (cost-per-project,
+  budget-vs-actual) and operational (headcount trend, safety severity by
+  month) charts, computed read-only from existing tables — no new schema.
+  Chart primitives only support single-series bar/line, so grouped views
+  are built by stacking multiple chart instances rather than a native
+  grouped/stacked chart type.
+- **Client-facing invoicing**: a new anonymous portal route generates and
+  serves a PDF invoice from a frozen expense-line-item snapshot (§1.20.1).
+- **Weather widget**: dashboard integration via Open-Meteo (no API key
+  required), lowest priority item in its phase.
+- **In-app feedback**: a dedicated `feedback.tsx` screen, separate from any
+  support-ticket system (none exists).
+- **Push notifications**: dispatch/material/safety events now reach a
+  worker's device via Expo push, with deep-linking so tapping the
+  notification opens the relevant record directly.
+- **Smart input pickers**: a shared bottom-sheet `Select.tsx` component
+  (pick-or-specify, "Autre — préciser" free text) replaces several ad hoc
+  text inputs (trade type, worker trade, insurance type, incident type,
+  materials, absence reason) app-wide.
+- **History & correction**: site logs and attendance records both gained
+  30-day-recoverable soft-delete/restore and edit-in-place correction,
+  with a visible "Corrigé" indicator when a later record conflicts with
+  an earlier one for the same worker/date.
+- **Photo infrastructure**: every entity that plausibly needed a photo
+  (vehicle, worker, project cover, expense receipt) now has one — this
+  was previously blocked for the entire project's history by the fact
+  that no Supabase Storage bucket existed anywhere in the repo (fixed
+  with a shared `org-files` bucket).
+- **Complete profiles**: RIB (bank account, Vault-encrypted — see Doc 01
+  §1.20.1 for the unresolved bootstrap blocker), emergency contact, job
+  title, hire date for individuals; legal form, workforce size, socials,
+  service area for organizations; a profile-completion checklist mirrors
+  the existing org-completion-nudge pattern.
+- **Interaction polish**: per-screen (not uniform) search, org logo on the
+  client portal, undo-toast for lower-stakes deletes (vehicle, expense),
+  accessibility label pass.
+- **Launch readiness**: rate limiting on invite-accept Edge Functions,
+  Sentry error tracking, biometric app-lock, OTA update checking, a
+  first-run onboarding checklist, and two verification runbooks
+  (`docs/SYNC_VERIFICATION_RUNBOOK.md`, `docs/DETOX_VERIFICATION.md`).
+
+**Still not built / still blocked**, unchanged from this document's
+existing "Deferred" callouts: Tier 1 AI (needs real accumulated usage
+data), legal contract templates (needs a lawyer, not an engineering
+decision), a uniform cross-screen search layer (deliberately scoped
+per-screen instead — see Doc 01 §0.9), Detox actually run against a real
+device (a runbook exists; execution does not).

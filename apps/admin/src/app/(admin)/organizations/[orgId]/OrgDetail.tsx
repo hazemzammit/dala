@@ -2,10 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { NotesPanel } from '@/components/ui/NotesPanel';
 import { StatusBadge } from '@/components/ui/StatusBadge';
+import { useAdminSession } from '@/lib/use-admin-session';
+
+const RESTORE_WINDOW_DAYS = 30;
 
 interface Member {
   user_id: string;
@@ -15,9 +20,16 @@ interface Member {
 }
 
 export function OrgDetail({ orgId }: { orgId: string }) {
+  // Doc 04 §4.3 intro — same defense-in-depth pattern as
+  // OrganizationsTable.tsx: UI gating here is never the real check, the
+  // role gate in api/admin/organizations/[orgId]/route.ts is.
+  const { data: session } = useAdminSession();
+  const isSuperAdmin = session?.admin.role === 'super_admin';
+
   const [org, setOrg] = useState<any>(null);
   const [members, setMembers] = useState<Member[]>([]);
   const [impersonateTarget, setImpersonateTarget] = useState<Member | null>(null);
+  const [restoring, setRestoring] = useState(false);
 
   async function load() {
     const res = await fetch(`/api/admin/organizations/${orgId}`);
@@ -51,7 +63,33 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     }
   }
 
+  async function restoreOrg() {
+    setRestoring(true);
+    try {
+      const res = await fetch(`/api/admin/organizations/${orgId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore' }),
+      });
+      if (res.ok) {
+        await load();
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.error ?? "Impossible de restaurer l'organisation.");
+      }
+    } finally {
+      setRestoring(false);
+    }
+  }
+
   if (!org) return <p className="text-sm text-neutral-500">Chargement…</p>;
+
+  // Client-side only for the button's disabled state — restore_organization()
+  // (0021) enforces the real 30-day cutoff server-side regardless.
+  const deletedAt = org.deleted_at ? new Date(org.deleted_at) : null;
+  const withinRestoreWindow = deletedAt
+    ? Date.now() - deletedAt.getTime() < RESTORE_WINDOW_DAYS * 24 * 60 * 60 * 1000
+    : false;
 
   const columns: DataTableColumn<Member>[] = [
     { key: 'name', header: 'Nom', render: (m) => m.profiles?.full_name ?? m.user_id },
@@ -104,9 +142,22 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
               Statut
             </dt>
-            <dd className="mt-1">
+            <dd className="mt-1 flex items-center gap-3">
               {org.deleted_at ? (
-                <StatusBadge variant="danger">Supprimée (récupérable)</StatusBadge>
+                <>
+                  <StatusBadge variant="danger">Supprimée (récupérable)</StatusBadge>
+                  {isSuperAdmin && (
+                    <Button
+                      variant="secondary"
+                      onClick={restoreOrg}
+                      disabled={!withinRestoreWindow}
+                      loading={restoring}
+                      className="px-2.5 py-1 text-xs"
+                    >
+                      Restaurer
+                    </Button>
+                  )}
+                </>
               ) : org.suspended_at ? (
                 <StatusBadge variant="warning">Suspendue</StatusBadge>
               ) : (
@@ -129,6 +180,9 @@ export function OrgDetail({ orgId }: { orgId: string }) {
         <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">Membres</h2>
         <DataTable columns={columns} rows={members} getRowId={(m) => m.user_id} />
       </div>
+
+      {/* Admin remediation Tier 4.8 */}
+      <NotesPanel targetType="org" targetId={orgId} />
 
       {impersonateTarget && (
         <ConfirmTypingDialog

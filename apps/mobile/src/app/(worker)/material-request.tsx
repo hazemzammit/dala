@@ -11,6 +11,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Select } from '@/components/ui/Select';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -19,6 +20,7 @@ import { createWithClientId } from '@/db/createWithClientId';
 import MaterialRequest from '@/db/models/MaterialRequest';
 import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
+import { MATERIAL_OPTIONS } from '@/lib/pickerOptions';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -116,6 +118,13 @@ export default function MaterialRequestScreen() {
       assigned_worker_id: record.assignedWorkerId,
       created_at: record.createdAt.toISOString(),
       updated_at: record.updatedAt.toISOString(),
+      // migration 0073 added `cost` server-side (Material, @dala/shared-
+      // types), but it's set by a contractor only at approval time (see
+      // approve_material_request()) — never by the worker's own offline
+      // creation flow this maps from, and `schema.ts`'s local `materials`
+      // table has no `cost` column at all (a pending/just-created local
+      // record can never have one yet). Always null here, not a gap.
+      cost: null,
     };
   }
 
@@ -251,11 +260,24 @@ export default function MaterialRequestScreen() {
         </Text>
 
         <YStack gap="$3" marginBottom="$5">
-          <FormField
+          {/* IMPROVEMENT-PLAN PHASE 4 (§3) — "Article" was a free-text
+              FormField; now a Select with the closed list from §3's
+              table. The plan's own §3 calls this field out explicitly as
+              one of the six call sites. "Autre — préciser" still accepts
+              a fully free-typed value (stored as plain text in
+              materials.item, same column, no schema split) so a worker
+              can still request an item not on the list — e.g. "gants",
+              "ceinture de sécurité". The contractor-side materials.tsx
+              screen (approve/refuse/reassign) is NOT touched here — it
+              has no create form at all (confirmed by reading the file),
+              so the Select goes on the worker's request form only, which
+              is the actual item-entry point. */}
+          <Select
             label="Article"
-            value={item}
-            onChangeText={setItem}
-            placeholder="Ex : ciment, gants..."
+            value={item || null}
+            onChange={setItem}
+            options={MATERIAL_OPTIONS}
+            placeholder="Choisir ou préciser…"
           />
           <FormField
             label="Quantité"

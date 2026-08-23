@@ -45,6 +45,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
+import { withInvocationLog } from '../_shared/logInvocation.ts';
 
 const EXPORTABLE_TABLES = [
   'workers',
@@ -63,111 +64,114 @@ const EXPORTABLE_TABLES = [
 // URLs at rest), not the binary files themselves, so this list intentionally
 // still includes it — the export gives the row data, not the attachments.
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return jsonResponse({ error: 'Authentification requise.' }, 401);
+Deno.serve(
+  withInvocationLog('export-org-data', async (req, ctx) => {
+    if (req.method === 'OPTIONS') {
+      return new Response('ok', { headers: corsHeaders });
     }
 
-    const body = await req.json();
-    const { org_id, format } = body ?? {};
-    if (!org_id || !['csv', 'json'].includes(format)) {
-      return jsonResponse({ error: 'Champs requis manquants.' }, 400);
-    }
-
-    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const isTrustedAdminCall = authHeader === `Bearer ${serviceRoleKey}`;
-
-    const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey);
-
-    if (!isTrustedAdminCall) {
-      // Caller-scoped client (anon key + forwarded JWT) — used only to
-      // resolve identity and role, never to read the export data itself,
-      // so this respects RLS exactly like every other authenticated
-      // request from apps/web.
-      const callerClient = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_ANON_KEY')!,
-        { global: { headers: { Authorization: authHeader } } },
-      );
-
-      const {
-        data: { user },
-      } = await callerClient.auth.getUser();
-      if (!user) {
-        return jsonResponse({ error: 'Session invalide.' }, 401);
+    try {
+      const authHeader = req.headers.get('Authorization');
+      if (!authHeader) {
+        return jsonResponse({ error: 'Authentification requise.' }, 401);
       }
 
-      const { data: membership } = await callerClient
-        .from('organization_members')
-        .select('role')
-        .eq('org_id', org_id)
-        .eq('user_id', user.id)
+      const body = await req.json();
+      const { org_id, format } = body ?? {};
+      if (!org_id || !['csv', 'json'].includes(format)) {
+        return jsonResponse({ error: 'Champs requis manquants.' }, 400);
+      }
+      ctx.orgId = org_id;
+
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+      const isTrustedAdminCall = authHeader === `Bearer ${serviceRoleKey}`;
+
+      const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey);
+
+      if (!isTrustedAdminCall) {
+        // Caller-scoped client (anon key + forwarded JWT) — used only to
+        // resolve identity and role, never to read the export data itself,
+        // so this respects RLS exactly like every other authenticated
+        // request from apps/web.
+        const callerClient = createClient(
+          Deno.env.get('SUPABASE_URL')!,
+          Deno.env.get('SUPABASE_ANON_KEY')!,
+          { global: { headers: { Authorization: authHeader } } },
+        );
+
+        const {
+          data: { user },
+        } = await callerClient.auth.getUser();
+        if (!user) {
+          return jsonResponse({ error: 'Session invalide.' }, 401);
+        }
+
+        const { data: membership } = await callerClient
+          .from('organization_members')
+          .select('role')
+          .eq('org_id', org_id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!membership || !['owner', 'manager'].includes(membership.role)) {
+          // Export includes financial data (advances, project_expenses) — a
+          // stricter bar than plain org-membership, matching the pattern used
+          // elsewhere in this repo for financial fields (Doc 03 §3.22.2's
+          // owner-only Matricule Fiscal / Numéro RC).
+          return jsonResponse({ error: 'Réservé au propriétaire ou gestionnaire.' }, 403);
+        }
+      }
+
+      // 0044 — no reports/export on the free tier. For a normal caller this
+      // reused the RLS-scoped callerClient; a trusted admin call has no
+      // callerClient (no forwarded user JWT to scope one to), so it reads
+      // the same single column via the already-created admin client instead
+      // — no broader read than the check itself needs either way.
+      const { data: org } = await admin
+        .from('organizations')
+        .select('subscription_status')
+        .eq('id', org_id)
         .maybeSingle();
-
-      if (!membership || !['owner', 'manager'].includes(membership.role)) {
-        // Export includes financial data (advances, project_expenses) — a
-        // stricter bar than plain org-membership, matching the pattern used
-        // elsewhere in this repo for financial fields (Doc 03 §3.22.2's
-        // owner-only Matricule Fiscal / Numéro RC).
-        return jsonResponse({ error: 'Réservé au propriétaire ou gestionnaire.' }, 403);
+      if (org?.subscription_status === 'past_due') {
+        return jsonResponse(
+          { error: "L'export de données n'est pas disponible sur l'offre gratuite." },
+          403,
+        );
       }
-    }
 
-    // 0044 — no reports/export on the free tier. For a normal caller this
-    // reused the RLS-scoped callerClient; a trusted admin call has no
-    // callerClient (no forwarded user JWT to scope one to), so it reads
-    // the same single column via the already-created admin client instead
-    // — no broader read than the check itself needs either way.
-    const { data: org } = await admin
-      .from('organizations')
-      .select('subscription_status')
-      .eq('id', org_id)
-      .maybeSingle();
-    if (org?.subscription_status === 'past_due') {
-      return jsonResponse(
-        { error: "L'export de données n'est pas disponible sur l'offre gratuite." },
-        403,
-      );
-    }
-
-    const tables: Record<string, unknown[]> = {};
-    for (const table of EXPORTABLE_TABLES) {
-      const orgColumn = table === 'projects' ? 'lead_org_id' : 'org_id';
-      const { data, error } = await admin.from(table).select('*').eq(orgColumn, org_id);
-      if (error) {
-        return jsonResponse({ error: `Échec de lecture de ${table}: ${error.message}` }, 500);
+      const tables: Record<string, unknown[]> = {};
+      for (const table of EXPORTABLE_TABLES) {
+        const orgColumn = table === 'projects' ? 'lead_org_id' : 'org_id';
+        const { data, error } = await admin.from(table).select('*').eq(orgColumn, org_id);
+        if (error) {
+          return jsonResponse({ error: `Échec de lecture de ${table}: ${error.message}` }, 500);
+        }
+        tables[table] = data ?? [];
       }
-      tables[table] = data ?? [];
-    }
 
-    if (format === 'json') {
-      return new Response(JSON.stringify(tables, null, 2), {
+      if (format === 'json') {
+        return new Response(JSON.stringify(tables, null, 2), {
+          headers: {
+            ...corsHeaders,
+            'Content-Type': 'application/json',
+            'Content-Disposition': 'attachment; filename="dala-export.json"',
+          },
+        });
+      }
+
+      const csvSections = EXPORTABLE_TABLES.map((table) => toCsvSection(table, tables[table]));
+      return new Response(csvSections.join('\n\n'), {
         headers: {
           ...corsHeaders,
-          'Content-Type': 'application/json',
-          'Content-Disposition': 'attachment; filename="dala-export.json"',
+          'Content-Type': 'text/csv',
+          'Content-Disposition': 'attachment; filename="dala-export.csv"',
         },
       });
+    } catch (e) {
+      return jsonResponse({ error: e instanceof Error ? e.message : 'Erreur inconnue.' }, 500);
     }
-
-    const csvSections = EXPORTABLE_TABLES.map((table) => toCsvSection(table, tables[table]));
-    return new Response(csvSections.join('\n\n'), {
-      headers: {
-        ...corsHeaders,
-        'Content-Type': 'text/csv',
-        'Content-Disposition': 'attachment; filename="dala-export.csv"',
-      },
-    });
-  } catch (e) {
-    return jsonResponse({ error: e instanceof Error ? e.message : 'Erreur inconnue.' }, 500);
-  }
-});
+  }),
+);
 
 function toCsvSection(tableName: string, rows: unknown[]): string {
   if (rows.length === 0) return `== ${tableName} ==\n(aucune ligne)`;

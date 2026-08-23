@@ -1,20 +1,22 @@
 import { color } from '@dala/design-tokens';
 import type { Organization, Project } from '@dala/shared-types';
 import { createProjectSchema, PROJECT_TYPES } from '@dala/validation';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
 import {
   BuildingsIcon,
+  CameraIcon,
   CaretRightIcon,
   FunnelIcon,
+  ImageIcon,
   ListIcon,
   MagnifyingGlassIcon,
   PlusIcon,
   SquaresFourIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { ElementRef } from 'react';
 import { RefreshControl, ScrollView, TextInput, View as RNView } from 'react-native';
-import { Text, View, XStack, YStack } from 'tamagui';
+import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
@@ -33,6 +35,8 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
+import { processPhoto } from '@/lib/photoPipeline';
+import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -135,7 +139,8 @@ export default function ProjectsScreen() {
   // Popover and Slider.
   const [minConsumedFilter, setMinConsumedFilter] = useState(0);
   const [filterPopoverOpen, setFilterPopoverOpen] = useState(false);
-  const filterAnchorRef = useRef<ElementRef<typeof RNView>>(null);
+  const filterAnchorRef = useRef<RNView | null>(null);
+
   const [formSheetOpen, setFormSheetOpen] = useState(false);
   const [editingProject, setEditingProject] = useState<ProjectRow | null>(null);
   const [form, setForm] = useState<ProjectFormState>(EMPTY_FORM);
@@ -147,6 +152,16 @@ export default function ProjectsScreen() {
   // two-button variant for "Supprimer ce chantier ?".
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Phase 3 §1.5 — cover-photo state, same upload-on-save-not-on-pick
+  // pattern as vehicles.tsx/expenses.tsx. coverPath is the storage path
+  // (existing on edit, or freshly uploaded on save); coverLocalUri is a
+  // local preview of a newly-picked-but-not-yet-uploaded photo.
+  const [coverPath, setCoverPath] = useState<string | null>(null);
+  const [coverLocalUri, setCoverLocalUri] = useState<string | null>(null);
+  const [coverSignedUrl, setCoverSignedUrl] = useState<string | null>(null);
+  const [processingCover, setProcessingCover] = useState(false);
+  const [cardPhotoUrlByPath, setCardPhotoUrlByPath] = useState<Record<string, string>>({});
 
   useFocusEffect(
     useCallback(() => {
@@ -250,6 +265,9 @@ export default function ProjectsScreen() {
     setProjects(merged);
     setLoading(false);
     setRefreshing(false);
+    // Phase 3 §1.5 — project card cover thumbnails, same batched pattern
+    // as team.tsx/vehicles.tsx.
+    void getSignedUrlMap(merged.map((p) => p.cover_photo_url)).then(setCardPhotoUrlByPath);
   }
 
   const filtered = useMemo(() => {
@@ -278,6 +296,49 @@ export default function ProjectsScreen() {
 
   const canWrite = orgRole === 'owner' || orgRole === 'manager';
 
+  // IMPROVEMENT-PLAN PHASE 4 (§3, prefill/suggestion layer) — "recently-used
+  // addresses per org" and "autocomplete on repeat client names", both derived
+  // from the already-loaded `projects` list (no extra query). Scoped to
+  // projects.tsx only; organization-settings.tsx's org address is a singleton
+  // (one row per org, entered once) — suggestion chips would add noise there,
+  // not value. Judgment call documented in PHASE_4_BRIEF.md.
+  //
+  // Most recently created/updated projects first (project.created_at desc),
+  // then deduplicated — so "recently used" is chronologically accurate, not
+  // alphabetical. Limited to 6 distinct values each so the chip row stays
+  // scannable on a phone screen without wrapping.
+  const recentAddresses = useMemo((): string[] => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const p of [...projects].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )) {
+      const v = (p.address ?? '').trim();
+      if (v && !seen.has(v)) {
+        seen.add(v);
+        result.push(v);
+        if (result.length >= 6) break;
+      }
+    }
+    return result;
+  }, [projects]);
+
+  const recentClientNames = useMemo((): string[] => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const p of [...projects].sort(
+      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+    )) {
+      const v = (p.client_name ?? '').trim();
+      if (v && !seen.has(v)) {
+        seen.add(v);
+        result.push(v);
+        if (result.length >= 6) break;
+      }
+    }
+    return result;
+  }, [projects]);
+
   // Extracted so the list/grid toggle (UI/UX pass) can reuse the exact
   // same card in either a single-column YStack or a 2-column Grid without
   // duplicating the JSX.
@@ -299,6 +360,14 @@ export default function ProjectsScreen() {
         accessibilityRole="button"
         accessibilityLabel={project.name}
       >
+        {project.cover_photo_url && cardPhotoUrlByPath[project.cover_photo_url] && (
+          <Image
+            src={cardPhotoUrlByPath[project.cover_photo_url]}
+            width="100%"
+            height={100}
+            borderRadius={10}
+          />
+        )}
         <XStack justifyContent="space-between" alignItems="flex-start">
           <YStack flex={1} gap="$1">
             <Text fontSize={16} fontWeight="600" numberOfLines={1}>
@@ -360,6 +429,9 @@ export default function ProjectsScreen() {
     setEditingProject(null);
     setForm(EMPTY_FORM);
     setFormError(null);
+    setCoverPath(null);
+    setCoverLocalUri(null);
+    setCoverSignedUrl(null);
     setFormSheetOpen(true);
   }
 
@@ -375,7 +447,41 @@ export default function ProjectsScreen() {
       project_type: (project.project_type as (typeof PROJECT_TYPES)[number]) ?? '',
     });
     setFormError(null);
+    setCoverPath(project.cover_photo_url ?? null);
+    setCoverLocalUri(null);
+    setCoverSignedUrl(null);
+    if (project.cover_photo_url) void getSignedUrl(project.cover_photo_url).then(setCoverSignedUrl);
     setFormSheetOpen(true);
+  }
+
+  async function pickCoverPhoto(source: 'camera' | 'library') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error(
+        source === 'camera'
+          ? "Autorisez l'accès à l'appareil photo pour prendre une photo."
+          : "Autorisez l'accès à vos photos pour en choisir une.",
+      );
+      return;
+    }
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setProcessingCover(true);
+    try {
+      const processed = await processPhoto(result.assets[0].uri);
+      setCoverLocalUri(processed.uri);
+    } catch {
+      toast.error('Impossible de traiter la photo. Réessayez.');
+    } finally {
+      setProcessingCover(false);
+    }
   }
 
   async function handleSave() {
@@ -403,10 +509,21 @@ export default function ProjectsScreen() {
       return;
     }
 
+    // Phase 3 §1.5 — upload-on-save-not-on-pick, same pattern as
+    // vehicles.tsx: a cancelled sheet never orphans a Storage file.
+    let finalCoverPath = coverPath;
+    if (coverLocalUri) {
+      finalCoverPath = await uploadOrgFile(orgId, 'projects', coverLocalUri, 'jpg', 'image/jpeg');
+    }
+
     if (editingProject) {
       const { error } = await supabase
         .from('projects')
-        .update({ ...parsed.data, version: editingProject.version + 1 })
+        .update({
+          ...parsed.data,
+          cover_photo_url: finalCoverPath,
+          version: editingProject.version + 1,
+        })
         .eq('id', editingProject.id)
         .eq('version', editingProject.version);
 
@@ -423,6 +540,7 @@ export default function ProjectsScreen() {
       } = await supabase.auth.getSession();
       const { error } = await supabase.from('projects').insert({
         ...parsed.data,
+        cover_photo_url: finalCoverPath,
         lead_org_id: orgId,
         created_by: session?.user.id,
       });
@@ -505,7 +623,7 @@ export default function ProjectsScreen() {
               unused until now). A small anchored panel is the right
               container here: one control, triggered from one button, no
               need for a full bottom sheet. */}
-          <RNView ref={filterAnchorRef} collapsable={false}>
+          <View ref={filterAnchorRef} collapsable={false}>
             <XStack
               width={40}
               height={40}
@@ -525,7 +643,7 @@ export default function ProjectsScreen() {
                 color={minConsumedFilter > 0 ? 'white' : color.neutral[900]}
               />
             </XStack>
-          </RNView>
+          </View>
         </XStack>
 
         <Popover
@@ -720,21 +838,138 @@ export default function ProjectsScreen() {
         title={editingProject ? 'Modifier le chantier' : 'Nouveau chantier'}
       >
         <YStack gap="$3">
+          <YStack gap="$2">
+            <Text fontSize={14} fontWeight="500">
+              Photo de couverture
+            </Text>
+            {coverLocalUri || coverSignedUrl ? (
+              <XStack alignItems="center" gap="$3">
+                <Image
+                  source={{ uri: coverLocalUri ?? coverSignedUrl ?? undefined }}
+                  width={72}
+                  height={72}
+                  borderRadius={12}
+                />
+                <Button
+                  variant="secondary"
+                  fullWidth={false}
+                  onPress={() => {
+                    setCoverPath(null);
+                    setCoverLocalUri(null);
+                    setCoverSignedUrl(null);
+                  }}
+                >
+                  Retirer
+                </Button>
+              </XStack>
+            ) : (
+              <XStack gap="$2">
+                <Button
+                  variant="secondary"
+                  icon={CameraIcon}
+                  loading={processingCover}
+                  onPress={() => void pickCoverPhoto('camera')}
+                >
+                  Appareil photo
+                </Button>
+                <Button
+                  variant="secondary"
+                  icon={ImageIcon}
+                  loading={processingCover}
+                  onPress={() => void pickCoverPhoto('library')}
+                >
+                  Galerie
+                </Button>
+              </XStack>
+            )}
+          </YStack>
+
           <FormField
             label="Nom du chantier"
             value={form.name}
             onChangeText={(v) => setForm((f) => ({ ...f, name: v }))}
           />
-          <FormField
-            label="Client"
-            value={form.client_name}
-            onChangeText={(v) => setForm((f) => ({ ...f, client_name: v }))}
-          />
-          <FormField
-            label="Adresse"
-            value={form.address}
-            onChangeText={(v) => setForm((f) => ({ ...f, address: v }))}
-          />
+          <YStack gap="$1.5">
+            <FormField
+              label="Client"
+              value={form.client_name}
+              onChangeText={(v) => setForm((f) => ({ ...f, client_name: v }))}
+            />
+            {/* IMPROVEMENT-PLAN PHASE 4 (§3) — autocomplete chips for
+                repeat client names. Filtered to names that include the
+                current input (empty = show all recent), hidden when the
+                input already exactly matches a chip (no point showing it).
+                Tap-to-fill only: not a hard picker. */}
+            {(() => {
+              const q = form.client_name.trim().toLowerCase();
+              const chips = recentClientNames.filter(
+                (n) => n.toLowerCase().includes(q) && n.toLowerCase() !== q,
+              );
+              if (chips.length === 0) return null;
+              return (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <XStack gap="$2" paddingVertical={2}>
+                    {chips.map((name) => (
+                      <XStack
+                        key={name}
+                        paddingHorizontal={10}
+                        paddingVertical={5}
+                        borderRadius={999}
+                        backgroundColor="$neutral100"
+                        borderWidth={1}
+                        borderColor="$neutral200"
+                        onPress={() => setForm((f) => ({ ...f, client_name: name }))}
+                        accessibilityRole="button"
+                      >
+                        <Text fontSize={12.5} color="$neutral700">
+                          {name}
+                        </Text>
+                      </XStack>
+                    ))}
+                  </XStack>
+                </ScrollView>
+              );
+            })()}
+          </YStack>
+          <YStack gap="$1.5">
+            <FormField
+              label="Adresse"
+              value={form.address}
+              onChangeText={(v) => setForm((f) => ({ ...f, address: v }))}
+            />
+            {/* IMPROVEMENT-PLAN PHASE 4 (§3) — recently-used address chips,
+                same pattern as client name above. */}
+            {(() => {
+              const q = form.address.trim().toLowerCase();
+              const chips = recentAddresses.filter(
+                (a) => a.toLowerCase().includes(q) && a.toLowerCase() !== q,
+              );
+              if (chips.length === 0) return null;
+              return (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <XStack gap="$2" paddingVertical={2}>
+                    {chips.map((addr) => (
+                      <XStack
+                        key={addr}
+                        paddingHorizontal={10}
+                        paddingVertical={5}
+                        borderRadius={999}
+                        backgroundColor="$neutral100"
+                        borderWidth={1}
+                        borderColor="$neutral200"
+                        onPress={() => setForm((f) => ({ ...f, address: addr }))}
+                        accessibilityRole="button"
+                      >
+                        <Text fontSize={12.5} color="$neutral700" numberOfLines={1}>
+                          {addr}
+                        </Text>
+                      </XStack>
+                    ))}
+                  </XStack>
+                </ScrollView>
+              );
+            })()}
+          </YStack>
           <DatePicker
             label="Date de début"
             value={form.start_date || null}
