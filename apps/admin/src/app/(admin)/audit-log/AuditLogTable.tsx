@@ -1,13 +1,16 @@
 'use client';
 
+import {
+  Button,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { ClipboardTextIcon } from '@phosphor-icons/react';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-
-import { Button } from '@/components/ui/Button';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface Entry {
   id: string;
@@ -37,6 +40,9 @@ export function AuditLogTable() {
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as the other admin tables: no res.ok
+  // check on this filtered fetch.
+  const [loadError, setLoadError] = useState(false);
   const [actionFilter, setActionFilter] = useState(initialAction);
   const [tableFilter, setTableFilter] = useState('');
   const [actorIdFilter, setActorIdFilter] = useState('');
@@ -47,18 +53,28 @@ export function AuditLogTable() {
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (actionFilter) params.set('action', actionFilter);
-    if (tableFilter) params.set('table', tableFilter);
-    if (actorIdFilter) params.set('actorId', actorIdFilter);
-    if (orgIdFilter) params.set('orgId', orgIdFilter);
-    if (ipFilter) params.set('ipAddress', ipFilter);
-    if (dateFrom) params.set('dateFrom', new Date(dateFrom).toISOString());
-    if (dateTo) params.set('dateTo', new Date(dateTo).toISOString());
-    const res = await fetch(`/api/admin/audit-log?${params.toString()}`);
-    const data = await res.json();
-    setEntries(data.entries ?? []);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const params = new URLSearchParams();
+      if (actionFilter) params.set('action', actionFilter);
+      if (tableFilter) params.set('table', tableFilter);
+      if (actorIdFilter) params.set('actorId', actorIdFilter);
+      if (orgIdFilter) params.set('orgId', orgIdFilter);
+      if (ipFilter) params.set('ipAddress', ipFilter);
+      if (dateFrom) params.set('dateFrom', new Date(dateFrom).toISOString());
+      if (dateTo) params.set('dateTo', new Date(dateTo).toISOString());
+      const res = await fetch(`/api/admin/audit-log?${params.toString()}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setEntries(data.entries ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -171,6 +187,8 @@ export function AuditLogTable() {
 
       {loading ? (
         <p className="text-sm text-neutral-500">Chargement…</p>
+      ) : loadError ? (
+        <ErrorState onRetry={() => void load()} />
       ) : (
         <DataTable
           columns={columns}

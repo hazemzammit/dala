@@ -1,0 +1,241 @@
+'use server';
+
+import type { Project } from '@dala/shared-types';
+import {
+  createProjectSchema,
+  createProjectExpenseSchema,
+  updateProjectSchema,
+  type CreateProjectInput,
+  type CreateProjectExpenseInput,
+} from '@dala/validation';
+import { revalidatePath } from 'next/cache';
+import { z } from 'zod';
+
+import { requireVerifiedEmail } from '@/lib/emailVerification';
+import { checkProjectIsWritable } from '@/lib/projectStatus';
+import { createClient } from '@/lib/supabase/server';
+
+type ProjectMutationResult =
+  { success: true; project: Project } | { success: false; error: string };
+type ProjectExpenseMutationResult = { success: true } | { success: false; error: string };
+type DeleteProjectResult = { success: true; projectId: string } | { success: false; error: string };
+
+const deleteProjectSchema = z.object({
+  id: z.string().uuid(),
+  version: z.number().int().positive(),
+});
+
+/**
+ * `updateProjectSchema` (from @dala/validation) is `createProjectSchema`'s
+ * field shape + `version` only — it never included `id` (id isn't a
+ * project *field*, it's the row identifier). The collaborator's code typed
+ * this action as taking `UpdateProjectInput` directly and passed `id`
+ * through it anyway, which doesn't actually typecheck against the real
+ * schema. Extended locally with `id`, same pattern already used in
+ * team/actions.ts's local updateWorkerSchema.
+ */
+const updateProjectWithIdSchema = updateProjectSchema.extend({ id: z.string().uuid() });
+export type UpdateProjectInput = z.infer<typeof updateProjectWithIdSchema>;
+
+export async function createProject(input: CreateProjectInput): Promise<ProjectMutationResult> {
+  const parsed = createProjectSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const emailError = await requireVerifiedEmail(supabase, user.id);
+  if (emailError) return { success: false, error: emailError };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({
+      lead_org_id: profile.active_org_id,
+      name: parsed.data.name,
+      client_name: parsed.data.client_name ?? null,
+      address: parsed.data.address ?? null,
+      start_date: parsed.data.start_date,
+      project_type: parsed.data.project_type,
+      budget_total: parsed.data.budget_total ?? null,
+      created_by: user.id,
+    })
+    .select('*');
+
+  if (error || !data || data.length === 0) {
+    return { success: false, error: 'Impossible de créer le chantier. Vérifiez vos droits.' };
+  }
+
+  revalidatePath('/projects');
+  return { success: true, project: data[0] };
+}
+
+export async function updateProject(input: UpdateProjectInput): Promise<ProjectMutationResult> {
+  const parsed = updateProjectWithIdSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const emailError = await requireVerifiedEmail(supabase, user.id);
+  if (emailError) return { success: false, error: emailError };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const { id, version, ...fields } = parsed.data;
+
+  const { data, error } = await supabase
+    .from('projects')
+    .update({
+      ...(fields.name !== undefined && { name: fields.name }),
+      ...(fields.client_name !== undefined && { client_name: fields.client_name }),
+      ...(fields.address !== undefined && { address: fields.address }),
+      ...(fields.start_date !== undefined && { start_date: fields.start_date }),
+      ...(fields.project_type !== undefined && { project_type: fields.project_type }),
+      ...(fields.budget_total !== undefined && { budget_total: fields.budget_total }),
+      version: version + 1,
+    })
+    .eq('id', id)
+    .eq('lead_org_id', profile.active_org_id)
+    .eq('version', version)
+    .select('*');
+
+  if (error) {
+    return { success: false, error: 'Impossible de modifier le chantier. Vérifiez vos droits.' };
+  }
+  if (!data || data.length === 0) {
+    return {
+      success: false,
+      error: 'Ce chantier a été modifié entre-temps. Rechargez la page avant de réessayer.',
+    };
+  }
+
+  revalidatePath('/projects');
+  return { success: true, project: data[0] };
+}
+
+export async function deleteProject(input: {
+  id: string;
+  version: number;
+}): Promise<DeleteProjectResult> {
+  const parsed = deleteProjectSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const emailError = await requireVerifiedEmail(supabase, user.id);
+  if (emailError) return { success: false, error: emailError };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const { data, error } = await supabase
+    .from('projects')
+    .update({ deleted_at: new Date().toISOString(), version: parsed.data.version + 1 })
+    .eq('id', parsed.data.id)
+    .eq('lead_org_id', profile.active_org_id)
+    .eq('version', parsed.data.version)
+    .select('id');
+
+  if (error) {
+    return { success: false, error: 'Impossible de supprimer le chantier. Vérifiez vos droits.' };
+  }
+  if (!data || data.length === 0) {
+    return {
+      success: false,
+      error: 'Ce chantier a été modifié entre-temps. Rechargez la page avant de réessayer.',
+    };
+  }
+
+  revalidatePath('/projects');
+  return { success: true, projectId: parsed.data.id };
+}
+
+export async function createProjectExpense(
+  input: CreateProjectExpenseInput,
+): Promise<ProjectExpenseMutationResult> {
+  const parsed = createProjectExpenseSchema.safeParse(input);
+  if (!parsed.success) {
+    return { success: false, error: parsed.error.issues[0]?.message ?? 'Données invalides.' };
+  }
+
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const emailError = await requireVerifiedEmail(supabase, user.id);
+  if (emailError) return { success: false, error: emailError };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const projectError = await checkProjectIsWritable(
+    supabase,
+    parsed.data.project_id,
+    profile.active_org_id,
+  );
+  if (projectError) return { success: false, error: projectError };
+
+  const { error } = await supabase.from('project_expenses').insert({
+    org_id: profile.active_org_id,
+    project_id: parsed.data.project_id,
+    category: parsed.data.category,
+    amount: parsed.data.amount,
+    description: parsed.data.description ?? null,
+    receipt_photo_url: parsed.data.receipt_photo_url ?? null,
+    expense_date: parsed.data.expense_date,
+    created_by: user.id,
+  });
+
+  if (error) {
+    return { success: false, error: "Impossible d'enregistrer la dépense." };
+  }
+
+  revalidatePath('/projects');
+  return { success: true };
+}

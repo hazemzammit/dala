@@ -1,13 +1,17 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  ConfirmTypingDialog,
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  FormField,
+  StatusBadge,
+} from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { FormField } from '@/components/ui/FormField';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface AdminRow {
@@ -34,11 +38,26 @@ export function AdminUsersTable() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [resetTarget, setResetTarget] = useState<AdminRow | null>(null);
+  // Phase 20 (§1.7a) — this fetch had no error handling at all: a
+  // failed load silently left `admins` at its initial empty array, with
+  // no loading state or empty-state message to distinguish it from a
+  // genuinely admin-free org (which shouldn't even be possible here,
+  // but the ambiguity was still real on a real failure).
+  const [loadError, setLoadError] = useState(false);
 
   async function load() {
-    const res = await fetch('/api/admin/admins');
-    const data = await res.json();
-    setAdmins(data.admins ?? []);
+    setLoadError(false);
+    try {
+      const res = await fetch('/api/admin/admins');
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setAdmins(data.admins ?? []);
+    } catch {
+      setLoadError(true);
+    }
   }
 
   useEffect(() => {
@@ -133,7 +152,11 @@ export function AdminUsersTable() {
 
   return (
     <div className="space-y-6">
-      <DataTable columns={columns} rows={admins} getRowId={(a) => a.id} />
+      {loadError ? (
+        <ErrorState onRetry={() => void load()} />
+      ) : (
+        <DataTable columns={columns} rows={admins} getRowId={(a) => a.id} />
+      )}
 
       {isSuperAdmin && (
         <Card className="max-w-md p-6">

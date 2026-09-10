@@ -16,6 +16,7 @@
   "dependencies": {
     "@dala/design-tokens": "workspace:*",
     "@dala/shared-types": "workspace:*",
+    "@dala/ui-web": "workspace:*",
     "@dala/validation": "workspace:*",
     "@supabase/supabase-js": "^2.45.4",
     "@supabase/ssr": "^0.5.1",

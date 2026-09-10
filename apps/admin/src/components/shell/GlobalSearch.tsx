@@ -1,5 +1,6 @@
 'use client';
 
+import { Card } from '@dala/ui-web';
 import {
   BuildingsIcon,
   ClipboardTextIcon,
@@ -8,8 +9,6 @@ import {
 } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
-
-import { Card } from '@/components/ui/Card';
 
 interface SearchResults {
   organizations: { id: string; name: string; plan: string }[];
@@ -32,8 +31,9 @@ const EMPTY_RESULTS: SearchResults = { organizations: [], users: [], auditLogEnt
  * instruction): nothing in it covers a command palette or search modal,
  * so this is new visual language, kept as plain as the plan allows for —
  * "a plain input + dropdown results list," styled with the exact same
- * overlay + Card(raised) primitives ConfirmTypingDialog.tsx already
- * established for this app's one other modal, not a new pattern.
+ * overlay + Card(raised) primitives ConfirmTypingDialog (packages/
+ * ui-web, since 19D) already established for this app's one other
+ * modal, not a new pattern.
  *
  * ⌘K / Ctrl+K to open (global keydown listener), Escape to close, click-
  * outside to close. Each result links straight to the relevant detail

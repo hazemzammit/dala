@@ -332,6 +332,11 @@ export interface Advance {
   created_at: string;
   // migration 0045 — Doc 03 §3.3/§3.9 offline sync watermark (Phase 17).
   updated_at: string;
+  // migration 0090 — Doc 05 §1.7c Tier 3. The MANAGER's reason for
+  // approving/rejecting, distinct from `reason` above (the worker's own
+  // stated reason for requesting the advance, set at creation). Null for
+  // any row approved/rejected before this migration.
+  manager_reason: string | null;
 }
 
 export interface ProjectExpense {
@@ -382,6 +387,10 @@ export interface SalaryCycle {
   paid_at: string | null;
   idempotency_key: string | null;
   created_at: string;
+  // migration 0090 — Doc 05 §1.7c Tier 3. The manager's reason for marking
+  // this cycle as paid. Null for any cycle marked paid before this
+  // migration.
+  paid_reason: string | null;
 }
 
 export interface Material {

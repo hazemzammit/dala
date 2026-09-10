@@ -12,14 +12,18 @@ import {
   BuildingsIcon,
   CameraIcon,
   CheckCircleIcon,
-  LockIcon,
+  EnvelopeIcon,
+  MapPinIcon,
+  PhoneIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { PermissionLock } from '@/components/ui/PermissionLock';
 import { ProgressBar } from '@/components/ui/Progress';
 import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
@@ -92,6 +96,10 @@ const VERIFICATION_LABEL: Record<string, string> = {
 export default function OrganizationSettingsScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — the primary org fetch had no error capture; a
+  // failed fetch previously left every field blank, indistinguishable
+  // from a never-filled-in org.
+  const [loadError, setLoadError] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [role, setRole] = useState<'owner' | 'manager' | 'viewer' | null>(null);
 
@@ -124,6 +132,8 @@ export default function OrganizationSettingsScreen() {
   const [savingRib, setSavingRib] = useState(false);
 
   const [checklistDismissed, setChecklistDismissed] = useState(false);
+  // Audit fix 3b (Option B) — self-serve verification request.
+  const [requestingVerification, setRequestingVerification] = useState(false);
 
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -137,6 +147,7 @@ export default function OrganizationSettingsScreen() {
 
   async function load() {
     setLoading(true);
+    setLoadError(false);
     const activeOrgId = await getActiveOrgId();
     if (!activeOrgId) {
       setLoading(false);
@@ -147,13 +158,18 @@ export default function OrganizationSettingsScreen() {
 
     // Explicit column list, not `.select('*')` — see this file's own
     // header for why `rib_encrypted` is deliberately never selected here.
-    const { data: org } = await supabase
+    const { data: org, error: orgError } = await supabase
       .from('organizations')
       .select(
         'name, trade_type, address, contact_phone, contact_email, matricule_fiscal, rc_number, logo_url, legal_form, workforce_size_bracket, facebook_url, instagram_url, website_url, service_area, verification_status, org_checklist_dismissed_at',
       )
       .eq('id', activeOrgId)
       .maybeSingle();
+    if (orgError) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
     if (org) {
       setName(org.name ?? '');
       setTradeType(org.trade_type ?? '');
@@ -326,6 +342,28 @@ export default function OrganizationSettingsScreen() {
     toast.success('Informations mises à jour.');
   }
 
+  // Audit fix 3b (Option B) — request_org_verification (0089). Only
+  // callable from 'unverified' (button is hidden otherwise, see render
+  // below); the RPC itself is also a no-op from any other status, so
+  // there's no invalid-state error path to handle here beyond a generic
+  // failure toast.
+  async function requestVerification() {
+    if (!orgId) return;
+    setRequestingVerification(true);
+    const { error: rpcError } = await supabase.rpc('request_org_verification', {
+      p_org_id: orgId,
+    });
+    setRequestingVerification(false);
+    if (rpcError) {
+      toast.error('Impossible d\u2019envoyer la demande de vérification.');
+      haptics.error();
+      return;
+    }
+    haptics.confirm();
+    toast.success('Demande de vérification envoyée.');
+    setVerificationStatus('pending');
+  }
+
   function openRibSheet() {
     setRibDraft('');
     setRibError(null);
@@ -365,6 +403,14 @@ export default function OrganizationSettingsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <XStack paddingHorizontal="$4" paddingBottom="$3" alignItems="center" gap="$3">
@@ -398,15 +444,13 @@ export default function OrganizationSettingsScreen() {
               <Text fontSize={14} fontWeight="600" color="$neutral900">
                 Profil de l&rsquo;organisation complété à {completion}%
               </Text>
-              <Text
-                fontSize={12.5}
-                color="$accent600"
-                fontWeight="500"
+              <Button
+                variant="chip"
+                fullWidth={false}
                 onPress={() => void handleToggleChecklist(true)}
-                accessibilityRole="button"
               >
                 Masquer
-              </Text>
+              </Button>
             </XStack>
             <ProgressBar value={completion} />
           </YStack>
@@ -416,15 +460,13 @@ export default function OrganizationSettingsScreen() {
             <Text fontSize={12.5} color="$neutral500">
               Profil de l&rsquo;organisation complété à {completion}%
             </Text>
-            <Text
-              fontSize={12.5}
-              color="$accent600"
-              fontWeight="500"
+            <Button
+              variant="chip"
+              fullWidth={false}
               onPress={() => void handleToggleChecklist(false)}
-              accessibilityRole="button"
             >
               Afficher les suggestions
-            </Text>
+            </Button>
           </XStack>
         )}
 
@@ -483,9 +525,16 @@ export default function OrganizationSettingsScreen() {
           ) : (
             <FormField label="Corps de métier" value={tradeType} editable={false} />
           )}
-          <FormField label="Adresse" value={address} onChangeText={setAddress} editable={canEdit} />
+          <FormField
+            label="Adresse"
+            icon={MapPinIcon}
+            value={address}
+            onChangeText={setAddress}
+            editable={canEdit}
+          />
           <FormField
             label="Téléphone de contact"
+            icon={PhoneIcon}
             value={contactPhone}
             onChangeText={setContactPhone}
             editable={canEdit}
@@ -493,6 +542,7 @@ export default function OrganizationSettingsScreen() {
           />
           <FormField
             label="E-mail de contact"
+            icon={EnvelopeIcon}
             value={contactEmail}
             onChangeText={setContactEmail}
             editable={canEdit}
@@ -501,12 +551,11 @@ export default function OrganizationSettingsScreen() {
           />
 
           <YStack gap="$1.5">
-            <XStack alignItems="center" gap="$1.5">
+            <PermissionLock locked={!isOwner} reason="Seul le propriétaire peut modifier ce champ.">
               <Text fontSize={14} fontWeight="500" color="$neutral900">
                 Matricule fiscal
               </Text>
-              {!isOwner && <LockIcon size={13} color={color.neutral[500]} />}
-            </XStack>
+            </PermissionLock>
             <FormField
               label=""
               value={matriculeFiscal}
@@ -516,25 +565,38 @@ export default function OrganizationSettingsScreen() {
           </YStack>
 
           <YStack gap="$1.5">
-            <XStack alignItems="center" gap="$1.5">
+            <PermissionLock locked={!isOwner} reason="Seul le propriétaire peut modifier ce champ.">
               <Text fontSize={14} fontWeight="500" color="$neutral900">
                 Registre de commerce
               </Text>
-              {!isOwner && <LockIcon size={13} color={color.neutral[500]} />}
-            </XStack>
+            </PermissionLock>
             <FormField label="" value={rcNumber} onChangeText={setRcNumber} editable={isOwner} />
           </YStack>
 
-          {/* Phase 10 §4.2 — verification status, read-only display only
-              (see migration 0075's own column comment for why this phase
-              deliberately does not build a self-attestation write path). */}
-          <XStack alignItems="center" gap="$2">
+          {/* Phase 10 §4.2 — verification status display. Audit fix 3b
+              (Option B) adds the missing write path: owner/manager can
+              request verification (request_org_verification, 0089),
+              which moves the status to 'pending' — actually approving/
+              rejecting the request is admin-only (apps/admin), never a
+              mobile-writable action, same read-only-past-this-point
+              reasoning 0075's original column comment already gave. */}
+          <XStack alignItems="center" gap="$2" flexWrap="wrap">
             {verificationStatus === 'verified' && (
               <CheckCircleIcon size={16} color={color.status.success} weight="fill" />
             )}
             <Text fontSize={13.5} color="$neutral500">
               Vérification : {VERIFICATION_LABEL[verificationStatus] ?? 'Non vérifiée'}
             </Text>
+            {verificationStatus === 'unverified' && canEdit && (
+              <Button
+                variant="secondary"
+                fullWidth={false}
+                onPress={requestVerification}
+                loading={requestingVerification}
+              >
+                Demander la vérification
+              </Button>
+            )}
           </XStack>
 
           {/* Phase 10 §4.2 — legal_form / workforce_size_bracket. Local
@@ -606,6 +668,7 @@ export default function OrganizationSettingsScreen() {
 
           <FormField
             label="Zone d'intervention"
+            icon={MapPinIcon}
             value={serviceArea}
             onChangeText={setServiceArea}
             editable={canEdit}
@@ -655,12 +718,11 @@ export default function OrganizationSettingsScreen() {
               never reaches this screen — see migration 0075's header for
               the encryption decision and get_organization_rib_masked. */}
           <YStack gap="$1.5">
-            <XStack alignItems="center" gap="$1.5">
+            <PermissionLock locked={!isOwner} reason="Seul le propriétaire peut modifier ce champ.">
               <Text fontSize={14} fontWeight="500" color="$neutral900">
                 RIB
               </Text>
-              {!isOwner && <LockIcon size={13} color={color.neutral[500]} />}
-            </XStack>
+            </PermissionLock>
             <XStack
               backgroundColor="$neutral0"
               borderRadius="$control"

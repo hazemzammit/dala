@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { CaretRightIcon, CheckIcon, SquaresFourIcon } from 'phosphor-react-native';
+import { CaretRightIcon, CheckIcon, PlusIcon, SquaresFourIcon } from 'phosphor-react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
@@ -32,6 +32,17 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * the person is already choosing between their orgs, is the more
  * discoverable placement of the two real options (the other being
  * Settings, which doesn't exist as a built screen yet either).
+ *
+ * Round 2 audit (§1.9) — the pill is now always rendered (dashboard.tsx no
+ * longer hides it for single-org accounts), which surfaced a real gap:
+ * there was no "add another organization" destination anywhere in the
+ * app, even though the backend RPC for it
+ * (`create_organization_for_current_user`, migration 0014) had existed
+ * since Phase 1 — see create-organization.tsx's own header for the full
+ * finding. Added as a row at the bottom of the org list (always visible,
+ * not conditional on org count, same reasoning as the pill itself: a
+ * single-org owner is exactly who most needs the "add one" path, not
+ * only someone who already has several).
  */
 interface OrgSwitcherSheetProps {
   visible: boolean;
@@ -40,6 +51,12 @@ interface OrgSwitcherSheetProps {
   ownedOrgCount: number;
   activeOrgId: string | null;
   onSelect: (orgId: string) => void;
+  // Bug fix — logo_url is a private-bucket storage PATH, not a fetchable
+  // URL. The caller (dashboard.tsx) already resolves every org's logo
+  // through getSignedUrlMap for its own header avatar; this sheet needs
+  // the same resolved map rather than each row re-signing (or, as
+  // before this fix, silently failing to sign at all) its own logo.
+  logoUrlByPath: Record<string, string>;
 }
 
 export function OrgSwitcherSheet({
@@ -49,6 +66,7 @@ export function OrgSwitcherSheet({
   ownedOrgCount,
   activeOrgId,
   onSelect,
+  logoUrlByPath,
 }: OrgSwitcherSheetProps) {
   const tc = useTokenColor();
   return (
@@ -94,7 +112,10 @@ export function OrgSwitcherSheet({
               accessibilityRole="button"
               accessibilityState={{ selected: active }}
             >
-              <Avatar name={org.name} imageUrl={org.logo_url ?? undefined} />
+              <Avatar
+                name={org.name}
+                imageUrl={org.logo_url ? logoUrlByPath[org.logo_url] : undefined}
+              />
               <YStack flex={1}>
                 <Text fontSize={15.5} fontWeight="500">
                   {org.name}
@@ -107,6 +128,35 @@ export function OrgSwitcherSheet({
             </XStack>
           );
         })}
+
+        <XStack
+          alignItems="center"
+          gap="$3"
+          paddingVertical={12}
+          marginTop="$1"
+          borderTopWidth={1}
+          borderTopColor="$neutral100"
+          onPress={() => {
+            onClose();
+            router.push('/create-organization');
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Ajouter une organisation"
+        >
+          <XStack
+            width={32}
+            height={32}
+            borderRadius={16}
+            alignItems="center"
+            justifyContent="center"
+            backgroundColor="$neutral100"
+          >
+            <PlusIcon size={16} weight="bold" color={tc.neutral500} />
+          </XStack>
+          <Text fontSize={15.5} fontWeight="500" color="$neutral900">
+            Ajouter une organisation
+          </Text>
+        </XStack>
       </YStack>
     </Sheet>
   );

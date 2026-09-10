@@ -13,11 +13,12 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
-import { DispatchConflictsSheet } from '@/components/dispatch/DispatchConflictsSheet';
+import { ConflictCard, DispatchConflictsSheet } from '@/components/dispatch/DispatchConflictsSheet';
 import { DraggableAssignmentChip } from '@/components/dispatch/DraggableAssignmentChip';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
@@ -232,6 +233,13 @@ export default function DispatchScreen() {
   // trade-participant org too, same as project/[id].tsx's own fetch.
   const [scopedProject, setScopedProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — the 4 core parallel queries below had no error
+  // capture; a failed fetch previously rendered "Rien à afficher,"
+  // indistinguishable from a genuinely-empty org. Scoped to the board's
+  // own content (vehicles/workers/projects/assignments) — the deep-link
+  // `scopedProjectResult` lookup is supplementary display context, left
+  // ungated.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [conflictCount, setConflictCount] = useState(0);
   const [conflictsSheetOpen, setConflictsSheetOpen] = useState(false);
@@ -288,6 +296,7 @@ export default function DispatchScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -306,10 +315,10 @@ export default function DispatchScreen() {
     }
 
     const [
-      { data: vehicleRows },
-      { data: workerRows },
-      { data: projectRows },
-      { data: assignmentRows },
+      { data: vehicleRows, error: vehiclesError },
+      { data: workerRows, error: workersError },
+      { data: projectRows, error: projectsError },
+      { data: assignmentRows, error: assignmentsError },
       scopedProjectResult,
     ] = await Promise.all([
       supabase.from('vehicles').select('*').eq('org_id', org).order('name'),
@@ -320,6 +329,13 @@ export default function DispatchScreen() {
         ? supabase.from('projects').select('*').eq('id', deepLinkProjectId).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
+
+    if (vehiclesError || workersError || projectsError || assignmentsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     setVehicles(vehicleRows ?? []);
     setWorkers(workerRows ?? []);
@@ -873,23 +889,45 @@ export default function DispatchScreen() {
         justifyContent="space-between"
         alignItems="center"
         paddingHorizontal="$4"
+        paddingTop="$3"
         paddingBottom="$2"
       >
         <Text fontFamily="$display" fontSize={19} fontWeight="600">
           {selectedDate === toISO(new Date()) ? "Aujourd'hui" : selectedDate}
         </Text>
-        <XStack alignItems="center" gap="$3">
-          {conflictCount > 0 && (
-            <XStack
-              onPress={() => setConflictsSheetOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel={`${conflictCount} affectations modifiées ailleurs, afficher les conflits`}
-            >
-              <StatusBadge variant="warning">
-                {`${conflictCount} modifié${conflictCount > 1 ? 's' : ''} ailleurs`}
-              </StatusBadge>
-            </XStack>
-          )}
+        {conflictCount > 0 && (
+          <XStack
+            onPress={() => setConflictsSheetOpen(true)}
+            accessibilityRole="button"
+            accessibilityLabel={`${conflictCount} affectations modifiées ailleurs, afficher les conflits`}
+          >
+            <StatusBadge variant="warning">
+              {`${conflictCount} modifié${conflictCount > 1 ? 's' : ''} ailleurs`}
+            </StatusBadge>
+          </XStack>
+        )}
+      </XStack>
+
+      {/* Doc 05 iconography/genericity review (Phase 19D, phase-17 audit
+          §"Dispatch" visual pass) — the confirmed 3-teal-element header
+          cluster: the active date-strip pill above, plus these two chip
+          actions, all rendering at roughly equal visual weight and tight
+          proximity. This is a spacing/grouping fix, not a color one — the
+          chips keep their existing tinted-pill treatment unchanged. Fixed
+          by giving the date text (above) its own row with no competing
+          teal beside it, and moving these two secondary actions onto a
+          clearly subordinate second row — separated by real vertical
+          gap from the date row, not sharing a `justify-between` line
+          with it — so the date reads as unambiguously primary and this
+          row reads as secondary, on sight, before color even matters. */}
+      {(!deepLinkProjectId || !readOnly) && (
+        <XStack
+          justifyContent="flex-end"
+          alignItems="center"
+          gap="$2"
+          paddingHorizontal="$4"
+          paddingBottom="$2"
+        >
           {/* PHASE 9 §2.4 — only in the GLOBAL board, not project-scoped
               mode: this screen's own header already states project-scoped
               mode deliberately keeps "the same date strip, not [...] a
@@ -898,31 +936,27 @@ export default function DispatchScreen() {
               separate global planning screen, not a retrofit of this
               one. */}
           {!deepLinkProjectId && (
-            <Text
-              fontSize={13}
-              color="$accent600"
-              fontWeight="500"
+            <Button
+              variant="chip"
+              fullWidth={false}
               onPress={() => router.push('/(contractor)/dispatch-week')}
-              accessibilityRole="button"
               accessibilityLabel="Voir la vue semaine du dispatch"
             >
               Vue semaine
-            </Text>
+            </Button>
           )}
           {!readOnly && (
-            <Text
-              fontSize={13}
-              color="$accent600"
-              fontWeight="500"
+            <Button
+              variant="chip"
+              fullWidth={false}
               onPress={copyPreviousWeek}
-              accessibilityRole="button"
               accessibilityLabel="Copier les affectations de la semaine précédente"
             >
               Copier semaine précédente
-            </Text>
+            </Button>
           )}
         </XStack>
-      </XStack>
+      )}
 
       {!loading && vehicles.length > 1 && (
         <XStack paddingHorizontal="$4" paddingBottom="$2">
@@ -932,10 +966,12 @@ export default function DispatchScreen() {
         </XStack>
       )}
 
-      {!loading && vehicles.length === 0 && assignments.length === 0 ? (
+      {!loading && loadError ? (
+        <ErrorState onRetry={() => void load()} />
+      ) : !loading && vehicles.length === 0 && assignments.length === 0 ? (
         <EmptyState
           icon={CalendarBlankIcon}
-          illustration="route-planning"
+          illustration="destination"
           title="Rien à afficher"
           description="Ajoutez un véhicule pour commencer à planifier vos dispatchs."
         />
@@ -1037,14 +1073,9 @@ export default function DispatchScreen() {
                       )}
                     </YStack>
                     {!isMaintenance && !readOnly && (
-                      <Text
-                        fontSize={13}
-                        color="$accent600"
-                        fontWeight="500"
-                        onPress={() => openAssign(lane.id)}
-                      >
+                      <Button variant="chip" fullWidth={false} onPress={() => openAssign(lane.id)}>
                         + Assigner
-                      </Text>
+                      </Button>
                     )}
                   </XStack>
 
@@ -1125,25 +1156,22 @@ export default function DispatchScreen() {
         title={editing ? "Modifier l'affectation" : 'Assigner des ouvriers'}
       >
         {conflict ? (
-          <YStack gap="$3">
-            <Text fontFamily="$display" fontSize={17} fontWeight="600">
-              Modifié ailleurs
-            </Text>
-            <Text color="$neutral500" fontSize={14}>
-              Cette affectation a été modifiée par quelqu&apos;un d&apos;autre entre-temps. Que
-              voulez-vous faire ?
-            </Text>
-            <Button onPress={() => handleUpdateExisting('keep_mine')} loading={saving}>
-              Garder ma version
-            </Button>
-            <Button
-              variant="secondary"
-              onPress={() => handleUpdateExisting('use_theirs')}
-              loading={saving}
-            >
-              Utiliser la version du serveur
-            </Button>
-          </YStack>
+          // Doc 05 §1.7d consolidation (Phase 19C): now calls the same
+          // ConflictCard DispatchConflictsSheet.tsx's async list uses,
+          // instead of duplicating its JSX. This flow never had
+          // field-level diff data (`submitAssignmentPatch`'s conflict
+          // result is only `{ serverVersion }`, no field compare was ever
+          // fetched) — passing no changedKeys/localSnapshot reproduces
+          // this branch's exact prior appearance (title, description, two
+          // buttons, no diff list) rather than the consolidation silently
+          // adding a diff view this flow never had. See that file's
+          // header comment for the full discrepancy this corrects.
+          <ConflictCard
+            description="Cette affectation a été modifiée par quelqu'un d'autre entre-temps. Que voulez-vous faire ?"
+            onKeepMine={() => handleUpdateExisting('keep_mine')}
+            onUseServer={() => handleUpdateExisting('use_theirs')}
+            resolving={saving}
+          />
         ) : (
           <YStack gap="$3">
             {!editing && !deepLinkProjectId && (
@@ -1266,7 +1294,9 @@ export default function DispatchScreen() {
             </YStack>
 
             {warning && (
-              <YStack backgroundColor="#FEF3D8" borderRadius="$control" padding="$3">
+              // Doc 05 §1.7k migration (Phase 19A) — was an untokenized
+              // #FEF3D8 literal; now the theme-aware warning-tint token.
+              <YStack backgroundColor="$warningTint" borderRadius="$control" padding="$3">
                 <Text fontSize={13} color="$warning">
                   {warning}
                 </Text>

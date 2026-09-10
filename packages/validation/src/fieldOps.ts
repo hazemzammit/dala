@@ -77,13 +77,24 @@ export type SetMaterialCostInput = z.infer<typeof setMaterialCostSchema>;
  * fixed in requestMaterialSchema above, caught here before it shipped
  * instead of after.
  */
+/**
+ * `.url()` -> `.min(1)` on photo_url/voice_note_url/thumbnail_url: same
+ * latent bug already documented and fixed for createProjectExpenseSchema's
+ * receipt_photo_url in projects.ts (see that file's comment) — these store
+ * a bare Supabase Storage path, never a full URL, so `.url()` rejects every
+ * real value. That fix deliberately left this schema alone since nothing
+ * in scope at the time actually wired a value through it. The web journal
+ * route (apps/web/(contractor)/journal) is now the first caller to
+ * actually exercise photo_url here, so the bug stops being latent — fixed
+ * now for the same reason, not a new decision.
+ */
 export const submitSiteLogSchema = z
   .object({
     project_id: z.string().uuid(),
-    photo_url: z.string().url().optional(),
-    voice_note_url: z.string().url().optional(),
+    photo_url: z.string().min(1).optional(),
+    voice_note_url: z.string().min(1).optional(),
     note_text: z.string().max(500, 'Note limitée à 500 caractères.').optional(),
-    thumbnail_url: z.string().url().optional(),
+    thumbnail_url: z.string().min(1).optional(),
     location_lat: z.number().min(-90).max(90).optional(),
     location_lng: z.number().min(-180).max(180).optional(),
     idempotency_key: z.string().uuid(),
@@ -112,7 +123,14 @@ export const createSafetyIncidentSchema = z.object({
   severity: z.enum(['minor', 'moderate', 'severe']),
   incident_type: z.string().min(1, "Type d'incident requis."),
   location: z.string().optional(),
-  photo_url: z.string().url().optional(),
+  // `.url()` -> `.min(1)`: bare Supabase Storage path per 0020's own
+  // comment on this column ("same reasoning as vehicles.photo_url/
+  // workers.photo_url/projects.cover_photo_url"), never a full URL. Same
+  // fix already applied to submitSiteLogSchema and
+  // createProjectExpenseSchema for the identical reason — this is the
+  // third and (per this integration pass's verification checklist) final
+  // occurrence.
+  photo_url: z.string().min(1).optional(),
   involved_worker_ids: z.array(z.string().uuid()).optional(),
 });
 export type CreateSafetyIncidentInput = z.infer<typeof createSafetyIncidentSchema>;

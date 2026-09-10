@@ -1,5 +1,4 @@
-import { Card } from '@/components/ui/Card';
-
+import { Card } from '@dala/ui-web';
 /**
  * Doc 01 §1.3.3 step 5 — "check your email" interstitial. Not a dead end:
  * per step 6, the account can already view a read-only, banner-nagged

@@ -1,11 +1,8 @@
 'use client';
 
 import type { EdgeFunctionInvocation } from '@dala/shared-types';
+import { Button, DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
-
-import { Button } from '@/components/ui/Button';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 const PAGE_SIZE = 50;
 
@@ -28,6 +25,8 @@ const KNOWN_FUNCTIONS = [
 export function InvocationLogTable() {
   const [invocations, setInvocations] = useState<EdgeFunctionInvocation[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as this route's other tables.
+  const [loadError, setLoadError] = useState(false);
   const [functionFilter, setFunctionFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -35,14 +34,24 @@ export function InvocationLogTable() {
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-    if (functionFilter) params.set('functionName', functionFilter);
-    if (statusFilter) params.set('status', statusFilter);
-    const res = await fetch(`/api/admin/services-health/invocations?${params.toString()}`);
-    const data = await res.json();
-    setInvocations(data.invocations ?? []);
-    setTotal(data.total ?? 0);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (functionFilter) params.set('functionName', functionFilter);
+      if (statusFilter) params.set('status', statusFilter);
+      const res = await fetch(`/api/admin/services-health/invocations?${params.toString()}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setInvocations(data.invocations ?? []);
+      setTotal(data.total ?? 0);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -129,6 +138,8 @@ export function InvocationLogTable() {
 
       {loading ? (
         <p className="text-sm text-neutral-500">Chargement…</p>
+      ) : loadError ? (
+        <ErrorState onRetry={() => void load()} />
       ) : (
         <>
           <DataTable columns={columns} rows={invocations} getRowId={(i) => i.id} />

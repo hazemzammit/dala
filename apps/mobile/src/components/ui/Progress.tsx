@@ -23,7 +23,13 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * itself) — same for `trackColor`'s default, which used to be a
  * light-only `color.neutral[100]` literal baked into the parameter list.
  */
-function thresholdColor(
+/**
+ * Exported (Round 2 audit, §1.10) — `analytics.tsx`'s "Budget consommé"
+ * chart needs the exact same green/amber/red breakpoints per bar, so the
+ * threshold logic lives in one place rather than being re-typed at the
+ * chart call site and risking drift from this file's own bar/ring values.
+ */
+export function thresholdColor(
   percent: number,
   tc: { success: string; warning: string; danger: string },
 ): string {

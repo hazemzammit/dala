@@ -102,7 +102,9 @@ test.describe('Admin auth — audit log', () => {
       .eq('action', 'admin.login')
       .gte('created_at', since);
     expect(loginRows?.length).toBeGreaterThanOrEqual(1);
-    expect(loginRows?.[0].target_id).toBe(fixtures.adminB.id);
+    const firstLoginRow = loginRows?.[0];
+    if (!firstLoginRow) throw new Error('Expected an admin login audit row');
+    expect(firstLoginRow.target_id).toBe(fixtures.adminB.id);
 
     await page.getByRole('button', { name: 'Déconnexion' }).click();
     await expect(page).toHaveURL(/\/login$/);

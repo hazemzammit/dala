@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { Text, YStack } from 'tamagui';
 
+import { Button } from '@/components/ui/Button';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -57,9 +58,13 @@ export default function AuthConfirmScreen() {
       {error ? (
         <>
           <Text color="$danger">{error}</Text>
-          <Text color="$accent600" onPress={() => router.replace('/forgot-password')}>
+          <Button
+            variant="chip"
+            fullWidth={false}
+            onPress={() => router.replace('/forgot-password')}
+          >
             Demander un nouveau lien
-          </Text>
+          </Button>
         </>
       ) : (
         <Text color="$neutral500">Vérification…</Text>

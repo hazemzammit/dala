@@ -1,8 +1,7 @@
 'use client';
 
+import { Card } from '@dala/ui-web';
 import { useSearchParams } from 'next/navigation';
-
-import { Card } from '@/components/ui/Card';
 
 export default function AuthErrorPage() {
   const searchParams = useSearchParams();

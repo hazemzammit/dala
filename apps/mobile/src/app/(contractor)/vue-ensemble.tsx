@@ -6,6 +6,7 @@ import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { listOwnedOrganizations, type MyOrgSummary } from '@/lib/myOrgs';
@@ -56,6 +57,12 @@ export default function VueEnsembleScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [rollups, setRollups] = useState<OrgRollup[]>([]);
+  // Phase 20 (§1.7a) — the per-org rollup queries inside fetchOrgRollup
+  // already degrade gracefully (a failed sub-query just contributes 0,
+  // never throws), but listOwnedOrganizations() itself can throw on a
+  // real network failure, which previously left this screen stuck on its
+  // skeleton forever with no way to retry.
+  const [loadError, setLoadError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -66,18 +73,31 @@ export default function VueEnsembleScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
-    const owned = await listOwnedOrganizations();
-
-    const results = await Promise.all(owned.map((org) => fetchOrgRollup(org)));
-    setRollups(results);
-    setLoading(false);
-    setRefreshing(false);
+    setLoadError(false);
+    try {
+      const owned = await listOwnedOrganizations();
+      const results = await Promise.all(owned.map((org) => fetchOrgRollup(org)));
+      setRollups(results);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   }
 
   if (loading) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonCardList cards={2} />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }

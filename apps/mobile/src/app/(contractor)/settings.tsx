@@ -16,6 +16,7 @@ import {
 import { Alert } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { Icon3D } from '@/components/ui/Icon3D';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -140,9 +141,12 @@ export default function SettingsScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3">
-        <Text fontFamily="$display" fontSize={23} fontWeight="600">
-          Paramètres
-        </Text>
+        <XStack alignItems="center" gap="$2">
+          <Icon3D name="settings-gear" size={28} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Paramètres
+          </Text>
+        </XStack>
       </YStack>
 
       <YStack paddingHorizontal="$4" gap="$2">

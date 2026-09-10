@@ -2,23 +2,21 @@ import { color } from '@dala/design-tokens';
 import type { Worker, WorkerInvitation } from '@dala/shared-types';
 import { inviteWorkerSchema } from '@dala/validation';
 import { router, useFocusEffect } from 'expo-router';
-import {
-  MagnifyingGlassIcon,
-  PaperPlaneTiltIcon,
-  PlusIcon,
-  TrashIcon,
-  UsersIcon,
-} from 'phosphor-react-native';
+import { PaperPlaneTiltIcon, PlusIcon, TrashIcon, UsersIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
-import { Input, Text, XStack, YStack } from 'tamagui';
+import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
+import { ListCard } from '@/components/ui/ListCard';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
@@ -27,6 +25,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { SwipeableRow } from '@/components/ui/SwipeableRow';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { TRADE_OPTIONS } from '@/lib/pickerOptions';
 import { getSignedUrlMap } from '@/lib/storage';
@@ -105,6 +104,11 @@ export default function TeamScreen() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<WorkerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the primary workers query had no error capture;
+  // a failed fetch previously rendered as "Aucun travailleur,"
+  // indistinguishable from a genuinely empty team.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -138,6 +142,7 @@ export default function TeamScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -146,11 +151,17 @@ export default function TeamScreen() {
       return;
     }
 
-    const { data: workerRows } = await supabase
+    const { data: workerRows, error: workersError } = await supabase
       .from('active_workers')
       .select('*')
       .eq('org_id', org)
       .order('full_name');
+    if (workersError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const ids = (workerRows ?? []).map((w) => w.id);
     const { data: invitations } = ids.length
@@ -172,10 +183,18 @@ export default function TeamScreen() {
     // Phase 3 — resolve each worker's display photo (linked profile's own
     // avatar_url first, falling back to workers.photo_url — same priority
     // as worker/[id].tsx) in one batched pass rather than per-row calls.
+    //
+    // Audit sweep (same root cause as 1a-1d) — this was a direct
+    // `.from('profiles')` batch query, which profiles_select_own (0005,
+    // `id = auth.uid()` only) silently reduces to zero rows for every
+    // worker but the caller. Uses get_org_member_profiles (0085) instead.
     const linkedUserIds = merged.filter((w) => w.user_id).map((w) => w.user_id as string);
-    const { data: profileRows } = linkedUserIds.length
-      ? await supabase.from('profiles').select('id, avatar_url').in('id', linkedUserIds)
-      : { data: [] as { id: string; avatar_url: string | null }[] };
+    const { data: profileRows } =
+      orgId && linkedUserIds.length
+        ? await supabase.rpc('get_org_member_profiles', { p_org_id: orgId }).then(({ data }) => ({
+            data: (data ?? []).filter((p: { id: string }) => linkedUserIds.includes(p.id)),
+          }))
+        : { data: [] as { id: string; avatar_url: string | null }[] };
     const avatarByUserId: Record<string, string> = {};
     for (const p of profileRows ?? []) if (p.avatar_url) avatarByUserId[p.id] = p.avatar_url;
 
@@ -368,12 +387,20 @@ export default function TeamScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (workers.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={UsersIcon}
-          illustration="team"
+          icon3d="team"
           title="Aucun travailleur"
           description="Invitez votre équipe pour commencer à planifier vos dispatchs. Utilisez le bouton + ci-dessous."
         />
@@ -387,7 +414,7 @@ export default function TeamScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -397,19 +424,20 @@ export default function TeamScreen() {
         }
       >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
-          <Text fontFamily="$display" fontSize={23} fontWeight="600">
-            Équipe
-          </Text>
-          <Text
-            color="$accent600"
-            fontSize={14}
-            fontWeight="500"
+          <XStack alignItems="center" gap="$2">
+            <Icon3D name="safety-helmet" size={28} />
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Équipe
+            </Text>
+          </XStack>
+          <Button
+            variant="chip"
+            fullWidth={false}
             onPress={() => router.push('/pointage')}
-            accessibilityRole="button"
             accessibilityLabel="Aller au pointage"
           >
             Pointage
-          </Text>
+          </Button>
         </XStack>
 
         {/* Headcount summary — was entirely absent; the roster's own three
@@ -448,28 +476,17 @@ export default function TeamScreen() {
           </YStack>
         </XStack>
 
-        <XStack
-          alignItems="center"
-          gap="$2"
-          backgroundColor="$neutral0"
-          borderRadius="$control"
-          paddingHorizontal={12}
-          marginBottom="$4"
-          borderWidth={1}
-          borderColor="$neutral200"
-        >
-          <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-          <Input
-            flex={1}
-            unstyled
-            placeholder="Rechercher un travailleur ou un métier"
-            placeholderTextColor={color.neutral[500]}
+        {/* UI/UX pass — on SearchFilterBar for the same fixed-height
+            treatment as the other list screens (Chantiers, Matériaux,
+            Véhicules); previously a one-off `Input` in a hand-styled
+            XStack. */}
+        <YStack marginBottom="$4">
+          <SearchFilterBar
             value={query}
             onChangeText={setQuery}
-            paddingVertical={10}
-            fontSize={14.5}
+            placeholder="Rechercher un travailleur ou un métier"
           />
-        </XStack>
+        </YStack>
 
         {grouped.length === 0 ? (
           <Text color="$neutral500" fontSize={14} textAlign="center" marginTop="$6">
@@ -494,6 +511,13 @@ export default function TeamScreen() {
                   </Text>
                 </XStack>
 
+                {/* UI/UX pass — composes the shared `ListCard`, same as
+                    Chantiers/Avances/Matériaux/Véhicules. The status
+                    badge + conditional "Renvoyer" resend link is passed
+                    as `badge` (a free-form node) since it's a two-line
+                    trailing column, not a single badge — ListCard's
+                    `badge` slot accepts any ReactNode for exactly this
+                    case. */}
                 {group.rows.map((worker) => (
                   <SwipeableRow
                     key={worker.id}
@@ -504,15 +528,8 @@ export default function TeamScreen() {
                       onPress: () => confirmDelete(worker),
                     }}
                   >
-                    <XStack
-                      backgroundColor="$neutral0"
-                      borderRadius="$card"
-                      padding="$4"
-                      justifyContent="space-between"
-                      alignItems="center"
-                      onPress={() => router.push(`/worker/${worker.id}` as never)}
-                    >
-                      <XStack gap="$3" alignItems="center" flex={1}>
+                    <ListCard
+                      leading={
                         <Avatar
                           name={worker.full_name}
                           imageUrl={
@@ -521,38 +538,31 @@ export default function TeamScreen() {
                               : undefined
                           }
                         />
-                        <YStack gap="$1" flex={1}>
-                          <Text fontSize={15.5} fontWeight="600">
-                            {worker.full_name}
-                          </Text>
-                          <Text fontSize={13} color="$neutral500">
-                            {worker.trade ?? '—'}
-                          </Text>
-                        </YStack>
-                      </XStack>
-                      <YStack alignItems="flex-end" gap="$2">
-                        <StatusBadge variant={STATUS_BADGE[deriveStatus(worker)].variant}>
-                          {STATUS_BADGE[deriveStatus(worker)].label}
-                        </StatusBadge>
-                        {deriveStatus(worker) !== 'active' && (
-                          <XStack
-                            alignItems="center"
-                            gap={4}
-                            onPress={(e: any) => {
-                              e.stopPropagation?.();
-                              handleResend(worker);
-                            }}
-                            accessibilityRole="button"
-                            accessibilityLabel={`Renvoyer l'invitation à ${worker.full_name}`}
-                          >
-                            <PaperPlaneTiltIcon size={12} color={color.accent[600]} />
-                            <Text fontSize={12} color="$accent600" fontWeight="500">
+                      }
+                      title={worker.full_name}
+                      subtitle={worker.trade ?? '—'}
+                      onPress={() => router.push(`/worker/${worker.id}` as never)}
+                      badge={
+                        <YStack alignItems="flex-end" gap="$2">
+                          <StatusBadge variant={STATUS_BADGE[deriveStatus(worker)].variant}>
+                            {STATUS_BADGE[deriveStatus(worker)].label}
+                          </StatusBadge>
+                          {deriveStatus(worker) !== 'active' && (
+                            <Button
+                              variant="chip"
+                              fullWidth={false}
+                              icon={PaperPlaneTiltIcon}
+                              onPress={() => {
+                                handleResend(worker);
+                              }}
+                              accessibilityLabel={`Renvoyer l'invitation à ${worker.full_name}`}
+                            >
                               Renvoyer
-                            </Text>
-                          </XStack>
-                        )}
-                      </YStack>
-                    </XStack>
+                            </Button>
+                          )}
+                        </YStack>
+                      }
+                    />
                   </SwipeableRow>
                 ))}
               </YStack>
@@ -638,9 +648,9 @@ export default function TeamScreen() {
                 <Text fontSize={12.5} color="$neutral500">
                   Taux moyen pour {trade} : {suggestedDailyRate} TND/jour ·
                 </Text>
-                <Text fontSize={12.5} fontWeight="600" color="$accent600">
+                <Button variant="chip" fullWidth={false}>
                   Utiliser
-                </Text>
+                </Button>
               </XStack>
             )}
           </YStack>

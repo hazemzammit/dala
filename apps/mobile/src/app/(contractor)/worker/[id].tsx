@@ -12,9 +12,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   ArrowLeftIcon,
+  CalendarBlankIcon,
   CameraIcon,
   ChartLineUpIcon,
   CheckCircleIcon,
+  HandCoinsIcon,
   XCircleIcon,
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
@@ -26,7 +28,9 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -37,6 +41,7 @@ import { haptics } from '@/lib/haptics';
 import { processAvatarPhoto } from '@/lib/photoPipeline';
 import { getSignedUrl, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { tradeIcon } from '@/lib/tradeIcon';
 
 /**
  * apps/mobile/src/app/(contractor)/worker/[id].tsx
@@ -136,6 +141,12 @@ export default function WorkerDetailScreen() {
   const [worker, setWorker] = useState<Worker | null>(null);
   const [patterns, setPatterns] = useState<WorkerLatenessPattern[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — distinguishes "the fetch failed" from "this
+  // worker genuinely doesn't exist" (previously both showed
+  // "Travailleur introuvable"). Scoped to the three data-bearing
+  // queries (worker, advances, dispatch assignments) — the lateness
+  // RPC below is supplementary analytics, not gated on.
+  const [loadError, setLoadError] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
 
   // Phase 3 §1.5/§4.1 — resolved display photo, preferring the linked
@@ -176,6 +187,7 @@ export default function WorkerDetailScreen() {
   async function load() {
     if (!id) return;
     setLoading(true);
+    setLoadError(false);
 
     const org = await getActiveOrgId();
     setOrgId(org);
@@ -189,10 +201,10 @@ export default function WorkerDetailScreen() {
     }
 
     const [
-      { data: workerRow },
+      { data: workerRow, error: workerError },
       { data: latenessRows },
-      { data: advanceRows },
-      { data: assignmentRows },
+      { data: advanceRows, error: advancesError },
+      { data: assignmentRows, error: assignmentsError },
     ] = await Promise.all([
       supabase.from('active_workers').select('*').eq('id', id).eq('org_id', org).maybeSingle(),
       supabase.rpc('get_worker_lateness_pattern', { p_worker_id: id }),
@@ -215,6 +227,12 @@ export default function WorkerDetailScreen() {
         .order('assignment_date', { ascending: false })
         .limit(60),
     ]);
+
+    if (workerError || advancesError || assignmentsError) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
 
     setWorker(workerRow ?? null);
     setJobTitle(workerRow?.job_title ?? '');
@@ -247,15 +265,18 @@ export default function WorkerDetailScreen() {
     // (a worker who has accepted their invite and set their own photo via
     // worker settings), falling back to workers.photo_url (contractor-set,
     // works even pre-invite-acceptance since it needs no linked account).
+    //
+    // Audit fix 1d — this used to also run a direct
+    // `.from('profiles').select('avatar_url').eq('id', workerRow.user_id)`
+    // query, which is exactly the profiles_select_own (0005, `id =
+    // auth.uid()` only) gap and so never returned a row for anyone but
+    // the caller — meaning this priority fallback silently never applied
+    // for any worker other than yourself. get_profile_summary_for_org_member
+    // (called right below, and already org-scoped via security definer)
+    // already returns avatar_url in its jsonb response, so the broken
+    // direct query is just deleted rather than replaced.
     let resolvedPath: string | null = workerRow?.photo_url ?? null;
     if (workerRow?.user_id) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('avatar_url')
-        .eq('id', workerRow.user_id)
-        .maybeSingle();
-      if (profile?.avatar_url) resolvedPath = profile.avatar_url;
-
       // Phase 10 §4.3 — the exact "manager viewing a worker's profile"
       // case get_profile_summary_for_org_member exists for. Only called
       // when the worker actually has a linked account; a not-yet-accepted
@@ -263,7 +284,9 @@ export default function WorkerDetailScreen() {
       const { data: summary } = await supabase.rpc('get_profile_summary_for_org_member', {
         p_user_id: workerRow.user_id,
       });
-      setLinkedProfile((summary as ProfileSummary | null) ?? null);
+      const linkedSummary = (summary as ProfileSummary | null) ?? null;
+      setLinkedProfile(linkedSummary);
+      if (linkedSummary?.avatar_url) resolvedPath = linkedSummary.avatar_url;
     } else {
       setLinkedProfile(null);
     }
@@ -344,6 +367,14 @@ export default function WorkerDetailScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (!worker) {
     return (
       <YStack flex={1} backgroundColor="$neutral25" alignItems="center" justifyContent="center">
@@ -413,9 +444,12 @@ export default function WorkerDetailScreen() {
                 <Text fontFamily="$display" fontSize={20} fontWeight="600">
                   {worker.full_name}
                 </Text>
-                <Text fontSize={14} color="$neutral500">
-                  {worker.trade ?? 'Métier non renseigné'}
-                </Text>
+                <XStack alignItems="center" gap="$1.5">
+                  <Icon3D name={tradeIcon(worker.trade)} size={16} />
+                  <Text fontSize={14} color="$neutral500">
+                    {worker.trade ?? 'Métier non renseigné'}
+                  </Text>
+                </XStack>
                 {uploadingPhoto && (
                   <Text fontSize={12} color="$neutral500">
                     Envoi de la photo…
@@ -557,7 +591,8 @@ export default function WorkerDetailScreen() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
           {advances.length === 0 ? (
             <EmptyState
-              icon={ChartLineUpIcon}
+              icon={HandCoinsIcon}
+              illustration="mobile-payments"
               title="Aucune avance"
               description="Cet travailleur n'a aucune avance enregistrée."
             />
@@ -609,7 +644,8 @@ export default function WorkerDetailScreen() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
           {assignments.length === 0 ? (
             <EmptyState
-              icon={CameraIcon}
+              icon={CalendarBlankIcon}
+              illustration="team-assignment"
               title="Aucun dispatch"
               description="Cet travailleur n'a aucune affectation enregistrée."
             />

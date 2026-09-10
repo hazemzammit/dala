@@ -1,10 +1,7 @@
 'use client';
 
+import { Button, Card, FormField } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
-
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { FormField } from '@/components/ui/FormField';
 
 type TargetType = 'all_users' | 'owners_only' | 'by_plan' | 'by_trade_type' | 'inactive_30d';
 

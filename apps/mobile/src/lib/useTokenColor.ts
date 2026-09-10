@@ -35,6 +35,7 @@ export function useTokenColor() {
     neutral100: theme.neutral100.val as string,
     neutral200: theme.neutral200.val as string,
     neutral300: theme.neutral300.val as string,
+    neutral400: theme.neutral400.val as string,
     neutral500: theme.neutral500.val as string,
     neutral900: theme.neutral900.val as string,
     accent50: theme.accent50.val as string,
@@ -44,6 +45,9 @@ export function useTokenColor() {
     success: theme.success.val as string,
     warning: theme.warning.val as string,
     danger: theme.danger.val as string,
+    categoricalBlue: theme.categoricalBlue.val as string,
+    categoricalViolet: theme.categoricalViolet.val as string,
+    categoricalAmber: theme.categoricalAmber.val as string,
   };
 }
 

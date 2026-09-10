@@ -26,6 +26,11 @@ import { setupNotificationResponseListener } from '@/lib/pushNotifications';
  *     landing spot every other "tap this app-wide notification" flow in
  *     this app already uses.
  *   - 'safety'    -> /(contractor)/safety — same reasoning as materials.
+ *   - 'advance'   -> /(worker)/advance-request — audit fix 3a (migration
+ *     0087). The recipient is the worker whose advance request was just
+ *     approved/rejected; that screen already shows their live balance and
+ *     request status, same "land on the screen that already surfaces
+ *     this" reasoning as 'dispatch' above.
  * Uses expo-router's OWN file-based route table directly
  * (`router.push('/(worker)/home')` etc.) — per this phase's own Step 1
  * finding (read accept-invite.tsx and _layout.tsx before writing this):
@@ -51,6 +56,9 @@ export function NotificationRouter() {
           break;
         case 'safety':
           router.push('/(contractor)/safety');
+          break;
+        case 'advance':
+          router.push('/(worker)/advance-request');
           break;
         default:
           // Unknown/older payload shape — no-op rather than guessing a

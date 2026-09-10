@@ -23,9 +23,7 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:types": "supabase gen types typescript --local > packages/shared-types/src/database.generated.ts",
-    "prepare": "husky",
-    "android": "expo run:android",
-    "ios": "expo run:ios"
+    "prepare": "husky"
   },
   "devDependencies": {
     "@commitlint/cli": "^19.5.0",
@@ -47,15 +45,5 @@
       "prettier --write"
     ]
   },
-  "pnpm": {
-    "overrides": {
-      "@babel/runtime": "^7.29.7",
-      "expo-constants": "18.0.13"
-    }
-  },
-  "dependencies": {
-    "expo": "~54.0.35",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
-  }
+  "dependencies": {}
 }

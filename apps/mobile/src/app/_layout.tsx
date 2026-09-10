@@ -1,3 +1,4 @@
+import { Sora_600SemiBold, Sora_700Bold, useFonts } from '@expo-google-fonts/sora';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Stack } from 'expo-router';
 import { useEffect } from 'react';
@@ -146,9 +147,31 @@ function RootShell() {
  * exactly one subscription for the app's lifetime, tied to this root
  * component's mount, not to module import (which can re-run under fast
  * refresh in dev).
+ *
+ * IMPROVEMENT-PLAN — Sora font loading. `@dala/design-tokens` has declared
+ * Sora as the display typeface (screen titles, hero numbers, the
+ * wordmark) since early on, but nothing ever actually loaded the font
+ * files or registered them with Tamagui — every `fontFamily="$display"`
+ * reference silently fell back to the OS system font. This `useFonts()`
+ * gate loads the two weights this app actually uses (600/700 — see every
+ * `$display` call site's own `fontWeight` prop); `tamagui.config.ts`'s new
+ * `fonts.display` entry is the other half, mapping `$display` + each
+ * weight to these exact loaded keys (see that file's own comment for why
+ * both halves were missing, not just this one).
+ *
+ * No splash-screen gate exists anywhere in this app today (no
+ * `expo-splash-screen` dependency, no `preventAutoHideAsync`/`hideAsync`
+ * call) — returning `null` below means a very brief blank frame between
+ * the OS splash auto-hiding and fonts finishing loading, rather than a
+ * held splash transitioning straight to the loaded UI. Adding a proper
+ * splash-hold is a real, separate follow-up (new dependency + its own
+ * testing), not done silently as part of this fix.
  */
 export default function RootLayout() {
   useEffect(() => attachQueryClientAppStateListener(), []);
+
+  const [fontsLoaded] = useFonts({ Sora_600SemiBold, Sora_700Bold });
+  if (!fontsLoaded) return null;
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

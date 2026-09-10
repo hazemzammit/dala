@@ -34,6 +34,15 @@ import { useTokenColor } from '@/lib/useTokenColor';
 interface BarChartPoint {
   label: string;
   value: number;
+  /** Per-bar color override — takes precedence over `tintColor` and
+   * `emphasizeLast` for this bar. Round 2 audit (§1.10) — charts backed by
+   * a % metric with an established threshold (budget consumed, worker
+   * reliability) need each bar colored by what the data means, not one
+   * flat color for the whole chart. Pass this per-point (e.g. via
+   * `thresholdColor()` from `Progress.tsx`) when that applies; omit it for
+   * charts where a single flat/emphasize-last treatment is still correct
+   * (e.g. simple trend bars with no meaningful per-bar threshold). */
+  color?: string;
 }
 
 interface BarChartProps {
@@ -41,7 +50,9 @@ interface BarChartProps {
   height?: number;
   tintColor?: string;
   /** Highlights the last bar (current period) at full opacity, same
-   * "is-last" emphasis Sparkline already uses. */
+   * "is-last" emphasis Sparkline already uses. Ignored for any bar that
+   * has its own `color` set — per-bar color implies full opacity, since
+   * the color itself (not opacity) is what's carrying the meaning. */
   emphasizeLast?: boolean;
   valueFormatter?: (value: number) => string;
 }
@@ -74,8 +85,8 @@ export function BarChart({
                 width="72%"
                 height={barHeight}
                 borderRadius={7}
-                backgroundColor={resolvedTint}
-                opacity={emphasizeLast && !isLast ? 0.32 : 1}
+                backgroundColor={d.color ?? resolvedTint}
+                opacity={d.color ? 1 : emphasizeLast && !isLast ? 0.32 : 1}
               />
             </YStack>
           );

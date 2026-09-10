@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { loadFixtures } from './helpers/fixtures';
 import { loginAsAdmin } from './helpers/login';
@@ -15,7 +15,7 @@ import { loginAsAdmin } from './helpers/login';
  * not just through the admin CRUD surface.
  */
 test.describe('Feature flags — CRUD', () => {
-  async function cleanupFlag(supabase: ReturnType<typeof createClient>, key: string) {
+  async function cleanupFlag(supabase: SupabaseClient<any, any, any>, key: string) {
     await supabase.from('feature_flags').delete().eq('key', key);
   }
 

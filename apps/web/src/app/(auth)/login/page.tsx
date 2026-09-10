@@ -1,18 +1,62 @@
 'use client';
 
-
+import { Button, Card, FormField } from '@dala/ui-web';
 import { loginSchema } from '@dala/validation';
 import { useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { FormField } from '@/components/ui/FormField';
 import { createClient } from '@/lib/supabase/client';
 
 /**
  * Doc 04 §4.1.3 — Log In (web). TODO before shipping: surface the
  * 5-failed-attempts lockout messaging (Doc 01 §1.3.8) — not wired up yet.
+ *
+ * Org-creation-guide/web-parity follow-on — post-login completion
+ * redirect, mirroring apps/mobile/src/app/login.tsx exactly (same 5-field
+ * completion calc: logo, legal_form, workforce_size_bracket, service_area,
+ * matricule_fiscal; same org_checklist_dismissed_at gate organization-
+ * settings.tsx's/mobile's own checklist already uses — not a second,
+ * separate "have we nagged this person" flag). No `next`-param destination
+ * exists on this screen today (checked — unlike mobile, web has no
+ * existing redirect-elsewhere flow this could clobber), so this always
+ * applies when the active org is incomplete and not dismissed.
  */
+async function getIncompleteOrgRedirect(
+  supabase: ReturnType<typeof createClient>,
+): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) return null;
+
+  const { data: org } = await supabase
+    .from('organizations')
+    .select(
+      'logo_url, legal_form, workforce_size_bracket, service_area, matricule_fiscal, org_checklist_dismissed_at',
+    )
+    .eq('id', profile.active_org_id)
+    .maybeSingle();
+  if (!org || org.org_checklist_dismissed_at) return null;
+
+  const checks = [
+    !!org.logo_url,
+    !!org.legal_form,
+    !!org.workforce_size_bracket,
+    !!org.service_area?.trim(),
+    !!org.matricule_fiscal?.trim(),
+  ];
+  const completion = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  if (completion >= 100) return null;
+
+  return `/create-organization?org_id=${profile.active_org_id}`;
+}
+
 export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -39,7 +83,8 @@ export default function LoginPage() {
       return;
     }
 
-    window.location.href = '/dashboard';
+    const redirect = await getIncompleteOrgRedirect(supabase);
+    window.location.href = redirect ?? '/dashboard';
   }
 
   return (

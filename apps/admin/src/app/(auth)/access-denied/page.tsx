@@ -1,5 +1,4 @@
-import { Card } from '@/components/ui/Card';
-
+import { Card } from '@dala/ui-web';
 /**
  * Doc 04 §4.3.1 — rendered by middleware.ts via a rewrite when the request
  * IP isn't in ADMIN_IP_ALLOWLIST. Deliberately shows no login form.

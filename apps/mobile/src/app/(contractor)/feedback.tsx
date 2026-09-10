@@ -6,6 +6,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { currentBuild } from '@/lib/appVersion';
 import { haptics } from '@/lib/haptics';
@@ -30,6 +31,16 @@ import { supabase } from '@/lib/supabase';
  * either; a toast + navigate back is the whole interaction, matching the
  * plan's own "simple... affordance" framing for this lowest-priority
  * item.
+ *
+ * IMPROVEMENT-PLAN Part A — `chat-bubble` Icon3D added as a hero above the
+ * form. The guide describes this screen as having "zero icon/illustration"
+ * — not quite: the submit Button already carries a small inline
+ * `ChatCircleIcon`, which stays. What was actually missing was a larger
+ * visual identity for the screen itself. The guide's second icon here,
+ * `answer` ("submitted-confirmation state"), is NOT wired: per this
+ * file's own comment directly above, the confirmation is a native
+ * `Alert.alert` by deliberate design, not an in-app screen/state — adding
+ * one just to host an icon would be new scope, not icon wiring.
  */
 const CATEGORIES: { value: 'bug' | 'suggestion' | 'question' | 'other'; label: string }[] = [
   { value: 'bug', label: 'Bug' },
@@ -99,6 +110,10 @@ export default function FeedbackScreen() {
           Signaler un problème
         </Text>
       </XStack>
+
+      <YStack alignItems="center" marginBottom="$2">
+        <Icon3D name="chat-bubble" />
+      </YStack>
 
       <YStack gap="$1.5" marginBottom="$4">
         <Text fontSize={14} fontWeight="500">

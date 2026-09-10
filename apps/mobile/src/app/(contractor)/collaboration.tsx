@@ -1,16 +1,23 @@
 import { color } from '@dala/design-tokens';
-import type { Project, ProjectInvitation, ProjectMembership } from '@dala/shared-types';
+import type {
+  OrganizationLegalForm,
+  OrganizationVerificationStatus,
+  Project,
+  ProjectInvitation,
+  ProjectMembership,
+} from '@dala/shared-types';
 import { inviteOrgToProjectSchema } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import { HandshakeIcon, PlusIcon, UsersThreeIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { Linking, RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { OrgIdentityRow } from '@/components/organizations/OrgIdentityRow';
 import { FAB } from '@/components/shell/FAB';
-import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
@@ -19,6 +26,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { Toggle } from '@/components/ui/Toggle';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -48,22 +56,59 @@ import { supabase } from '@/lib/supabase';
  *     invited MY org onto as a trade — where MY org's own
  *     budget-rollup/report-branding flags on that membership live.
  */
+interface OrgSummary {
+  id: string;
+  name: string;
+  logoSignedUrl: string | null;
+  tradeType: string | null;
+  legalForm: OrganizationLegalForm | null;
+  verificationStatus: OrganizationVerificationStatus | null;
+  address: string | null;
+  serviceArea: string | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  websiteUrl: string | null;
+}
+
+function fallbackOrgSummary(id: string): OrgSummary {
+  return {
+    id,
+    name: '—',
+    logoSignedUrl: null,
+    tradeType: null,
+    legalForm: null,
+    verificationStatus: null,
+    address: null,
+    serviceArea: null,
+    facebookUrl: null,
+    instagramUrl: null,
+    websiteUrl: null,
+  };
+}
+
 interface LedProjectRow {
   project: Project;
-  members: (ProjectMembership & { org_name: string })[];
+  members: (ProjectMembership & { org: OrgSummary })[];
   pendingInvites: ProjectInvitation[];
 }
 
 interface TradeProjectRow {
   membership: ProjectMembership;
   project: { id?: string; name: string; client_name: string | null };
-  leadOrgName: string;
+  leadOrg: OrgSummary;
 }
 
 export default function CollaborationScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — captures the two independent root queries this
+  // load() builds on (led projects, trade memberships); the several
+  // dependent queries that follow (memberships/pending/org summaries)
+  // degrade to partial data on failure rather than a broken screen, so
+  // are left as-is per the scope of this pass.
+  const [loadError, setLoadError] = useState(false);
   const [ledProjects, setLedProjects] = useState<LedProjectRow[]>([]);
   const [tradeProjects, setTradeProjects] = useState<TradeProjectRow[]>([]);
 
@@ -75,6 +120,7 @@ export default function CollaborationScreen() {
   const [sentVia, setSentVia] = useState<'whatsapp' | 'sms' | 'email'>('whatsapp');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [detailOrg, setDetailOrg] = useState<OrgSummary | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -85,6 +131,7 @@ export default function CollaborationScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
@@ -93,20 +140,23 @@ export default function CollaborationScreen() {
     }
 
     // --- Projects I lead -----------------------------------------------
-    const { data: led } = await supabase
+    const { data: led, error: ledError } = await supabase
       .from('projects')
       .select('*')
       .eq('lead_org_id', org)
       .is('deleted_at', null)
       .order('name');
+    if (ledError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const ledIds = (led ?? []).map((p) => p.id);
 
     const { data: memberships } = ledIds.length
-      ? await supabase
-          .from('project_memberships')
-          .select('*, organizations(name)')
-          .in('project_id', ledIds)
+      ? await supabase.from('project_memberships').select('*').in('project_id', ledIds)
       : { data: [] as any[] };
 
     const { data: pending } = ledIds.length
@@ -117,21 +167,18 @@ export default function CollaborationScreen() {
           .eq('status', 'pending')
       : { data: [] as ProjectInvitation[] };
 
-    const ledRows: LedProjectRow[] = (led ?? []).map((project) => ({
-      project,
-      members: (memberships ?? [])
-        .filter((m: any) => m.project_id === project.id)
-        .map((m: any) => ({ ...m, org_name: m.organizations?.name ?? '—' })),
-      pendingInvites: (pending ?? []).filter((i) => i.project_id === project.id),
-    }));
-    setLedProjects(ledRows);
-
     // --- Projects I'm a trade participant on ----------------------------
-    const { data: tradeMemberships } = await supabase
+    const { data: tradeMemberships, error: tradeError } = await supabase
       .from('project_memberships')
       .select('*')
       .eq('org_id', org)
       .eq('role', 'trade');
+    if (tradeError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const tradeProjectIds = (tradeMemberships ?? []).map((m) => m.project_id);
     const { data: tradeProjectRows } = tradeProjectIds.length
@@ -141,14 +188,53 @@ export default function CollaborationScreen() {
           .in('id', tradeProjectIds)
       : { data: [] as any[] };
 
-    const leadOrgIds = [...new Set((tradeProjectRows ?? []).map((p: any) => p.lead_org_id))];
-    const { data: leadOrgs } = leadOrgIds.length
-      ? await supabase.from('organizations').select('id, name').in('id', leadOrgIds)
+    // Both lists need another org's identity — a fellow trade/client org
+    // for "Mes chantiers partagés," the lead org for "Chantiers auxquels
+    // je participe." Neither can be read via a plain client-side
+    // `organizations` select or embed: organizations_select_member (0005)
+    // only covers same-org membership, with no carve-out for "shares a
+    // project with me" — see migration 0078's own header for the full
+    // reasoning and the bug this replaces. One batched RPC call covers
+    // every org needed across both lists.
+    const neededOrgIds = [
+      ...new Set([
+        ...(memberships ?? []).map((m: any) => m.org_id as string),
+        ...(tradeProjectRows ?? []).map((p: any) => p.lead_org_id as string),
+      ]),
+    ];
+    const { data: orgSummaries } = neededOrgIds.length
+      ? await supabase.rpc('get_shared_project_org_summaries', { p_org_ids: neededOrgIds })
       : { data: [] as any[] };
+    const orgById = new Map<string, OrgSummary>(
+      (orgSummaries ?? []).map((o: any) => [
+        o.id,
+        {
+          id: o.id,
+          name: o.name,
+          logoSignedUrl: o.logo_signed_url,
+          tradeType: o.trade_type,
+          legalForm: o.legal_form,
+          verificationStatus: o.verification_status,
+          address: o.address,
+          serviceArea: o.service_area,
+          facebookUrl: o.facebook_url,
+          instagramUrl: o.instagram_url,
+          websiteUrl: o.website_url,
+        },
+      ]),
+    );
+
+    const ledRows: LedProjectRow[] = (led ?? []).map((project) => ({
+      project,
+      members: (memberships ?? [])
+        .filter((m: any) => m.project_id === project.id)
+        .map((m: any) => ({ ...m, org: orgById.get(m.org_id) ?? fallbackOrgSummary(m.org_id) })),
+      pendingInvites: (pending ?? []).filter((i) => i.project_id === project.id),
+    }));
+    setLedProjects(ledRows);
 
     const tradeRows: TradeProjectRow[] = (tradeMemberships ?? []).map((membership) => {
       const project = (tradeProjectRows ?? []).find((p: any) => p.id === membership.project_id);
-      const leadOrg = (leadOrgs ?? []).find((o: any) => o.id === project?.lead_org_id);
       return {
         membership,
         project: {
@@ -156,7 +242,9 @@ export default function CollaborationScreen() {
           name: project?.name ?? '—',
           client_name: project?.client_name ?? null,
         },
-        leadOrgName: leadOrg?.name ?? '—',
+        leadOrg: project?.lead_org_id
+          ? (orgById.get(project.lead_org_id) ?? fallbackOrgSummary(project.lead_org_id))
+          : fallbackOrgSummary(''),
       };
     });
     setTradeProjects(tradeRows);
@@ -266,6 +354,14 @@ export default function CollaborationScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (isEmpty) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
@@ -284,7 +380,7 @@ export default function CollaborationScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -324,10 +420,17 @@ export default function CollaborationScreen() {
                   .filter((m) => m.role === 'trade')
                   .map((m) => (
                     <XStack key={m.id} alignItems="center" gap="$3" justifyContent="space-between">
-                      <XStack alignItems="center" gap="$3" flex={1}>
-                        <Avatar name={m.org_name} size={28} />
-                        <Text fontSize={14.5}>{m.org_name}</Text>
-                      </XStack>
+                      <YStack flex={1}>
+                        <OrgIdentityRow
+                          name={m.org.name}
+                          logoSignedUrl={m.org.logoSignedUrl}
+                          tradeType={m.org.tradeType}
+                          legalForm={m.org.legalForm}
+                          verificationStatus={m.org.verificationStatus}
+                          size="compact"
+                          onPress={() => setDetailOrg(m.org)}
+                        />
+                      </YStack>
                       <StatusBadge variant={m.budget_rollup_opt_in ? 'success' : 'neutral'}>
                         {m.budget_rollup_opt_in ? 'Budget partagé' : 'Budget privé'}
                       </StatusBadge>
@@ -361,22 +464,28 @@ export default function CollaborationScreen() {
                 padding="$4"
                 gap="$3"
               >
-                <YStack>
+                <YStack gap="$1.5">
                   <Text fontSize={15.5} fontWeight="600">
                     {row.project.name}
                   </Text>
-                  <Text fontSize={13} color="$neutral500">
-                    Chantier dirigé par {row.leadOrgName}
-                  </Text>
+                  <OrgIdentityRow
+                    name={row.leadOrg.name}
+                    logoSignedUrl={row.leadOrg.logoSignedUrl}
+                    tradeType={row.leadOrg.tradeType}
+                    legalForm={row.leadOrg.legalForm}
+                    verificationStatus={row.leadOrg.verificationStatus}
+                    size="compact"
+                    onPress={() => setDetailOrg(row.leadOrg)}
+                  />
                 </YStack>
 
                 <XStack alignItems="center" justifyContent="space-between">
-                  <YStack flex={1} paddingRight="$2">
+                  <YStack flex={1} paddingEnd="$2">
                     <Text fontSize={14} fontWeight="500">
                       Partager mon budget consommé
                     </Text>
                     <Text fontSize={12.5} color="$neutral500">
-                      {row.leadOrgName} verra un % agrégé, jamais le détail de mes dépenses.
+                      {row.leadOrg.name} verra un % agrégé, jamais le détail de mes dépenses.
                     </Text>
                   </YStack>
                   <Toggle
@@ -389,12 +498,12 @@ export default function CollaborationScreen() {
                 </XStack>
 
                 <XStack alignItems="center" justifyContent="space-between">
-                  <YStack flex={1} paddingRight="$2">
+                  <YStack flex={1} paddingEnd="$2">
                     <Text fontSize={14} fontWeight="500">
                       Ne pas apparaître dans le rapport
                     </Text>
                     <Text fontSize={12.5} color="$neutral500">
-                      Masque ma ligne d&apos;attribution sur les rapports de {row.leadOrgName}.
+                      Masque ma ligne d&apos;attribution sur les rapports de {row.leadOrg.name}.
                     </Text>
                   </YStack>
                   <Toggle
@@ -410,6 +519,77 @@ export default function CollaborationScreen() {
           </YStack>
         )}
       </ScrollView>
+
+      {/* Org-creation-guide follow-on — read-only detail sheet, opened by
+          tapping either list's OrgIdentityRow. Everything shown here comes
+          from get_shared_project_org_summaries (migration 0078; socials
+          added in 0082) — the same safe, non-sensitive "public profile"
+          slice a client-facing view would show, never matricule_fiscal/
+          rc_number/RIB. */}
+      <Sheet visible={!!detailOrg} onClose={() => setDetailOrg(null)} title={detailOrg?.name ?? ''}>
+        {detailOrg && (
+          <YStack gap="$3" padding="$4">
+            <OrgIdentityRow
+              name={detailOrg.name}
+              logoSignedUrl={detailOrg.logoSignedUrl}
+              tradeType={detailOrg.tradeType}
+              legalForm={detailOrg.legalForm}
+              verificationStatus={detailOrg.verificationStatus}
+              size="default"
+            />
+            {detailOrg.serviceArea && (
+              <YStack>
+                <Text fontSize={12.5} color="$neutral500">
+                  Zone d&apos;intervention
+                </Text>
+                <Text fontSize={14.5}>{detailOrg.serviceArea}</Text>
+              </YStack>
+            )}
+            {detailOrg.address && (
+              <YStack>
+                <Text fontSize={12.5} color="$neutral500">
+                  Adresse
+                </Text>
+                <Text fontSize={14.5}>{detailOrg.address}</Text>
+              </YStack>
+            )}
+            {(detailOrg.facebookUrl || detailOrg.instagramUrl || detailOrg.websiteUrl) && (
+              <YStack gap="$1.5">
+                <Text fontSize={12.5} color="$neutral500">
+                  Liens
+                </Text>
+                {detailOrg.websiteUrl && (
+                  <Text
+                    fontSize={14.5}
+                    color="$accent600"
+                    onPress={() => Linking.openURL(detailOrg.websiteUrl!)}
+                  >
+                    Site web
+                  </Text>
+                )}
+                {detailOrg.facebookUrl && (
+                  <Text
+                    fontSize={14.5}
+                    color="$accent600"
+                    onPress={() => Linking.openURL(detailOrg.facebookUrl!)}
+                  >
+                    Facebook
+                  </Text>
+                )}
+                {detailOrg.instagramUrl && (
+                  <Text
+                    fontSize={14.5}
+                    color="$accent600"
+                    onPress={() => Linking.openURL(detailOrg.instagramUrl!)}
+                  >
+                    Instagram
+                  </Text>
+                )}
+              </YStack>
+            )}
+          </YStack>
+        )}
+      </Sheet>
 
       {ledProjects.length > 0 && (
         <FAB icon={PlusIcon} accessibilityLabel="Inviter une entreprise" onPress={openInvite} />

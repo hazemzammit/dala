@@ -79,3 +79,28 @@ export const createProjectExpenseSchema = z.object({
   expense_date: z.string().date().optional(),
 });
 export type CreateProjectExpenseInput = z.infer<typeof createProjectExpenseSchema>;
+
+/**
+ * FLAGGED FOR HAZEM — added during the web-integration pass (Phase 3,
+ * billing rebuild). No schema for create_invoice()'s params
+ * (migration 0074) existed anywhere in this package before. Matches the
+ * RPC's own signature exactly: project_id/period_from/period_to/due_date
+ * required, notes optional. No `status` or `amount` field — this schema
+ * intentionally can't express either, since the real `invoices` table
+ * doesn't have them (see this integration pass's other flags on that
+ * exact point, hit repeatedly across projects/, dashboard/, reports/, and
+ * client-portal/).
+ */
+export const createInvoiceSchema = z
+  .object({
+    project_id: z.string().uuid(),
+    period_from: z.string().date(),
+    period_to: z.string().date(),
+    due_date: z.string().date(),
+    notes: z.string().optional(),
+  })
+  .refine((data) => data.period_to >= data.period_from, {
+    message: 'La fin de période doit être après le début.',
+    path: ['period_to'],
+  });
+export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;

@@ -36,6 +36,32 @@ export const createDispatchAssignmentSchema = z.object({
 });
 export type CreateDispatchAssignmentInput = z.infer<typeof createDispatchAssignmentSchema>;
 
+/**
+ * FLAGGED FOR HAZEM — added during the web-integration pass (not present in
+ * this file before). The collaborator's web dispatch screen has a
+ * bulk-assign flow (N workers -> 1 vehicle/date in one action, since a
+ * vehicle carries a crew, not one worker at a time) that doesn't exist on
+ * mobile today. This schema mirrors createDispatchAssignmentSchema's fields
+ * (no new columns, no new RPC — still a plain `dispatch_assignments`
+ * insert per row) so it's additive rather than a redefinition, but the
+ * *feature* (bulk assign + the ignore_capacity/ignore_vehicle_maintenance/
+ * ignored_worker_ids override flags used to force past conflicts) is new
+ * product surface worth a conscious decision, not something to wave through
+ * silently because the web UI happened to already have it built.
+ */
+export const createDispatchAssignmentsSchema = z.object({
+  project_id: z.string().uuid(),
+  vehicle_id: z.string().uuid(),
+  worker_ids: z.array(z.string().uuid()).min(1),
+  assignment_date: z.string().date(),
+  departure_time: timeStringSchema.optional(),
+  confirmation_channel: z.enum(['app', 'whatsapp', 'call', 'sms']).optional(),
+  ignore_vehicle_maintenance: z.boolean().optional(),
+  ignore_capacity: z.boolean().optional(),
+  ignored_worker_ids: z.array(z.string().uuid()).optional(),
+});
+export type CreateDispatchAssignmentsInput = z.infer<typeof createDispatchAssignmentsSchema>;
+
 /** Doc 01 §1.9 — dispatch is the highest-contention screen; conflicts are
  *  never auto-merged, always surfaced as an explicit keep-mine/use-theirs choice. */
 export const updateDispatchAssignmentSchema = z.object({
@@ -75,8 +101,30 @@ export const createVehicleSchema = z.object({
   name: z.string().min(1),
   plate: plateSchema,
   capacity: z.number().int().positive().default(1),
+  status: z.enum(['available', 'in_use', 'maintenance']).default('available'),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
+
+/**
+ * FLAGGED FOR HAZEM — added during the web-integration pass; no
+ * updateVehicleSchema existed before (only createVehicleSchema). `version`
+ * is required and passed through to the update action for the optimistic-
+ * concurrency check migration 0046 exists for. Note: mobile's own vehicle
+ * edit screen (vehicles.tsx) does NOT currently check version on update
+ * either — so wiring this into web is holding it to a stricter standard
+ * than mobile meets today, not matching existing behavior. Worth deciding
+ * whether that's desired now or whether mobile should get the same check
+ * first so the two clients behave consistently.
+ */
+export const updateVehicleSchema = z.object({
+  id: z.string().uuid(),
+  name: z.string().min(1),
+  plate: plateSchema,
+  capacity: z.number().int().positive(),
+  status: z.enum(['available', 'in_use', 'maintenance']),
+  version: z.number().int().nonnegative(),
+});
+export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;
 
 /**
  * Phase 8 (improvement-plan §1.3 step 2) — vehicle_maintenance_log

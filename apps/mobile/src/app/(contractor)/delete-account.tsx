@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -23,6 +24,14 @@ import { supabase } from '@/lib/supabase';
  * exact word "SUPPRIMER" is the only safeguard — deliberately no 30-day
  * grace period the way Trash gives projects/workers (Doc 01 §1.16); the
  * spec frames this as an immediate, serious action, not an undo-able one.
+ *
+ * IMPROVEMENT-PLAN Part A — `trash-warning` Icon3D added as a large,
+ * centered hero above the warning card. There was already a small inline
+ * Phosphor `WarningIcon` inside that card (so this screen wasn't literally
+ * icon-free the way the guide's "currently blank" implies) — that stays
+ * as-is; it's doing a different, more specific job (flagging that one
+ * paragraph) than the large confirmation moment this action's severity
+ * calls for.
  */
 export default function DeleteAccountScreen() {
   const [confirmation, setConfirmation] = useState('');
@@ -80,6 +89,10 @@ export default function DeleteAccountScreen() {
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
         <YStack gap="$4">
+          <YStack alignItems="center">
+            <Icon3D name="trash-warning" />
+          </YStack>
+
           <XStack
             backgroundColor="$neutral0"
             borderRadius="$card"

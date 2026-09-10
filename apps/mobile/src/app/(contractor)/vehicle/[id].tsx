@@ -1,15 +1,17 @@
 import { color } from '@dala/design-tokens';
 import type { Vehicle, VehicleDocument, VehicleMaintenanceLogEntry } from '@dala/shared-types';
 import { createVehicleDocumentSchema, createVehicleMaintenanceLogSchema } from '@dala/validation';
+import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ArrowLeftIcon, CarIcon, PlusIcon, WrenchIcon } from 'phosphor-react-native';
+import { ArrowLeftIcon, IdentificationCardIcon, PlusIcon, WrenchIcon } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { NumericText } from '@/components/ui/NumericText';
 import { ProgressBar } from '@/components/ui/Progress';
@@ -21,7 +23,9 @@ import { useToast } from '@/components/ui/Toast';
 import { WorkerHubTabs } from '@/components/worker/WorkerHubTabs';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
+import { processPhoto } from '@/lib/photoPipeline';
 import { VEHICLE_DOCUMENT_TYPE_OPTIONS } from '@/lib/pickerOptions';
+import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -92,6 +96,10 @@ export default function VehicleDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — distinguishes "the fetch failed" from "this
+  // vehicle genuinely doesn't exist" (previously both showed "Véhicule
+  // introuvable").
+  const [loadError, setLoadError] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'maintenance' | 'documents'>('maintenance');
 
@@ -110,6 +118,20 @@ export default function VehicleDetailScreen() {
   const [expiresAt, setExpiresAt] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const [savingDocument, setSavingDocument] = useState(false);
+  // Gap fix (see this file's header) — document_url was schema-ready
+  // (0073) and schema-valid (createVehicleDocumentSchema already accepts
+  // it) but nothing ever collected it. Reuses the same
+  // ImagePicker+processPhoto+uploadOrgFile pipeline vehicles.tsx already
+  // uses for its own photo field — a photo/scan of the paper document,
+  // not a true PDF/file picker (expo-document-picker still isn't a
+  // dependency anywhere in this repo; see safety.tsx's own header for why
+  // that gap was left as a disclosed follow-up rather than a guessed new
+  // package for org_insurances.document_url — same reasoning applies
+  // here).
+  const [documentPhotoLocalUri, setDocumentPhotoLocalUri] = useState<string | null>(null);
+  const [processingDocumentPhoto, setProcessingDocumentPhoto] = useState(false);
+  const [uploadingDocument, setUploadingDocument] = useState(false);
+  const [documentUrlByPath, setDocumentUrlByPath] = useState<Record<string, string>>({});
 
   useFocusEffect(
     useCallback(() => {
@@ -121,6 +143,7 @@ export default function VehicleDetailScreen() {
   async function load() {
     if (!id) return;
     setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -131,7 +154,11 @@ export default function VehicleDetailScreen() {
       return;
     }
 
-    const [{ data: vehicleRow }, { data: logRows }, { data: documentRows }] = await Promise.all([
+    const [
+      { data: vehicleRow, error: vehicleError },
+      { data: logRows, error: logError },
+      { data: documentRows, error: documentsError },
+    ] = await Promise.all([
       supabase.from('vehicles').select('*').eq('id', id).eq('org_id', org).maybeSingle(),
       supabase
         .from('vehicle_maintenance_log')
@@ -144,10 +171,24 @@ export default function VehicleDetailScreen() {
         .eq('vehicle_id', id)
         .order('created_at', { ascending: false }),
     ]);
+    if (vehicleError || logError || documentsError) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
 
+    const documentsData = (documentRows as VehicleDocument[] | null) ?? [];
     setVehicle((vehicleRow as Vehicle | null) ?? null);
     setMaintenanceLog((logRows as VehicleMaintenanceLogEntry[] | null) ?? []);
-    setDocuments((documentRows as VehicleDocument[] | null) ?? []);
+    setDocuments(documentsData);
+    // document_url is a private org-files storage PATH (0073/storage.ts),
+    // never a fetchable URL — same signing step every other photo field
+    // in this app goes through (getSignedUrlMap, vehicles.tsx's own photo
+    // list). Never signed here before this fix because nothing ever set
+    // document_url in the first place.
+    setDocumentUrlByPath(
+      await getSignedUrlMap(documentsData.map((doc) => doc.document_url).filter(Boolean)),
+    );
     setLoading(false);
   }
 
@@ -216,7 +257,43 @@ export default function VehicleDetailScreen() {
     setDocumentType('');
     setExpiresAt(null);
     setDocumentError(null);
+    setDocumentPhotoLocalUri(null);
     setDocumentSheetOpen(true);
+  }
+
+  /** Same shape as vehicles.tsx's pickPhoto — camera or library, then
+   * through the shared processPhoto compression pipeline. Not a document
+   * picker (see the state declarations above for why): this captures a
+   * photo/scan of the physical document, which is what this form can
+   * honestly offer today. */
+  async function pickDocumentPhoto(source: 'camera' | 'library') {
+    const permission =
+      source === 'camera'
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      toast.error(
+        source === 'camera'
+          ? "Autorisez l'accès à l'appareil photo pour prendre une photo."
+          : "Autorisez l'accès à vos photos pour en choisir une.",
+      );
+      return;
+    }
+    const result =
+      source === 'camera'
+        ? await ImagePicker.launchCameraAsync({ quality: 1 })
+        : await ImagePicker.launchImageLibraryAsync({ quality: 1 });
+    if (result.canceled || !result.assets?.[0]) return;
+
+    setProcessingDocumentPhoto(true);
+    try {
+      const processed = await processPhoto(result.assets[0].uri);
+      setDocumentPhotoLocalUri(processed.uri);
+    } catch {
+      toast.error('Impossible de traiter la photo. Réessayez.');
+    } finally {
+      setProcessingDocumentPhoto(false);
+    }
   }
 
   async function handleSaveDocument() {
@@ -235,6 +312,22 @@ export default function VehicleDetailScreen() {
 
     setSavingDocument(true);
     try {
+      let documentUrlPath: string | null = null;
+      if (documentPhotoLocalUri) {
+        setUploadingDocument(true);
+        try {
+          documentUrlPath = await uploadOrgFile(
+            orgId,
+            'vehicle-documents',
+            documentPhotoLocalUri,
+            'jpg',
+            'image/jpeg',
+          );
+        } finally {
+          setUploadingDocument(false);
+        }
+      }
+
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -243,6 +336,7 @@ export default function VehicleDetailScreen() {
         vehicle_id: parsed.data.vehicle_id,
         document_type: parsed.data.document_type,
         expires_at: parsed.data.expires_at,
+        document_url: documentUrlPath,
         recorded_by: session?.user.id ?? null,
       });
       if (error) throw error;
@@ -262,6 +356,14 @@ export default function VehicleDetailScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
         <SkeletonList rows={4} />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }
@@ -316,6 +418,7 @@ export default function VehicleDetailScreen() {
           {maintenanceLog.length === 0 ? (
             <EmptyState
               icon={WrenchIcon}
+              illustration="maintenance"
               title="Aucun entretien enregistré"
               description="Ajoutez la première entrée de l'historique de maintenance de ce véhicule."
             />
@@ -359,7 +462,8 @@ export default function VehicleDetailScreen() {
         <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 100 }}>
           {currentDocuments.length === 0 ? (
             <EmptyState
-              icon={CarIcon}
+              icon={IdentificationCardIcon}
+              illustration="vault"
               title="Aucun document enregistré"
               description="Ajoutez la carte grise, le contrôle technique ou l'assurance de ce véhicule pour suivre leurs échéances."
             />
@@ -367,6 +471,9 @@ export default function VehicleDetailScreen() {
             <YStack gap="$2">
               {currentDocuments.map((doc) => {
                 const status = daysRemainingLabel(doc.expires_at);
+                const signedUrl = doc.document_url
+                  ? documentUrlByPath[doc.document_url]
+                  : undefined;
                 return (
                   <YStack
                     key={doc.id}
@@ -375,8 +482,17 @@ export default function VehicleDetailScreen() {
                     padding="$4"
                     gap="$2"
                   >
-                    <XStack justifyContent="space-between" alignItems="center">
-                      <Text fontSize={15} fontWeight="600">
+                    <XStack justifyContent="space-between" alignItems="center" gap="$3">
+                      {signedUrl && (
+                        <Image
+                          source={{ uri: signedUrl }}
+                          width={40}
+                          height={40}
+                          borderRadius="$2"
+                          backgroundColor="$neutral100"
+                        />
+                      )}
+                      <Text fontSize={15} fontWeight="600" flex={1}>
                         {doc.document_type}
                       </Text>
                       <StatusBadge variant={status.variant}>{status.label}</StatusBadge>
@@ -385,6 +501,11 @@ export default function VehicleDetailScreen() {
                       {`Expire le ${new Date(doc.expires_at).toLocaleDateString('fr-TN', { day: 'numeric', month: 'long', year: 'numeric' })}`}
                     </Text>
                     <ProgressBar value={expiryProgressPercent(doc.expires_at)} />
+                    {!doc.document_url && (
+                      <Text fontSize={11} color="$neutral400">
+                        Aucune photo du document jointe.
+                      </Text>
+                    )}
                   </YStack>
                 );
               })}
@@ -393,6 +514,16 @@ export default function VehicleDetailScreen() {
         </ScrollView>
       )}
 
+      {/* RTL EXCEPTION (confirmed, Phase 19D): right={20} here is
+          intentionally physical, matching the shared FAB component's own
+          convention (packages: apps/mobile/src/components/shell/FAB.tsx,
+          fabLayout.ts) used across every other screen with a floating
+          corner action. Converting just this one screen's button to a
+          logical `end` while every other FAB-style button in the app
+          stays physical would make the app LESS consistent in RTL, not
+          more — this is a case where matching an established, deliberate
+          convention wins over a screen-by-screen logical-property purity
+          rule. */}
       <YStack position="absolute" bottom={24} right={20}>
         <Button
           icon={PlusIcon}
@@ -444,8 +575,41 @@ export default function VehicleDetailScreen() {
             placeholder="Choisir ou préciser…"
           />
           <DatePicker label="Date d'expiration" value={expiresAt} onChange={setExpiresAt} />
+          {documentPhotoLocalUri ? (
+            <Image
+              source={{ uri: documentPhotoLocalUri }}
+              width="100%"
+              height={140}
+              borderRadius="$3"
+              backgroundColor="$neutral100"
+            />
+          ) : (
+            <Text fontSize={12} color="$neutral500">
+              Photo du document (optionnel)
+            </Text>
+          )}
+          <XStack gap="$2">
+            <Button
+              variant="secondary"
+              fullWidth={false}
+              flex={1}
+              onPress={() => pickDocumentPhoto('camera')}
+              loading={processingDocumentPhoto}
+            >
+              Prendre une photo
+            </Button>
+            <Button
+              variant="secondary"
+              fullWidth={false}
+              flex={1}
+              onPress={() => pickDocumentPhoto('library')}
+              loading={processingDocumentPhoto}
+            >
+              Choisir une photo
+            </Button>
+          </XStack>
           {documentError && <Text color="$danger">{documentError}</Text>}
-          <Button onPress={handleSaveDocument} loading={savingDocument}>
+          <Button onPress={handleSaveDocument} loading={savingDocument || uploadingDocument}>
             Enregistrer
           </Button>
         </YStack>

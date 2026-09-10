@@ -7,6 +7,8 @@ import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -135,6 +137,10 @@ export default function BillingScreen() {
   const toast = useToast();
   const [org, setOrg] = useState<OrgWithBilling | null>(null);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — distinguishes "the fetch failed" from "there's
+  // genuinely no billing record yet," which previously rendered
+  // identically (both fell into the EmptyState branch below).
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [storageBytes, setStorageBytes] = useState<number | null>(null);
   const [storageLoading, setStorageLoading] = useState(true);
@@ -150,6 +156,7 @@ export default function BillingScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setLoading(false);
@@ -158,7 +165,19 @@ export default function BillingScreen() {
       setCyclesLoading(false);
       return;
     }
-    const { data } = await supabase.from('organizations').select('*').eq('id', orgId).maybeSingle();
+    const { data, error } = await supabase
+      .from('organizations')
+      .select('*')
+      .eq('id', orgId)
+      .maybeSingle();
+    if (error) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      setStorageLoading(false);
+      setCyclesLoading(false);
+      return;
+    }
     setOrg(data as OrgWithBilling | null);
     setLoading(false);
     setRefreshing(false);
@@ -195,12 +214,20 @@ export default function BillingScreen() {
 
   if (loading) return null;
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (!org) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={ReceiptIcon}
-          illustration="receipt"
+          illustration="online-payments"
           title="Aucune facture pour le moment"
           description="Générez une facture à partir des jalons d'un chantier — elle apparaîtra ici, prête à envoyer par WhatsApp ou e-mail."
         />
@@ -236,6 +263,9 @@ export default function BillingScreen() {
             borderWidth={1}
             borderColor="rgba(192, 67, 61, 0.25)"
           >
+            <YStack alignItems="center" marginBottom="$1">
+              <Icon3D name="credit-card-warning" />
+            </YStack>
             <XStack alignItems="center" gap="$2">
               <WarningIcon size={18} color={color.status.danger} weight="fill" />
               <Text fontSize={15.5} fontWeight="600" color="$danger">
@@ -395,7 +425,7 @@ export default function BillingScreen() {
 
         <EmptyState
           icon={ReceiptIcon}
-          illustration="receipt"
+          illustration="online-payments"
           title="Aucune facture pour le moment"
           description="Générez une facture à partir des jalons d'un chantier — elle apparaîtra ici, prête à envoyer par WhatsApp ou e-mail."
         />

@@ -11,8 +11,12 @@ import { Text, XStack, YStack } from 'tamagui';
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
+import { CriticalMetricHero } from '@/components/ui/CriticalMetricHero';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { ProgressRing } from '@/components/ui/Progress';
 import { Sheet } from '@/components/ui/Sheet';
@@ -20,6 +24,7 @@ import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
 import { collapseOut, listReflow } from '@/lib/motion';
@@ -81,10 +86,19 @@ interface WorkerPayroll {
 }
 
 export default function AdvancesScreen() {
+  // Doc 05 §1.7l (Phase 19A) — fixes the confirmed live FAB-overlap defect:
+  // was a hardcoded `paddingBottom: 140`, less than the FAB's own
+  // footprint even before adding the device's safe-area inset. See
+  // fabLayout.ts for the formula.
+  const fabBottomInset = useFabBottomContentInset();
   const toast = useToast();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Phase 20 (§1.7a) — the four parallel payroll queries below had no
+  // error capture; a failed fetch previously rendered as "Aucun
+  // travailleur," indistinguishable from a genuinely empty team.
+  const [loadError, setLoadError] = useState(false);
   const [rows, setRows] = useState<WorkerPayroll[]>([]);
   const [pending, setPending] = useState<(Advance & { workerName: string })[]>([]);
   const [payingWorkerId, setPayingWorkerId] = useState<string | null>(null);
@@ -111,6 +125,7 @@ export default function AdvancesScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -119,23 +134,34 @@ export default function AdvancesScreen() {
       return;
     }
 
-    const [{ data: workers }, { data: attendance }, { data: advances }, { data: cycles }] =
-      await Promise.all([
-        supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
-        supabase
-          .from('attendance_effective')
-          .select('worker_id, status')
-          .eq('org_id', org)
-          .gte('record_date', cycleStart)
-          .lte('record_date', cycleEnd),
-        supabase
-          .from('advances')
-          .select('*')
-          .eq('org_id', org)
-          .gte('created_at', cycleStart)
-          .order('created_at', { ascending: false }),
-        supabase.from('salary_cycles').select('*').eq('org_id', org).eq('cycle_start', cycleStart),
-      ]);
+    const [
+      { data: workers, error: workersError },
+      { data: attendance, error: attendanceError },
+      { data: advances, error: advancesError },
+      { data: cycles, error: cyclesError },
+    ] = await Promise.all([
+      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase
+        .from('attendance_effective')
+        .select('worker_id, status')
+        .eq('org_id', org)
+        .gte('record_date', cycleStart)
+        .lte('record_date', cycleEnd),
+      supabase
+        .from('advances')
+        .select('*')
+        .eq('org_id', org)
+        .gte('created_at', cycleStart)
+        .order('created_at', { ascending: false }),
+      supabase.from('salary_cycles').select('*').eq('org_id', org).eq('cycle_start', cycleStart),
+    ]);
+
+    if (workersError || attendanceError || advancesError || cyclesError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const workerList = workers ?? [];
     const approvedByWorker: Record<string, number> = {};
@@ -253,7 +279,11 @@ export default function AdvancesScreen() {
     }
   }
 
-  async function handleMarkPaid(workerId: string, existingCycle: SalaryCycle | null) {
+  async function handleMarkPaidConfirmed(
+    workerId: string,
+    existingCycle: SalaryCycle | null,
+    reason: string,
+  ) {
     if (!orgId || payingWorkerId) return;
     setPayingWorkerId(workerId);
     const idempotencyKey = newIdempotencyKey();
@@ -276,9 +306,14 @@ export default function AdvancesScreen() {
         cycleId = data.id;
       }
 
+      // migration 0090 — p_reason is mandatory server-side (raises
+      // reason_required below 10 chars); the dialog's own `reasonOk` gate
+      // already prevents a call getting here with a too-short reason, this
+      // is defense in depth, not the only check.
       const { error: rpcError } = await supabase.rpc('mark_salary_cycle_paid', {
         p_salary_cycle_id: cycleId,
         p_idempotency_key: idempotencyKey,
+        p_reason: reason,
       });
       if (rpcError) throw rpcError;
       haptics.confirm();
@@ -289,10 +324,11 @@ export default function AdvancesScreen() {
       toast.error(e?.message ?? 'Impossible de marquer ce cycle comme payé.');
     } finally {
       setPayingWorkerId(null);
+      setPendingTier3Action(null);
     }
   }
 
-  async function handleApprove(advanceId: string) {
+  async function handleApproveConfirmed(advanceId: string, reason: string) {
     if (respondingId) return;
     setRespondingId(advanceId);
     const idempotencyKey = newIdempotencyKey();
@@ -300,6 +336,7 @@ export default function AdvancesScreen() {
       const { error } = await supabase.rpc('approve_advance', {
         p_advance_id: advanceId,
         p_idempotency_key: idempotencyKey,
+        p_reason: reason,
       });
       if (error) throw error;
       haptics.confirm();
@@ -310,19 +347,22 @@ export default function AdvancesScreen() {
       toast.error(e?.message ?? "Impossible d'approuver cette demande.");
     } finally {
       setRespondingId(null);
+      setPendingTier3Action(null);
     }
   }
 
-  async function handleReject(advanceId: string) {
+  async function handleRejectConfirmed(advanceId: string, reason: string) {
     if (respondingId) return;
     setRespondingId(advanceId);
     try {
       // Rejection isn't in Doc 01 §1.11.3's mandatory-idempotency list
-      // (only creation/approval are) — a plain update under the existing
-      // advances_write_owner_manager policy is sufficient here.
+      // (only creation/approval/mark-paid are) — a plain update under the
+      // existing advances_write_owner_manager policy is sufficient here,
+      // same pattern as materials.tsx's own reject flow (migration 0090
+      // adds manager_reason, RLS already covers writing it).
       const { error } = await supabase
         .from('advances')
-        .update({ status: 'rejected' })
+        .update({ status: 'rejected', manager_reason: reason })
         .eq('id', advanceId);
       if (error) throw error;
       toast.success('Demande refusée.');
@@ -332,8 +372,55 @@ export default function AdvancesScreen() {
       toast.error(e?.message ?? 'Impossible de refuser cette demande.');
     } finally {
       setRespondingId(null);
+      setPendingTier3Action(null);
     }
   }
+
+  // Doc 05 §1.7c (Tier 3, Phase 19C) — Approve/Reject/Mark-as-Paid all
+  // gate through this typed-confirmation step now instead of firing
+  // directly from the row button. See ConfirmTypingDialog.tsx's header
+  // for why this is mobile's Tier 3 pattern (typed worker name + a
+  // mandatory reason, the latter wired to a real column/RPC param in
+  // migration 0090 — Phase 19F closed the backend gap named here since
+  // 19C).
+  type Tier3Action =
+    | { kind: 'approve'; advanceId: string; workerName: string }
+    | { kind: 'reject'; advanceId: string; workerName: string }
+    | { kind: 'markPaid'; workerId: string; workerName: string; existingCycle: SalaryCycle | null };
+
+  const [pendingTier3Action, setPendingTier3Action] = useState<Tier3Action | null>(null);
+
+  function handleApprove(advanceId: string, workerName: string) {
+    setPendingTier3Action({ kind: 'approve', advanceId, workerName });
+  }
+
+  function handleReject(advanceId: string, workerName: string) {
+    setPendingTier3Action({ kind: 'reject', advanceId, workerName });
+  }
+
+  function handleMarkPaid(workerId: string, workerName: string, existingCycle: SalaryCycle | null) {
+    setPendingTier3Action({ kind: 'markPaid', workerId, workerName, existingCycle });
+  }
+
+  function handleConfirmTier3Action(reason: string) {
+    if (!pendingTier3Action) return;
+    if (pendingTier3Action.kind === 'approve') {
+      void handleApproveConfirmed(pendingTier3Action.advanceId, reason);
+    } else if (pendingTier3Action.kind === 'reject') {
+      void handleRejectConfirmed(pendingTier3Action.advanceId, reason);
+    } else {
+      void handleMarkPaidConfirmed(
+        pendingTier3Action.workerId,
+        pendingTier3Action.existingCycle,
+        reason,
+      );
+    }
+  }
+
+  const tier3Busy =
+    pendingTier3Action?.kind === 'markPaid'
+      ? payingWorkerId === pendingTier3Action.workerId
+      : respondingId === pendingTier3Action?.advanceId;
 
   const selectedWorkerNet = rows.find((r) => r.worker.id === selectedWorkerId)?.net ?? null;
   const previewAmount = useCustom ? Number(customAmount) || 0 : (chipAmount ?? 0);
@@ -344,6 +431,14 @@ export default function AdvancesScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonCardList cards={4} />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }
@@ -364,7 +459,7 @@ export default function AdvancesScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -380,88 +475,81 @@ export default function AdvancesScreen() {
           Cycle du {cycleStart} au {cycleEnd}
         </Text>
 
-        <XStack
-          backgroundColor="$neutral900"
-          borderRadius="$card"
-          padding="$4"
-          marginBottom="$4"
-          alignItems="center"
-          justifyContent="space-between"
-        >
-          <YStack>
-            <Text color="$neutral0" fontSize={13} opacity={0.75}>
-              Net restant à payer cette semaine
-            </Text>
-            <NumericText color="$neutral0" fontFamily="$display" fontSize={34} fontWeight="600">
-              {runningTotal.toFixed(0)} TND
-            </NumericText>
-          </YStack>
-
-          {/* Paid/total ring — the screen's first aggregate progress
-              indicator; each worker card below only ever showed its own
-              row-level "Payé"/"En attente" badge, with no crew-wide view.
-              Explicit tintColor: ProgressRing's default threshold color
-              assumes high-value-is-bad (budget consumed), the opposite
-              semantic of a paid ratio, where high is good. */}
-          <ProgressRing
-            value={paidPercent}
-            size={54}
-            strokeWidth={5}
-            trackColor="#2A2C32"
-            tintColor={color.accent[600]}
-          >
-            <Text color="$neutral0" fontSize={12} fontWeight="700">
-              {paidCount}/{rows.length}
-            </Text>
-          </ProgressRing>
-        </XStack>
+        {/* Phase 20 — extracted to the shared CriticalMetricHero (Doc 05
+            §1.7g); markup/values unchanged, this is the mechanism this
+            screen originated. */}
+        <CriticalMetricHero
+          label="Net restant à payer cette semaine"
+          value={runningTotal.toFixed(0)}
+          unit="TND"
+          supporting={
+            // Paid/total ring — the screen's first aggregate progress
+            // indicator; each worker card below only ever showed its own
+            // row-level "Payé"/"En attente" badge, with no crew-wide view.
+            // Explicit tintColor: ProgressRing's default threshold color
+            // assumes high-value-is-bad (budget consumed), the opposite
+            // semantic of a paid ratio, where high is good.
+            <ProgressRing
+              value={paidPercent}
+              size={54}
+              strokeWidth={5}
+              trackColor="#2A2C32"
+              tintColor={color.accent[600]}
+            >
+              <Text color="$neutral0" fontSize={12} fontWeight="700">
+                {paidCount}/{rows.length}
+              </Text>
+            </ProgressRing>
+          }
+        />
 
         {pending.length > 0 && (
           <YStack gap="$2" marginBottom="$4">
             <Text fontSize={13} fontWeight="600" color="$neutral500" textTransform="uppercase">
               Demandes en attente
             </Text>
+            {/* UI/UX pass — composes the shared `ListCard`, same as the
+                worker rows below, for visual consistency within this one
+                screen (previously a separately hand-rolled YStack). The
+                Refuser/Approuver pair moves onto `shareRow` (see
+                Button.tsx) so both buttons evenly fill the row's width
+                instead of hugging their own content — a small polish,
+                not a bug fix: `fullWidth={false}` here was already
+                correct (this pair was never the reported overflow bug),
+                just visually inconsistent with the primary card's button
+                row below it. */}
             {pending.map((request) => (
               <Animated.View key={request.id} exiting={collapseOut} layout={listReflow}>
-                <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$3" gap="$2">
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <XStack gap="$3" alignItems="center" flex={1}>
-                      <Avatar name={request.workerName} size={32} />
-                      <YStack flex={1}>
-                        <Text fontSize={15} fontWeight="600">
-                          {request.workerName}
-                        </Text>
-                        {request.reason && (
-                          <Text fontSize={12} color="$neutral500">
-                            {request.reason}
-                          </Text>
-                        )}
-                      </YStack>
-                    </XStack>
+                <ListCard
+                  leading={<Avatar name={request.workerName} size={32} />}
+                  title={request.workerName}
+                  subtitle={request.reason || undefined}
+                  badge={
                     <NumericText fontSize={16} fontWeight="600">
                       {Number(request.amount).toFixed(0)} TND
                     </NumericText>
-                  </XStack>
+                  }
+                >
                   <XStack gap="$2">
                     <Button
                       variant="secondary"
-                      fullWidth={false}
+                      shareRow
                       icon={XIcon}
                       loading={respondingId === request.id}
-                      onPress={() => handleReject(request.id)}
+                      onPress={() => handleReject(request.id, request.workerName)}
                     >
                       Refuser
                     </Button>
                     <Button
-                      fullWidth={false}
+                      shareRow
                       icon={CheckIcon}
                       loading={respondingId === request.id}
-                      onPress={() => handleApprove(request.id)}
+                      onPress={() => handleApprove(request.id, request.workerName)}
                     >
                       Approuver
                     </Button>
                   </XStack>
-                </YStack>
+                </ListCard>
               </Animated.View>
             ))}
           </YStack>
@@ -471,30 +559,26 @@ export default function AdvancesScreen() {
           {rows.map(({ worker, daysThisCycle, gross, advancesGiven, net, cycle }) => {
             const paid = cycle?.status === 'paid';
             return (
-              <YStack
+              // Component-architecture pass — now composes the shared
+              // `ListCard` primitive (components/ui/ListCard.tsx) instead
+              // of a hand-rolled YStack, same as the redesigned Chantiers
+              // cards. `leading` takes the worker's Avatar (a person, not
+              // a category, is the subject here — the icon-chip slot is
+              // for Chantiers' project-type case). Status is still
+              // legible from the card's overall shape via `muted`, not
+              // only the badge — never color alone.
+              <ListCard
                 key={worker.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$4"
-                gap="$3"
-              >
-                <XStack justifyContent="space-between" alignItems="center">
-                  <XStack gap="$3" alignItems="center" flex={1}>
-                    <Avatar name={worker.full_name} />
-                    <YStack flex={1}>
-                      <Text fontSize={15.5} fontWeight="600">
-                        {worker.full_name}
-                      </Text>
-                      <Text fontSize={12} color="$neutral500">
-                        {daysThisCycle}j cette semaine
-                      </Text>
-                    </YStack>
-                  </XStack>
+                leading={<Avatar name={worker.full_name} />}
+                title={worker.full_name}
+                subtitle={`${worker.trade ? `${worker.trade} · ` : ''}${daysThisCycle}j cette semaine`}
+                muted={paid}
+                badge={
                   <StatusBadge variant={paid ? 'success' : 'neutral'}>
                     {paid ? 'Payé' : 'En attente'}
                   </StatusBadge>
-                </XStack>
-
+                }
+              >
                 <XStack justifyContent="space-between">
                   <YStack>
                     <Text fontSize={12} color="$neutral500">
@@ -530,20 +614,32 @@ export default function AdvancesScreen() {
                   </YStack>
                 </XStack>
 
+                {/* Bug fix (UI/UX audit) — both actions were previously
+                    `fullWidth` (Button.tsx: width: '100%') in the same
+                    non-wrapping row, so each demanded the entire row's
+                    width and the second button overflowed the card/screen.
+                    `shareRow` (new Button variant, see Button.tsx's own
+                    comment) makes them share the row instead — "Marquer
+                    comme payé" also gets `variant="secondary"` once
+                    already paid, and its label shortens to a checkmark +
+                    "Payé", so a paid card reads as visually settled
+                    rather than presenting two equal-weight buttons. */}
                 <XStack gap="$2">
-                  <Button variant="secondary" fullWidth onPress={() => openAdvanceSheet(worker.id)}>
+                  <Button variant="secondary" shareRow onPress={() => openAdvanceSheet(worker.id)}>
                     Nouvelle avance
                   </Button>
                   <Button
-                    fullWidth
+                    shareRow
+                    variant={paid ? 'secondary' : 'primary'}
+                    icon={paid ? CheckIcon : undefined}
                     disabled={paid}
                     loading={payingWorkerId === worker.id}
-                    onPress={() => handleMarkPaid(worker.id, cycle)}
+                    onPress={() => handleMarkPaid(worker.id, worker.full_name, cycle)}
                   >
                     {paid ? 'Payé' : 'Marquer comme payé'}
                   </Button>
                 </XStack>
-              </YStack>
+              </ListCard>
             );
           })}
         </YStack>
@@ -661,6 +757,39 @@ export default function AdvancesScreen() {
           </Button>
         </YStack>
       </Sheet>
+
+      <ConfirmTypingDialog
+        visible={pendingTier3Action !== null}
+        title={
+          pendingTier3Action?.kind === 'approve'
+            ? 'Approuver la demande ?'
+            : pendingTier3Action?.kind === 'reject'
+              ? 'Refuser la demande ?'
+              : 'Marquer comme payé ?'
+        }
+        description={
+          pendingTier3Action?.kind === 'approve'
+            ? `Vous êtes sur le point d'approuver la demande d'avance de ${pendingTier3Action.workerName}.`
+            : pendingTier3Action?.kind === 'reject'
+              ? `Vous êtes sur le point de refuser la demande d'avance de ${pendingTier3Action.workerName}.`
+              : pendingTier3Action?.kind === 'markPaid'
+                ? `Vous êtes sur le point de marquer le cycle de paie de ${pendingTier3Action.workerName} comme payé.`
+                : undefined
+        }
+        confirmValue={pendingTier3Action?.workerName ?? ''}
+        confirmLabel={
+          pendingTier3Action?.kind === 'approve'
+            ? 'Approuver'
+            : pendingTier3Action?.kind === 'reject'
+              ? 'Refuser'
+              : 'Marquer comme payé'
+        }
+        destructive={pendingTier3Action?.kind === 'reject'}
+        loading={tier3Busy}
+        requireReason
+        onConfirm={handleConfirmTier3Action}
+        onCancel={() => setPendingTier3Action(null)}
+      />
     </YStack>
   );
 }

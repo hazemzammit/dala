@@ -1,11 +1,9 @@
 'use client';
 
+import { Button, Card, ErrorState, FormField } from '@dala/ui-web';
 import { WarningIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { FormField } from '@/components/ui/FormField';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface VersionRow {
@@ -126,6 +124,10 @@ export function AppVersionsForm() {
   const { data: session } = useAdminSession();
   const [versions, setVersions] = useState<VersionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — no res.ok check on this fetch; a failure would
+  // previously leave `versions` at [], rendering as a silently-empty
+  // grid with nothing shown at all.
+  const [loadError, setLoadError] = useState(false);
 
   // Support is read-only here — the route's own POST role gate is the
   // real enforcement; this only avoids showing an edit affordance that
@@ -134,10 +136,20 @@ export function AppVersionsForm() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/app-versions');
-    const data = await res.json();
-    setVersions(data.versions ?? []);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const res = await fetch('/api/admin/app-versions');
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setVersions(data.versions ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -149,6 +161,7 @@ export function AppVersionsForm() {
   }
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => void load()} />;
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

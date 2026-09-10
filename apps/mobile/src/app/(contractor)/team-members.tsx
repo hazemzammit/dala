@@ -10,6 +10,7 @@ import {
   ArrowLeftIcon,
   ArrowsClockwiseIcon,
   CopyIcon,
+  EnvelopeIcon,
   PlusIcon,
   UsersThreeIcon,
 } from 'phosphor-react-native';
@@ -21,6 +22,7 @@ import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
@@ -75,6 +77,10 @@ const ROLE_LABEL: Record<MemberRow['role'], string> = {
 export default function TeamMembersScreen() {
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — the members/invitations queries below had no
+  // error capture; a failed fetch previously rendered as "Aucun
+  // membre," indistinguishable from a genuinely empty roster.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [members, setMembers] = useState<MemberRow[]>([]);
   const [invitations, setInvitations] = useState<InvitationRow[]>([]);
@@ -108,6 +114,7 @@ export default function TeamMembersScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const activeOrgId = await getActiveOrgId();
     if (!activeOrgId) {
       setLoading(false);
@@ -124,20 +131,28 @@ export default function TeamMembersScreen() {
     } = await supabase.auth.getSession();
     setMyUserId(session?.user.id ?? null);
 
-    const { data: memberRows } = await supabase
+    const { data: memberRows, error: membersError } = await supabase
       .from('organization_members')
       .select('user_id, role, joined_at')
       .eq('org_id', activeOrgId);
-
-    const userIds = (memberRows ?? []).map((m) => m.user_id);
-    let nameById: Record<string, string> = {};
-    if (userIds.length > 0) {
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .in('id', userIds);
-      nameById = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]));
+    if (membersError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
     }
+
+    // Audit fix 1a — profiles_select_own (0005) is `id = auth.uid()` only,
+    // so a direct `.from('profiles')` batch query here silently returned
+    // zero rows for every member but the caller (no error, just masked by
+    // `?? 'Membre'` below). get_org_member_profiles (0085) is the
+    // org-scoped RPC built to close that gap.
+    const { data: profiles } = await supabase.rpc('get_org_member_profiles', {
+      p_org_id: activeOrgId,
+    });
+    const nameById: Record<string, string> = Object.fromEntries(
+      (profiles ?? []).map((p: { id: string; full_name?: string | null }) => [p.id, p.full_name]),
+    );
 
     const merged: MemberRow[] = (memberRows ?? [])
       .map((m) => ({ ...m, full_name: nameById[m.user_id] ?? 'Membre' }))
@@ -321,6 +336,14 @@ export default function TeamMembersScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <XStack paddingHorizontal="$4" paddingBottom="$3" alignItems="center" gap="$3">
@@ -339,7 +362,7 @@ export default function TeamMembersScreen() {
       {members.length === 0 ? (
         <EmptyState
           icon={UsersThreeIcon}
-          illustration="team"
+          illustration="user-account"
           title="Aucun membre"
           description="Les membres de votre organisation apparaîtront ici."
         />
@@ -497,6 +520,7 @@ export default function TeamMembersScreen() {
         <YStack gap="$3">
           <FormField
             label="E-mail"
+            icon={EnvelopeIcon}
             value={inviteEmail}
             onChangeText={setInviteEmail}
             keyboardType="email-address"

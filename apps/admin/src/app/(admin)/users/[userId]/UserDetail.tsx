@@ -1,10 +1,9 @@
 'use client';
 
+import { Card, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Card } from '@/components/ui/Card';
 import { NotesPanel } from '@/components/ui/NotesPanel';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface UserSummary {
   id: string;
@@ -23,13 +22,23 @@ interface UserSummary {
  */
 export function UserDetail({ userId }: { userId: string }) {
   const [user, setUser] = useState<UserSummary | null>(null);
+  // Phase 20 (§1.7a) — no res.ok check at all; a failure previously
+  // left the screen on "Chargement…" permanently, with no retry.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoadError(false);
     fetch(`/api/admin/users/${userId}`)
-      .then((res) => res.json())
-      .then((data) => setUser(data.user ?? null));
-  }, [userId]);
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed');
+        return res.json();
+      })
+      .then((data) => setUser(data.user ?? null))
+      .catch(() => setLoadError(true));
+  }, [userId, reloadKey]);
 
+  if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
   if (!user) return <p className="text-sm text-neutral-500">Chargement…</p>;
 
   return (

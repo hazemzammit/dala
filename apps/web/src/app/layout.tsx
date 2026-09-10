@@ -1,5 +1,11 @@
 import type { Metadata } from 'next';
+import { Sora } from 'next/font/google';
 import './globals.css';
+
+const sora = Sora({
+  subsets: ['latin'],
+  variable: '--font-display',
+});
 
 export const metadata: Metadata = {
   title: 'Dala — La base de tout chantier.',
@@ -13,7 +19,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // RTL_CONVENTION_NOTE) means the layout doesn't need a rewrite.
   return (
     <html lang="fr" dir="ltr">
-      <body className="bg-neutral-25 text-neutral-900 antialiased">{children}</body>
+      <body className={`${sora.variable} bg-neutral-25 text-neutral-900 antialiased`}>
+        {children}
+      </body>
     </html>
   );
 }

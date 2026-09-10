@@ -71,6 +71,14 @@ lifetime rather than the default session-only cookie — still capped at
 the same 30-day maximum from Doc 01 §1.3.9, this only affects whether
 the browser retains the session past a tab/browser close.
 
+**Web-parity follow-on**: the "same logic as §3.5" line above now literally
+includes §3.5's post-login org-completion redirect too — implemented on
+`apps/web/src/app/(auth)/login/page.tsx` with the identical 5-field
+completion calc and `org_checklist_dismissed_at` gate. Web has no
+existing `next`-param destination this could clobber (checked, unlike
+mobile's accept-org-invite return flow), so it always applies when
+incomplete and not dismissed.
+
 ---
 
 ## 4.1.4 Forgot Password / Reset Password (web)
@@ -113,7 +121,14 @@ chantier" on the Projects screen) replace mobile's FAB pattern.
 Doc 03 §3.22.2a, rendered as a dropdown from the sidebar's top org
 name/logo instead of a bottom sheet — same "Mes entreprises" / "Autres
 organisations" grouping, same create-org form, same `active_org_id`
-persistence (Doc 01 §1.3.13).
+persistence (Doc 01 §1.3.13). **Web-parity follow-on**: this cross-reference
+is now literally true, not just aspirational — `apps/web/src/app/
+create-organization/page.tsx` was rebuilt into the same 4-step wizard
+mobile ships (same schema, same 3 RPCs, same save-as-you-go persistence),
+adapted to plain Tailwind/HTML instead of Tamagui (no native image
+picker — a plain `<input type="file">` uploaded directly via the browser
+Supabase client, since no reusable Storage-upload helper existed anywhere
+on web before this).
 
 **Global search (top bar, Doc 01 §1.12)**: backed by Postgres native
 full-text search — no external search service. Typing in the top bar

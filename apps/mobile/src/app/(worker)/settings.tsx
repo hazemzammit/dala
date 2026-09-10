@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Avatar } from '@/components/ui/Avatar';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { getSignedUrl } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
@@ -70,9 +71,12 @@ export default function WorkerSettingsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" padding="$4">
-      <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-        Réglages
-      </Text>
+      <XStack alignItems="center" gap="$2" marginBottom="$4">
+        <Icon3D name="settings-gear" size={28} />
+        <Text fontFamily="$display" fontSize={23} fontWeight="600">
+          Réglages
+        </Text>
+      </XStack>
 
       <YStack backgroundColor="$neutral0" borderRadius="$card" overflow="hidden">
         <XStack

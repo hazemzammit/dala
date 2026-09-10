@@ -1,10 +1,8 @@
 'use client';
 
 import type { ScheduledJobRun } from '@dala/shared-types';
+import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
-
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface JobStatus {
   job_name: string;
@@ -16,13 +14,22 @@ interface JobStatus {
 export function ScheduledJobsTable() {
   const [jobs, setJobs] = useState<JobStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as this route's other tables.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setLoadError(false);
     fetch('/api/admin/services-health')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed');
+        return res.json();
+      })
       .then((data) => setJobs(data.jobs ?? []))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reloadKey]);
 
   const columns: DataTableColumn<JobStatus>[] = [
     {
@@ -79,6 +86,7 @@ export function ScheduledJobsTable() {
   ];
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return <DataTable columns={columns} rows={jobs} getRowId={(j) => j.job_name} />;
 }

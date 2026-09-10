@@ -45,6 +45,23 @@ max_enrolled_factors = 10
 enroll_enabled = true
 verify_enabled = true
 
+# Migration 0083 — enforces organizations.suspended_at/profiles.suspended_at
+# (0021), which had documented "login blocked while set" intent since day
+# one but no actual enforcement anywhere until this hook. Runs on every
+# JWT mint (initial sign-in AND token refresh) via
+# check_suspension_before_token_issuance (0083) — see that migration's own
+# header for the full reasoning, including the disclosed residual-window
+# tradeoff and why using this hook TYPE to reject (rather than its
+# primary documented purpose of modifying claims) is a confirmed-uncertain,
+# not live-tested, mechanism in this sandbox.
+#
+# Same "hosted vs. local CLI" gotcha as [auth.mfa] above: on HOSTED
+# Supabase this additionally requires enabling the hook via the dashboard
+# (Authentication → Hooks) — not expressible in this file alone.
+[auth.hook.custom_access_token]
+enabled = true
+uri = "pg-functions://postgres/public/check_suspension_before_token_issuance"
+
 [auth.external.apple]
 enabled = false
 [auth.external.google]

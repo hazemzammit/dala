@@ -1,9 +1,7 @@
 'use client';
 
+import { Card, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
-
-import { Card } from '@/components/ui/Card';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface HealthCheck {
   id: string;
@@ -43,15 +41,27 @@ const SERVICE_LABELS: Record<string, string> = {
 export function InfraStatusGrid() {
   const [services, setServices] = useState<ServiceStatus[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — this grid has no EmptyState/DataTable slot at
+  // all: a failed fetch previously rendered as a silently-empty grid,
+  // with no message of any kind, not even an ambiguous one.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setLoadError(false);
     fetch('/api/admin/services-health')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed');
+        return res.json();
+      })
       .then((data) => setServices(data.services ?? []))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reloadKey]);
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">

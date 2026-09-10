@@ -1,13 +1,22 @@
 import { color } from '@dala/design-tokens';
 import type { AttendanceStatus } from '@dala/shared-types';
 import { router, useFocusEffect } from 'expo-router';
-import { ArrowsClockwiseIcon, MapPinIcon, PackageIcon, SignOutIcon } from 'phosphor-react-native';
+import {
+  ArrowsClockwiseIcon,
+  ClockIcon,
+  MapPinIcon,
+  PackageIcon,
+  SignOutIcon,
+  TruckIcon,
+} from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Alert, RefreshControl } from 'react-native';
 import { AnimatePresence, ScrollView, Text, View, XStack, YStack } from 'tamagui';
 
 import { AvatarStack } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { MutationSyncIndicator } from '@/components/ui/MutationSyncIndicator';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonHero } from '@/components/ui/Skeleton';
 import { database } from '@/db';
@@ -18,6 +27,8 @@ import { runSync } from '@/db/sync';
 import { haptics } from '@/lib/haptics';
 import { cycleStartISO, todayISO } from '@/lib/salaryCycle';
 import { supabase } from '@/lib/supabase';
+import { useMutationSyncState } from '@/lib/useMutationSyncState';
+import { useReducedMotion } from '@/lib/useReducedMotion';
 
 /**
  * apps/mobile/src/app/(worker)/home.tsx
@@ -80,11 +91,30 @@ export default function WorkerHomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Phase 20 (§1.7a) — deliberately NOT folded into `MissionState`: that
+  // union drives the mission card's own rendering, and every existing
+  // value in it (`no_assignment`/`not_departed`/`departed`/`arrived`) is a
+  // legitimate, successfully-loaded state, not a failure. A fifth
+  // "error" value would force every switch on `state` throughout this
+  // file to grow a case that has nothing to do with mission logic. This
+  // gates the same way `loading` already does — a screen-level condition
+  // checked once, before the mission-state switch is ever reached —
+  // which is what keeps the fix from touching that state machine at
+  // all. Scoped to the worker lookup and the two queries that actually
+  // define `mission`/`state` (assignment, attendanceToday); the salary
+  // strip below is explicitly "never empty, computed independently"
+  // per this file's own header comment, so it's left to degrade to its
+  // existing zeros on a failure there rather than blocking the whole
+  // screen for a secondary section.
+  const [loadError, setLoadError] = useState(false);
   const [workerId, setWorkerId] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [mission, setMission] = useState<Mission | null>(null);
   const [state, setState] = useState<MissionState>('no_assignment');
   const [salary, setSalary] = useState<SalarySummary | null>(null);
+  // Doc 05 §1.4b (Phase 19A) — reduced motion replaces the crossfade
+  // below with an instant state replacement, no fade.
+  const reducedMotion = useReducedMotion();
 
   useFocusEffect(
     useCallback(() => {
@@ -95,17 +125,22 @@ export default function WorkerHomeScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: worker } = await supabase
+      const { data: worker, error: workerError } = await supabase
         .from('workers')
         .select('id, org_id, daily_rate')
         .eq('user_id', session.user.id)
         .single();
+      if (workerError) {
+        setLoadError(true);
+        return;
+      }
       if (!worker) return;
 
       setWorkerId(worker.id);
@@ -113,7 +148,7 @@ export default function WorkerHomeScreen() {
 
       const today = todayISO();
 
-      const { data: assignment } = await supabase
+      const { data: assignment, error: assignmentError } = await supabase
         .from('dispatch_assignments')
         .select(
           'id, version, actual_departure_time, departure_time, confirmation_channel, project_id, vehicle_id, projects(name, address), vehicles(name)',
@@ -122,12 +157,17 @@ export default function WorkerHomeScreen() {
         .eq('assignment_date', today)
         .maybeSingle();
 
-      const { data: attendanceToday } = await supabase
+      const { data: attendanceToday, error: attendanceError } = await supabase
         .from('attendance_records')
         .select('id')
         .eq('worker_id', worker.id)
         .eq('record_date', today)
         .maybeSingle();
+
+      if (assignmentError || attendanceError) {
+        setLoadError(true);
+        return;
+      }
 
       if (!assignment) {
         setMission(null);
@@ -251,9 +291,14 @@ export default function WorkerHomeScreen() {
     }
   }
 
+  // Doc 05 §1.7p (Phase 19C) — the check-in-specific half of the offline
+  // mutation state machine, distinct from OfflineBanner's global one.
+  const checkInSync = useMutationSyncState();
+
   async function handleArrived() {
     if (!mission || !workerId || !orgId || busy) return;
     setBusy(true);
+    checkInSync.startSaving();
     try {
       // Doc 01 §1.14.3 — this insert IS the attendance ledger write; a manual
       // Pointage entry for the same worker/day, if one already exists, is
@@ -274,10 +319,12 @@ export default function WorkerHomeScreen() {
           record.recordedBy = null;
         }),
       );
+      checkInSync.markSavedLocally();
       void runSync();
       haptics.confirm();
       setState('arrived');
     } catch {
+      checkInSync.reset();
       haptics.error();
       Alert.alert('Erreur', "Impossible d'enregistrer votre arrivée. Réessayez.");
     } finally {
@@ -293,6 +340,14 @@ export default function WorkerHomeScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonHero />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }
@@ -334,16 +389,29 @@ export default function WorkerHomeScreen() {
               {mission.projectName ?? 'Chantier'}
             </Text>
             {mission.address && <Text color="$neutral500">{mission.address}</Text>}
+            {/* Bug fix (UI/UX audit) — emoji (🚐/🕒) mixed into an
+                otherwise all-Phosphor icon app: inconsistent stroke
+                weight/size, and rendering varies by OS/device (Android
+                and iOS ship different emoji glyphs for the same
+                codepoint) — exactly what the audit's icon-consistency
+                principle warns against. Swapped for TruckIcon/ClockIcon,
+                matching the rest of the app's icon family. */}
             <XStack gap="$4" flexWrap="wrap">
               {mission.vehicleName && (
-                <Text fontSize={13} color="$neutral500">
-                  🚐 {mission.vehicleName}
-                </Text>
+                <XStack gap={4} alignItems="center">
+                  <TruckIcon size={13} color={color.neutral[500]} />
+                  <Text fontSize={13} color="$neutral500">
+                    {mission.vehicleName}
+                  </Text>
+                </XStack>
               )}
               {mission.departureTime && (
-                <Text fontSize={13} color="$neutral500">
-                  🕒 Départ {mission.departureTime}
-                </Text>
+                <XStack gap={4} alignItems="center">
+                  <ClockIcon size={13} color={color.neutral[500]} />
+                  <Text fontSize={13} color="$neutral500">
+                    Départ {mission.departureTime}
+                  </Text>
+                </XStack>
               )}
             </XStack>
             {mission.teammates.length > 0 && (
@@ -362,9 +430,9 @@ export default function WorkerHomeScreen() {
                   instead of a hard instant swap. */}
               <YStack
                 key={state}
-                animation="crossfade"
-                enterStyle={{ opacity: 0 }}
-                exitStyle={{ opacity: 0 }}
+                animation={reducedMotion ? null : 'crossfade'}
+                enterStyle={reducedMotion ? undefined : { opacity: 0 }}
+                exitStyle={reducedMotion ? undefined : { opacity: 0 }}
                 opacity={1}
               >
                 {state === 'not_departed' && (
@@ -378,9 +446,16 @@ export default function WorkerHomeScreen() {
                   </Button>
                 )}
                 {state === 'arrived' && (
-                  <Button icon={ArrowsClockwiseIcon} onPress={handleUpdate} loading={busy}>
-                    Envoyer un update
-                  </Button>
+                  <YStack gap="$2">
+                    <Button icon={ArrowsClockwiseIcon} onPress={handleUpdate} loading={busy}>
+                      Envoyer un update
+                    </Button>
+                    <MutationSyncIndicator
+                      state={checkInSync.state}
+                      actionLabel="arrivée"
+                      onRetry={() => void runSync()}
+                    />
+                  </YStack>
                 )}
               </YStack>
             </AnimatePresence>
@@ -405,7 +480,13 @@ export default function WorkerHomeScreen() {
           away, never empty even with no mission today. Sits above
           WorkerBottomNav, which is rendered by (worker)/_layout.tsx.
           NumericText applies tabular-nums so the four figures don't jitter
-          horizontally as their digit widths change day to day. */}
+          horizontally as their digit widths change day to day.
+          RTL EXCEPTION (confirmed, Phase 19D): left={0}/right={0} here are
+          intentionally physical, not marginStart/marginEnd material — this
+          is a full-width strip pinned to both screen edges equally, not a
+          direction-relative offset. There's no "start" or "end" edge to
+          convert to; both edges are meant literally, in either writing
+          direction. */}
       {salary && (
         <YStack
           position="absolute"

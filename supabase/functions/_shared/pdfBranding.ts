@@ -22,7 +22,19 @@
  * concepts (ReportTable, ChartSpec) through an invoice caller that has
  * neither, for no real reuse benefit. Only the LOGO/branding piece — which
  * is identical in both documents — is shared.
+ *
+ * IMPROVEMENT-PLAN — fallback branding: `embedLogo` used to return `null`
+ * whenever an org had no `logo_url`, leaving blank header space on any
+ * report or invoice sent to a real client before the org got around to
+ * uploading one. It now falls back to a generic Dala mark in that case —
+ * see fallbackLogo.ts. `fetchLogoAsset` itself is UNCHANGED (still
+ * genuinely returns null for "no logo configured" or "fetch failed" —
+ * that distinction is still useful to callers/logs); the fallback is
+ * applied one layer up, in `embedLogo`, so both PDF functions get it for
+ * free with no per-call-site change.
  */
+import { FALLBACK_LOGO_BASE64, FALLBACK_LOGO_CONTENT_TYPE } from './fallbackLogo.ts';
+
 export interface LogoAsset {
   bytes: Uint8Array;
   /** Lowercased Content-Type from the fetch response — format is detected
@@ -31,6 +43,20 @@ export interface LogoAsset {
    * to match). Unchanged from generate-report's original comment. */
   contentType: string;
 }
+
+function decodeBase64(b64: string): Uint8Array {
+  const binary = atob(b64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+// Decoded once per function instance, not per request — cheap either way
+// at this size, but no reason to redo it on every invocation.
+const FALLBACK_LOGO_ASSET: LogoAsset = {
+  bytes: decodeBase64(FALLBACK_LOGO_BASE64),
+  contentType: FALLBACK_LOGO_CONTENT_TYPE,
+};
 
 export const ORG_FILES_BUCKET = 'org-files';
 
@@ -67,11 +93,13 @@ export async function fetchLogoAsset(
 }
 
 /**
- * Embeds a fetched LogoAsset into a given pdf-lib PDFDocument and returns
- * it fit within a square bounding box, aspect ratio preserved. Non-fatal:
- * any embed failure (corrupt/unsupported image) returns null rather than
- * throwing — a broken logo must never break a document, same contract
- * fetchLogoAsset itself already has.
+ * Embeds a LogoAsset into a given pdf-lib PDFDocument and returns it fit
+ * within a square bounding box, aspect ratio preserved. Falls back to the
+ * generic Dala mark (FALLBACK_LOGO_ASSET) when `logoAsset` is null — i.e.
+ * the org has no `logo_url` set — so a document never ships with blank
+ * header space. Still non-fatal on a genuine embed failure (corrupt/
+ * unsupported image bytes): returns null rather than throwing, same
+ * contract as before — a broken logo must never break a document.
  */
 export async function embedLogo(
   // deno-lint-ignore no-explicit-any
@@ -80,13 +108,13 @@ export async function embedLogo(
   boxSize: number,
   // deno-lint-ignore no-explicit-any
 ): Promise<{ image: any; width: number; height: number } | null> {
-  if (!logoAsset) return null;
+  const asset = logoAsset ?? FALLBACK_LOGO_ASSET;
   try {
-    const isJpeg = logoAsset.contentType.includes('jpeg') || logoAsset.contentType.includes('jpg');
+    const isJpeg = asset.contentType.includes('jpeg') || asset.contentType.includes('jpg');
     // deno-lint-ignore no-explicit-any
     const embedded: any = isJpeg
-      ? await doc.embedJpg(logoAsset.bytes)
-      : await doc.embedPng(logoAsset.bytes);
+      ? await doc.embedJpg(asset.bytes)
+      : await doc.embedPng(asset.bytes);
     const factor = boxSize / Math.max(embedded.width, embedded.height);
     const scaled = embedded.scale(factor);
     return { image: embedded, width: scaled.width, height: scaled.height };

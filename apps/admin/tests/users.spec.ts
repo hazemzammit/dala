@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import { loadFixtures } from './helpers/fixtures';
 import { loginAsAdmin } from './helpers/login';
@@ -91,7 +91,10 @@ test.describe('Users — pagination', () => {
       const page2Res = await page.request.get('/api/admin/users?page=2&pageSize=1');
       const page2Body = await page2Res.json();
       expect(page2Body.users).toHaveLength(1);
-      expect(page2Body.users[0].id).not.toBe(page1Body.users[0].id);
+      const page1User = page1Body.users[0];
+      const page2User = page2Body.users[0];
+      if (!page1User || !page2User) throw new Error('Expected one user on each page');
+      expect(page2User.id).not.toBe(page1User.id);
     }
   });
 });
@@ -156,7 +159,7 @@ test.describe('Users — search', () => {
  * on auth.users, not profiles).
  */
 test.describe('Users — bulk actions', () => {
-  async function getOrgOwnerId(supabase: ReturnType<typeof createClient>, email: string) {
+  async function getOrgOwnerId(supabase: SupabaseClient<any, any, any>, email: string) {
     const { data } = await supabase.auth.admin.listUsers({ perPage: 1000 });
     const match = data.users.find((u) => u.email === email);
     if (!match) throw new Error(`No auth.users row found for fixture email ${email}`);

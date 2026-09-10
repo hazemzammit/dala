@@ -248,7 +248,7 @@ export default function ReportsScreen() {
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={ChartBarIcon}
-          illustration="mobile-analytics"
+          illustration="document-ready"
           title="Aucun rapport disponible"
           description="Rejoignez ou créez une organisation pour générer des rapports."
         />

@@ -1,4 +1,5 @@
-import { StatCard } from '@/components/ui/StatCard';
+import { StatCard } from '@dala/ui-web';
+
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 /**

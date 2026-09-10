@@ -7,13 +7,16 @@ import {
   ArrowLeftIcon,
   CameraIcon,
   CoinsIcon,
+  DotsThreeIcon,
+  GasPumpIcon,
+  HandshakeIcon,
   ImageIcon,
-  MagnifyingGlassIcon,
+  PackageIcon,
   PlusIcon,
   TrashIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, TextInput } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
@@ -21,8 +24,11 @@ import { Button } from '@/components/ui/Button';
 import { DonutChart } from '@/components/ui/Chart';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -31,10 +37,12 @@ import { useToast } from '@/components/ui/Toast';
 import { useUndoToast, UndoToast } from '@/components/ui/UndoToast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
 import { uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/expenses.tsx
@@ -103,16 +111,42 @@ const CATEGORY_LABEL: Record<ExpenseCategory, string> = {
   autre: 'Autre',
 };
 
+/**
+ * UI/UX pass — expense cards had zero iconography despite `category`
+ * already having a real, deliberate accent mapping for the donut chart
+ * above (`CATEGORY_CHART_COLOR`). Icon per category, tinted with the
+ * `categorical` tokens (design-tokens' own comment on why 3 hues, not 4+
+ * — `autre` deliberately stays neutral rather than inventing a 4th hue).
+ */
+const CATEGORY_ICON: Record<ExpenseCategory, typeof PackageIcon> = {
+  materiaux: PackageIcon,
+  carburant: GasPumpIcon,
+  sous_traitance: HandshakeIcon,
+  autre: DotsThreeIcon,
+};
+
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
 export default function ExpensesScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
+  const categoryTint: Record<ExpenseCategory, string> = {
+    materiaux: tc.categoricalAmber,
+    carburant: tc.categoricalBlue,
+    sous_traitance: tc.categoricalViolet,
+    autre: tc.neutral500,
+  };
   const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
   const [canWrite, setCanWrite] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the root `projects` query's error wasn't captured;
+  // a failed fetch previously rendered as "Aucun chantier," indistinguishable
+  // from a genuinely-empty org.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -157,6 +191,7 @@ export default function ExpensesScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -167,12 +202,18 @@ export default function ExpensesScreen() {
     const role = await getMyOrgRole(org);
     setCanWrite(role === 'owner' || role === 'manager');
 
-    const { data: projectRows } = await supabase
+    const { data: projectRows, error: projectsError } = await supabase
       .from('projects')
       .select('*')
       .eq('lead_org_id', org)
       .is('deleted_at', null)
       .order('name');
+    if (projectsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     const list = projectRows ?? [];
     setProjects(list);
     if (list.length > 0) {
@@ -411,6 +452,14 @@ export default function ExpensesScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (projects.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
@@ -427,7 +476,7 @@ export default function ExpensesScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 140 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -551,28 +600,16 @@ export default function ExpensesScreen() {
           />
         ) : (
           <YStack gap="$2">
-            {/* Phase 11 §9.1 — search field, above the expense list. */}
-            <XStack
-              backgroundColor="$neutral0"
-              borderRadius="$control"
-              paddingHorizontal={12}
-              paddingVertical={9}
-              alignItems="center"
-              gap="$2"
-              borderWidth={1}
-              borderColor="$neutral300"
-              marginBottom="$1"
-            >
-              <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-              <TextInput
-                placeholder="Rechercher une dépense"
-                placeholderTextColor={color.neutral[500]}
+            {/* Phase 11 §9.1 — search field, above the expense list.
+                UI/UX pass: now on SearchFilterBar for the same
+                fixed-height treatment as the other list screens. */}
+            <YStack marginBottom="$1">
+              <SearchFilterBar
                 value={search}
                 onChangeText={setSearch}
-                style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-                accessibilityLabel="Rechercher dans les dépenses"
+                placeholder="Rechercher une dépense"
               />
-            </XStack>
+            </YStack>
             {filteredExpenses.length === 0 ? (
               <Text color="$neutral500" fontSize={14} textAlign="center" marginTop="$4">
                 Aucune dépense ne correspond à cette recherche.
@@ -592,26 +629,21 @@ export default function ExpensesScreen() {
                       : undefined
                   }
                 >
-                  <XStack
-                    backgroundColor="$neutral0"
-                    borderRadius="$card"
-                    padding="$3"
-                    justifyContent="space-between"
-                    alignItems="center"
-                  >
-                    <YStack flex={1}>
-                      <Text fontSize={15} fontWeight="600">
-                        {CATEGORY_LABEL[e.category]}
-                      </Text>
-                      <Text fontSize={12} color="$neutral500">
-                        {e.expense_date}
-                        {e.description ? ` · ${e.description}` : ''}
-                      </Text>
-                    </YStack>
-                    <NumericText fontSize={15.5} fontWeight="600">
-                      {Number(e.amount).toFixed(0)} TND
-                    </NumericText>
-                  </XStack>
+                  {/* UI/UX pass — composes the shared `ListCard`, same as
+                      Chantiers/Avances/Matériaux/Véhicules/Équipe. Icon
+                      chip now carries the category (see CATEGORY_ICON
+                      above) instead of a plain text row. */}
+                  <ListCard
+                    icon={CATEGORY_ICON[e.category]}
+                    iconTint={categoryTint[e.category]}
+                    title={CATEGORY_LABEL[e.category]}
+                    subtitle={`${e.expense_date}${e.description ? ` · ${e.description}` : ''}`}
+                    badge={
+                      <NumericText fontSize={15.5} fontWeight="600">
+                        {Number(e.amount).toFixed(0)} TND
+                      </NumericText>
+                    }
+                  />
                 </SwipeableRow>
               ))
             )}
@@ -635,6 +667,7 @@ export default function ExpensesScreen() {
           <YStack gap="$1.5">
             <FormField
               label="Montant (TND)"
+              icon={CoinsIcon}
               value={amount}
               onChangeText={setAmount}
               keyboardType="numeric"
@@ -654,9 +687,9 @@ export default function ExpensesScreen() {
                   Dernier montant pour {CATEGORY_LABEL[category]} : {suggestedAmount.toFixed(0)} TND
                   ·
                 </Text>
-                <Text fontSize={12.5} fontWeight="600" color="$accent600">
+                <Button variant="chip" fullWidth={false}>
                   Utiliser
-                </Text>
+                </Button>
               </XStack>
             )}
           </YStack>
@@ -692,6 +725,7 @@ export default function ExpensesScreen() {
               <XStack gap="$2">
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={CameraIcon}
                   loading={processingReceipt}
                   onPress={() => void pickReceipt('camera')}
@@ -700,6 +734,7 @@ export default function ExpensesScreen() {
                 </Button>
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={ImageIcon}
                   loading={processingReceipt}
                   onPress={() => void pickReceipt('library')}

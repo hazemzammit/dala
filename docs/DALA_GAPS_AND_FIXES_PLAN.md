@@ -131,9 +131,32 @@ These are the patterns already established and working in the codebase. Every fi
 
 **Fix:** confirm which are live vs. leftover naming churn from earlier phases; consolidate or, if all are intentional, add a clear in-app distinction (title/subtitle) so it's not ambiguous to future work either.
 
----
+### 1.12 Advances Tier-3 confirmations have no reason-persistence path — **RESOLVED (Phase 19F)**
 
-## 2. New modules
+**Was:** confirmed during the Doc 05 design-system implementation (Phases 19C–19E). Advances' Approve/Reject/Mark-as-Paid actions (mobile and web) gated through a typed-confirmation dialog (Doc 05 §1.7c, Tier 3) with no server-side place for the reason half of that dialog to go — `approve_advance`/`mark_salary_cycle_paid` took no reason parameter, and reject was a raw `.update({status: 'rejected'})` touching no reason column.
+
+**Resolution (migration `0090_advances_manager_reason_persistence.sql`):**
+
+- Added `advances.manager_reason` and `salary_cycles.paid_reason` — new, nullable, additive columns. Deliberately NOT `advances.reason`, which stays the worker's own stated reason for requesting the advance, set at creation.
+- `approve_advance` and `mark_salary_cycle_paid` both gained a `p_reason` parameter, validated server-side (raises `reason_required` below 10 characters) — the old 2-arg overloads were dropped and replaced, since every caller in this codebase (mobile `advances.tsx`, web `actions.ts`) was updated in the same phase.
+- Reject stays a plain `.update()` under existing RLS (not a new RPC) — consistent with `materials.tsx`'s own reject pattern, and correct per Doc 01 §1.11.3 (rejection isn't in the mandatory-idempotency list). Now writes `manager_reason`, validated client-side via a new `rejectAdvanceSchema`/`managerReasonSchema` (10-char minimum, matching the RPC-side bar).
+- Wired into both `ConfirmTypingDialog`s: mobile's (`apps/mobile/src/components/ui/ConfirmTypingDialog.tsx`) did NOT already support a `requireReason` mode — that part of this doc's original **Fix** text was inaccurate; only the web/admin shared one (`packages/ui-web/src/ConfirmTypingDialog.tsx`) did. Mobile's now has a matching `requireReason` prop, same 10-char contract.
+- Web's bulk-approve flow (a plain `ConfirmDialog`, not `ConfirmTypingDialog`) also needed a reason once `approveAdvance` made it mandatory — `ConfirmDialog` gained optional `children`/`confirmDisabled` props (default off, every other call site unaffected) to carry a reason field for the batch.
+- Audited `materials.tsx`'s own reject flow per this phase's instructions: it was already correctly wired to a real `rejection_reason` column — **not** a second instance of this gap.
+- Strictly additive to existing data: every advance/salary-cycle row from before this migration simply has `manager_reason`/`paid_reason` = null, same as any other later-added optional column.
+
+### 1.13 Dark mode — token layer completed, toggle still deferred (Phase 19F) — **Quick (tokens) / Big (toggle)**
+
+**Status:** partially addressed. Phase 17's audit found `packages/design-tokens` already had a fully mirrored dark palette for the core colors; 19F confirmed that's still true and closed the one real gap it had — `neutral-400` and `warning-tint` (added in 19A/19B, after the original dark-palette pass) had no dark equivalents, and `surfaceHierarchy`/`financial` (also 19A/19B) weren't theme-aware at all. All four now have contrast-audited dark values/twins (`color.dark.neutral400`, `color.dark.warningTint`, `surfaceHierarchyDark`, `financialDark` in `packages/design-tokens/src/index.ts`), and mobile's `tamagui.config.ts` dark theme now wires in the two previously-missing keys.
+
+**What's still missing, and why it's deliberately not built in this pass:**
+
+- Mobile has a real, swappable Tamagui `themes: { light, dark }` config already (from the 19A pass), but `apps/mobile/src/app/_layout.tsx` still pins `defaultTheme="light"` — deliberately, per that file's own comment: ~16 component files (icons, `Chart.tsx`/`Sparkline.tsx`'s SVG elements) read color values directly from `@dala/design-tokens` in JS rather than through a Tamagui token, and would stay light-mode-colored under a dark theme, producing a "half-themed screen." Flipping the toggle before that's fixed would reintroduce the exact bug the pinning comment exists to prevent.
+- Web and admin's shared Tailwind preset (`packages/config/tailwind-preset.js`) has **no dark-mode wiring at all** — no `darkMode` config, no `dark:` variants anywhere. Building this from scratch across two Next.js apps is a materially bigger effort than mobile's "flip a pinned default" gap.
+
+Given the disclosed light-mode-only status was already a design-doc-level decision ("nice-to-have, not required for MVP"), and completing an actual cross-platform toggle here would mean (a) threading `useTheme()` through ~16 mobile files and (b) building Tailwind dark-mode wiring from zero on web/admin — both real, separate efforts — 19F's judgment call was to finish the token layer only and leave the toggle mechanism itself deferred, same status as before but now on a complete token foundation instead of a partial one.
+
+---
 
 Ordered by how directly each builds on what already exists.
 

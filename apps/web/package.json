@@ -13,7 +13,9 @@
   "dependencies": {
     "@dala/design-tokens": "workspace:*",
     "@dala/shared-types": "workspace:*",
+    "@dala/ui-web": "workspace:*",
     "@dala/validation": "workspace:*",
+    "browser-image-compression": "^2.0.2",
     "@supabase/supabase-js": "^2.45.4",
     "@supabase/ssr": "^0.5.1",
     "@tanstack/react-query": "^5.59.0",

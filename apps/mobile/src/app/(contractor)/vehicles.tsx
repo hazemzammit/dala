@@ -7,15 +7,16 @@ import { router, useFocusEffect } from 'expo-router';
 import {
   CameraIcon,
   CarIcon,
+  IdentificationCardIcon,
   ImageIcon,
-  MagnifyingGlassIcon,
   PlusIcon,
   TrashIcon,
+  UsersIcon,
   WrenchIcon,
 } from 'phosphor-react-native';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, TextInput } from 'react-native';
-import { Image, Text, XStack, YStack } from 'tamagui';
+import { FlatList, RefreshControl } from 'react-native';
+import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
@@ -23,7 +24,9 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { PlateInput } from '@/components/ui/PlateInput';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -35,6 +38,7 @@ import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
 import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/vehicles.tsx
@@ -176,6 +180,7 @@ async function searchVehicleIds(orgId: string, query: string): Promise<Set<strin
 
 export default function VehiclesScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
   const queryClient = useQueryClient();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgChecked, setOrgChecked] = useState(false);
@@ -498,27 +503,14 @@ export default function VehiclesScreen() {
             </Text>
             {/* Phase 11 §9.1 — search_all-backed search bar. See file
                 header for why this screen calls the RPC instead of
-                filtering client-side. */}
-            <XStack
-              backgroundColor="$neutral0"
-              borderRadius="$control"
-              paddingHorizontal={12}
-              paddingVertical={9}
-              alignItems="center"
-              gap="$2"
-              borderWidth={1}
-              borderColor="$neutral300"
-            >
-              <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-              <TextInput
-                placeholder="Rechercher un véhicule ou une plaque"
-                placeholderTextColor={color.neutral[500]}
-                value={search}
-                onChangeText={setSearch}
-                style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-                accessibilityLabel="Rechercher un véhicule"
-              />
-            </XStack>
+                filtering client-side. UI/UX pass: now on SearchFilterBar
+                for the same fixed-height treatment as Chantiers/
+                Matériaux. */}
+            <SearchFilterBar
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Rechercher un véhicule ou une plaque"
+            />
           </YStack>
         }
         ListEmptyComponent={
@@ -538,47 +530,48 @@ export default function VehiclesScreen() {
               onPress: () => setDeleteTarget(vehicle),
             }}
           >
-            <XStack
-              backgroundColor="$neutral0"
-              borderRadius="$card"
-              padding="$4"
-              justifyContent="space-between"
-              alignItems="center"
-              onPress={() => openEdit(vehicle)}
-            >
-              <XStack gap="$3" alignItems="center" flex={1}>
-                {vehicle.photo_url && photoUrlByPath[vehicle.photo_url] ? (
+            {/* UI/UX pass — composes the shared `ListCard`. The leading
+                slot takes either the vehicle's photo or, absent one, an
+                icon chip (CarIcon, tinted categoricalBlue) rather than
+                the previous plain gray box — keeps a visual identity
+                even with no photo uploaded, consistent with Chantiers'
+                icon-chip pattern. Plate + capacity become a real
+                metadata row with icons instead of a single `·`-joined
+                text line. */}
+            <ListCard
+              leading={
+                vehicle.photo_url && photoUrlByPath[vehicle.photo_url] ? (
                   <Image
                     src={photoUrlByPath[vehicle.photo_url]}
                     width={44}
                     height={44}
-                    borderRadius={10}
+                    borderRadius={11}
                   />
                 ) : (
-                  <YStack
+                  <View
                     width={44}
                     height={44}
-                    borderRadius={10}
-                    backgroundColor="$neutral100"
+                    borderRadius={11}
                     alignItems="center"
                     justifyContent="center"
+                    backgroundColor={toRgba(tc.categoricalBlue, 0.14)}
                   >
-                    <CarIcon size={20} color={color.neutral[500]} />
-                  </YStack>
-                )}
-                <YStack gap="$1">
-                  <Text fontSize={15.5} fontWeight="600">
-                    {vehicle.name}
-                  </Text>
-                  <Text fontSize={13} color="$neutral500">
-                    {vehicle.plate ?? '—'} · {vehicle.capacity} place(s)
-                  </Text>
-                </YStack>
-              </XStack>
-              <StatusBadge variant={STATUS_BADGE[vehicle.status].variant}>
-                {STATUS_BADGE[vehicle.status].label}
-              </StatusBadge>
-            </XStack>
+                    <CarIcon size={20} weight="fill" color={tc.categoricalBlue} />
+                  </View>
+                )
+              }
+              title={vehicle.name}
+              onPress={() => openEdit(vehicle)}
+              metaItems={[
+                { icon: IdentificationCardIcon, label: vehicle.plate ?? '—' },
+                { icon: UsersIcon, label: `${vehicle.capacity} place(s)` },
+              ]}
+              badge={
+                <StatusBadge variant={STATUS_BADGE[vehicle.status].variant}>
+                  {STATUS_BADGE[vehicle.status].label}
+                </StatusBadge>
+              }
+            />
           </SwipeableRow>
         )}
       />
@@ -643,6 +636,7 @@ export default function VehiclesScreen() {
               <XStack gap="$2">
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={CameraIcon}
                   loading={processingPhoto}
                   onPress={() => void pickPhoto('camera')}
@@ -651,6 +645,7 @@ export default function VehiclesScreen() {
                 </Button>
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={ImageIcon}
                   loading={processingPhoto}
                   onPress={() => void pickPhoto('library')}

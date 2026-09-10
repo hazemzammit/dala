@@ -1,14 +1,10 @@
 'use client';
 
+import { Button, Card, EmptyState, ErrorState, FormField, StatusBadge } from '@dala/ui-web';
 import { DownloadSimpleIcon, HandshakeIcon, LockIcon } from '@phosphor-icons/react';
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { FormField } from '@/components/ui/FormField';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { createClient } from '@/lib/supabase/client';
 
 /**
@@ -116,7 +112,7 @@ interface PortalView {
   org_logo_url: string | null; // storage path, not a direct URL — see file header.
 }
 
-type ViewState = 'loading' | 'pin_required' | 'locked' | 'not_found' | 'ok';
+type ViewState = 'loading' | 'pin_required' | 'locked' | 'not_found' | 'error' | 'ok';
 
 const PROJECT_STATUS_LABELS: Record<string, string> = {
   active: 'En cours',
@@ -143,7 +139,13 @@ export default function ClientPortalPage() {
       p_pin: pinAttempt,
     });
     if (error) {
-      setState('not_found');
+      // Phase 20 (§1.7a) — previously mapped straight to 'not_found',
+      // which told an anonymous client their link was invalid/disabled
+      // on what may have just been a transient network failure. A
+      // genuinely bad token still reaches 'not_found' below, via the
+      // RPC's own `default` case (a real response with an unrecognized
+      // status) — this only catches the RPC call itself failing.
+      setState('error');
       return;
     }
     switch (data?.status) {
@@ -155,8 +157,7 @@ export default function ClientPortalPage() {
         // (a real fallback — the letter-monogram below — covers the
         // "no logo" and "mint failed" cases without breaking the page).
         if ((data as PortalView).org_logo_url) {
-          void supabase
-            .rpc('get_org_logo_signed_url', { p_token: token })
+          void Promise.resolve(supabase.rpc('get_org_logo_signed_url', { p_token: token }))
             .then(({ data: url }: { data: string | null }) => {
               if (url) setLogoSignedUrl(url);
               else setLogoFailed(true);
@@ -246,6 +247,14 @@ export default function ClientPortalPage() {
           title="Lien invalide"
           description="Ce lien de portail client n'existe pas ou a été désactivé. Contactez votre entrepreneur pour un nouveau lien."
         />
+      </main>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <main className="portal-bg flex min-h-screen items-center justify-center px-6">
+        <ErrorState onRetry={() => void verify(null)} />
       </main>
     );
   }

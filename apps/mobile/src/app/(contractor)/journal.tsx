@@ -7,7 +7,6 @@ import {
   GridFourIcon,
   ImageIcon,
   ListIcon,
-  MagnifyingGlassIcon,
   MapPinIcon,
   MicrophoneIcon,
   NoteIcon,
@@ -18,7 +17,7 @@ import {
   TrashIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, TextInput } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { SiteLogForm } from '@/components/journal/SiteLogForm';
@@ -26,15 +25,19 @@ import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { ImageViewer } from '@/components/ui/ImageViewer';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonTimeline } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { useUndoToast, UndoToast } from '@/components/ui/UndoToast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { cycleStartISO, todayISO } from '@/lib/salaryCycle';
+import { staticMapUrl } from '@/lib/staticMap';
 import { getSignedUrl, getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 
@@ -247,6 +250,12 @@ export default function JournalScreen() {
   const { project_id: deepLinkProjectId } = useLocalSearchParams<{ project_id?: string }>();
   const toast = useToast();
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the projects/workers query in load() and the
+  // primary site_logs query in loadLogs() had no error capture; a
+  // failure previously rendered "Aucun chantier" or a silently-empty
+  // timeline, indistinguishable from genuinely having none.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -324,6 +333,7 @@ export default function JournalScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const [org, session] = await Promise.all([
       getActiveOrgId(),
       supabase.auth.getSession().then(({ data }) => data.session),
@@ -338,15 +348,22 @@ export default function JournalScreen() {
     // Phase 6 §1.2 step 4 — UX-only role lookup for the edit/delete gate.
     void getMyOrgRole(org).then(setMyOrgRole);
 
-    const [{ data: projectRows }, { data: workerRows }] = await Promise.all([
-      supabase
-        .from('projects')
-        .select('*')
-        .eq('lead_org_id', org)
-        .is('deleted_at', null)
-        .order('name'),
-      supabase.from('workers').select('*').eq('org_id', org),
-    ]);
+    const [{ data: projectRows, error: projectsError }, { data: workerRows, error: workersError }] =
+      await Promise.all([
+        supabase
+          .from('projects')
+          .select('*')
+          .eq('lead_org_id', org)
+          .is('deleted_at', null)
+          .order('name'),
+        supabase.from('workers').select('*').eq('org_id', org),
+      ]);
+    if (projectsError || workersError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     const list = (projectRows as Project[] | null) ?? [];
     setProjects(list);
     setWorkers((workerRows as Worker[] | null) ?? []);
@@ -363,7 +380,7 @@ export default function JournalScreen() {
   }
 
   async function loadLogs(projectId: string) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('site_logs')
       .select('*')
       .eq('project_id', projectId)
@@ -373,6 +390,10 @@ export default function JournalScreen() {
       // to projects.deleted_at above.
       .is('deleted_at', null)
       .order('created_at', { ascending: false });
+    if (error) {
+      setLoadError(true);
+      return;
+    }
     const rows = (data as SiteLog[] | null) ?? [];
     setLogs(rows);
 
@@ -392,14 +413,22 @@ export default function JournalScreen() {
     // profiles.avatar_url (works for both a worker's own linked account
     // AND a contractor) first, workers.photo_url (worker-only) second —
     // same direction as every other identity render this phase touches.
+    // Audit sweep (same root cause as 1a-1d) — this was a direct
+    // `.from('profiles')` batch query, which profiles_select_own (0005,
+    // `id = auth.uid()` only) silently reduces to zero rows for every
+    // author but the caller. Uses get_org_member_profiles (0085) instead,
+    // scoped to the current project's org.
     const distinctUserIds = Array.from(
       new Set(rows.map((l) => l.logged_by).filter((v): v is string => !!v)),
     );
-    if (distinctUserIds.length > 0) {
-      const { data: profileRows } = await supabase
-        .from('profiles')
-        .select('id, avatar_url')
-        .in('id', distinctUserIds);
+    const logOrgId = projects.find((p) => p.id === projectId)?.lead_org_id ?? null;
+    if (distinctUserIds.length > 0 && logOrgId) {
+      const { data: allProfileRows } = await supabase.rpc('get_org_member_profiles', {
+        p_org_id: logOrgId,
+      });
+      const profileRows = (allProfileRows ?? []).filter((p: { id: string }) =>
+        distinctUserIds.includes(p.id),
+      );
       const profileAvatarByUserId: Record<string, string> = {};
       for (const p of profileRows ?? [])
         if (p.avatar_url) profileAvatarByUserId[p.id] = p.avatar_url;
@@ -640,12 +669,20 @@ export default function JournalScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (projects.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={ImageIcon}
-          illustration="organize-photos"
+          icon3d="no-data"
           title="Aucun chantier"
           description="Créez d'abord un chantier pour voir son journal de bord."
         />
@@ -656,7 +693,7 @@ export default function JournalScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -719,26 +756,13 @@ export default function JournalScreen() {
             {/* Phase 11 §9.1 — search field, above the filter chip rows.
                 Client-side over the already-fetched `logs` list (see file
                 header). */}
-            <XStack
-              backgroundColor="$neutral0"
-              borderRadius="$control"
-              paddingHorizontal={12}
-              paddingVertical={9}
-              alignItems="center"
-              gap="$2"
-              borderWidth={1}
-              borderColor="$neutral300"
-            >
-              <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-              <TextInput
-                placeholder="Rechercher une entrée ou un auteur"
-                placeholderTextColor={color.neutral[500]}
-                value={search}
-                onChangeText={setSearch}
-                style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-                accessibilityLabel="Rechercher dans le journal"
-              />
-            </XStack>
+            {/* UI/UX pass — on SearchFilterBar for the same fixed-height
+                treatment as every other list screen's search field. */}
+            <SearchFilterBar
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Rechercher une entrée ou un auteur"
+            />
 
             {/* Phase 6 §1.2 step 3 — three compact chip rows (Auteur /
                 Type / Période). See file header for why three rows
@@ -746,7 +770,7 @@ export default function JournalScreen() {
             {distinctAuthors.length > 1 && (
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <XStack gap="$1.5" alignItems="center">
-                  <Text fontSize={11.5} color="$neutral500" marginRight={2}>
+                  <Text fontSize={11.5} color="$neutral500" marginEnd={2}>
                     Auteur
                   </Text>
                   <FilterChip
@@ -767,7 +791,7 @@ export default function JournalScreen() {
             )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <XStack gap="$1.5" alignItems="center">
-                <Text fontSize={11.5} color="$neutral500" marginRight={2}>
+                <Text fontSize={11.5} color="$neutral500" marginEnd={2}>
                   Type
                 </Text>
                 <FilterChip
@@ -795,7 +819,7 @@ export default function JournalScreen() {
             <XStack justifyContent="space-between" alignItems="center">
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <XStack gap="$1.5" alignItems="center">
-                  <Text fontSize={11.5} color="$neutral500" marginRight={2}>
+                  <Text fontSize={11.5} color="$neutral500" marginEnd={2}>
                     Période
                   </Text>
                   <FilterChip
@@ -826,7 +850,7 @@ export default function JournalScreen() {
                 borderRadius="$control"
                 padding={2}
                 gap={2}
-                marginLeft="$2"
+                marginStart="$2"
               >
                 <XStack
                   padding={7}
@@ -1034,18 +1058,15 @@ export default function JournalScreen() {
                 (a plain string prop) — Sheet.tsx itself is untouched. */}
             {canManageLog(detail) && !editingCaption && (
               <XStack gap="$3" justifyContent="flex-end">
-                <XStack
-                  alignItems="center"
-                  gap={4}
+                <Button
+                  variant="chip"
+                  fullWidth={false}
+                  icon={PencilSimpleIcon}
                   onPress={startEditCaption}
-                  accessibilityRole="button"
                   accessibilityLabel="Modifier la légende"
                 >
-                  <PencilSimpleIcon size={16} color={color.accent[600]} />
-                  <Text fontSize={13} color="$accent600" fontWeight="500">
-                    Modifier
-                  </Text>
-                </XStack>
+                  Modifier
+                </Button>
                 <XStack
                   alignItems="center"
                   gap={4}
@@ -1160,14 +1181,36 @@ export default function JournalScreen() {
               <Text fontSize={13} color="$neutral500">
                 {new Date(detail.created_at).toLocaleString('fr-TN')}
               </Text>
-              {detail.location_lat != null && detail.location_lng != null && (
-                <XStack alignItems="center" gap="$1.5">
-                  <MapPinIcon size={13} color="#8A8F98" />
-                  <Text fontSize={13} color="$neutral500">
-                    {detail.location_lat.toFixed(5)}, {detail.location_lng.toFixed(5)}
-                  </Text>
-                </XStack>
-              )}
+              {detail.location_lat != null &&
+                detail.location_lng != null &&
+                (() => {
+                  const mapUrl = staticMapUrl(detail.location_lat, detail.location_lng);
+                  return (
+                    <YStack gap="$1.5">
+                      {/* IMPROVEMENT-PLAN Part D2 — the coordinates were
+                        already captured and stored; this is the "shown
+                        visually" half that never existed. Falls back to
+                        exactly today's text-only row (nothing below this
+                        block changes) when no Static Maps key is
+                        configured — see staticMap.ts. */}
+                      {mapUrl && (
+                        <Image
+                          source={{ uri: mapUrl }}
+                          width="100%"
+                          height={160}
+                          borderRadius={12}
+                          resizeMode="cover"
+                        />
+                      )}
+                      <XStack alignItems="center" gap="$1.5">
+                        <MapPinIcon size={13} color="#8A8F98" />
+                        <Text fontSize={13} color="$neutral500">
+                          {detail.location_lat.toFixed(5)}, {detail.location_lng.toFixed(5)}
+                        </Text>
+                      </XStack>
+                    </YStack>
+                  );
+                })()}
             </YStack>
           </YStack>
         )}

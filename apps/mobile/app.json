@@ -31,8 +31,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FAFAFA"
       },
-      "package": "tn.dala.app",
-      "usesCleartextTraffic": true
+      "package": "tn.dala.app"
     },
     "plugins": [
       "expo-router",
@@ -63,7 +62,8 @@
           "android": {
             "packagingOptions": {
               "pickFirst": ["**/libc++_shared.so"]
-            }
+            },
+            "usesCleartextTraffic": true
           }
         }
       ],

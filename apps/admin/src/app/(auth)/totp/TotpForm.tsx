@@ -1,9 +1,8 @@
 'use client';
 
+import { Button } from '@dala/ui-web';
 import { useRouter } from 'next/navigation';
 import { useId, useState } from 'react';
-
-import { Button } from '@/components/ui/Button';
 
 export function TotpForm() {
   const router = useRouter();

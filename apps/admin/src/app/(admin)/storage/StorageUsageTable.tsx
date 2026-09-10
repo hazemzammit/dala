@@ -1,15 +1,19 @@
 'use client';
 
 import type { OrgStorageUsage } from '@dala/shared-types';
+import {
+  Button,
+  Card,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 // Doc 00 §0.3 item 7 — free-tier storage-overage policy, labels shown next
@@ -49,6 +53,7 @@ export function StorageUsageTable() {
   const [error, setError] = useState<string | null>(null);
   const [cleaning, setCleaning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,7 +73,7 @@ export function StorageUsageTable() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   async function runCleanup() {
     setCleaning(true);
@@ -154,7 +159,7 @@ export function StorageUsageTable() {
   if (error) {
     return (
       <Card className="mt-6 p-8">
-        <p className="text-danger text-sm">Erreur : {error}</p>
+        <ErrorState description={error} onRetry={() => setReloadKey((k) => k + 1)} />
       </Card>
     );
   }

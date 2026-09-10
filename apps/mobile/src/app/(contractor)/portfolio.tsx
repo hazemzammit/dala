@@ -4,14 +4,17 @@ import { useFocusEffect } from 'expo-router';
 import { BuildingsIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Text, View, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
 import { supabase } from '@/lib/supabase';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/portfolio.tsx
@@ -88,9 +91,14 @@ function todayISO(): string {
 }
 
 export default function PortfolioScreen() {
+  const tc = useTokenColor();
   const [rollups, setRollups] = useState<ProjectRollup[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Phase 20 (§1.7a) — same fix as billing/client-portal/vue-ensemble:
+  // the primary projects fetch's error wasn't captured, so a failed fetch
+  // and a genuinely-empty portfolio previously rendered identically.
+  const [loadError, setLoadError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -101,6 +109,7 @@ export default function PortfolioScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setRollups([]);
@@ -109,13 +118,19 @@ export default function PortfolioScreen() {
       return;
     }
 
-    const { data: projects } = await supabase
+    const { data: projects, error: projectsError } = await supabase
       .from('projects')
       .select('*')
       .eq('lead_org_id', orgId)
       .is('deleted_at', null)
       .in('status', ['active', 'completed'])
       .order('name');
+    if (projectsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const monthStart = firstOfMonthISO();
     const today = todayISO();
@@ -170,12 +185,20 @@ export default function PortfolioScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (rollups.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={BuildingsIcon}
-          illustration="mobile-analytics"
+          illustration="investor-update"
           title="Aucun chantier actif"
           description="Le portefeuille regroupe le budget et l'activité de tous vos chantiers actifs et terminés."
         />
@@ -209,6 +232,16 @@ export default function PortfolioScreen() {
             const budgetTotal = p.budget_total ?? 0;
             const pctConsumed =
               budgetTotal > 0 ? Math.min(100, (p.totalExpenses / budgetTotal) * 100) : null;
+            // UI/UX pass — the card's stat-grid shape (two-column metrics
+            // + progress bar) genuinely differs from `ListCard`'s
+            // scannable-row shape, so it stays a custom card rather than
+            // being forced onto ListCard — but it picks up the same
+            // project-type icon chip as Chantiers (projectTypeMeta.ts)
+            // for visual consistency across the two screens that both
+            // represent projects.
+            const typeMeta = getProjectTypeMeta(p.project_type);
+            const TypeIcon = typeMeta.icon;
+            const chipTint = tc[typeMeta.colorKey];
             return (
               <YStack
                 key={p.id}
@@ -218,9 +251,21 @@ export default function PortfolioScreen() {
                 gap="$2"
               >
                 <XStack justifyContent="space-between" alignItems="center">
-                  <Text fontSize={15.5} fontWeight="600">
-                    {p.name}
-                  </Text>
+                  <XStack gap="$3" alignItems="center" flex={1}>
+                    <View
+                      width={36}
+                      height={36}
+                      borderRadius={10}
+                      alignItems="center"
+                      justifyContent="center"
+                      backgroundColor={toRgba(chipTint, 0.14)}
+                    >
+                      <TypeIcon size={18} weight="fill" color={chipTint} />
+                    </View>
+                    <Text fontSize={15.5} fontWeight="600" flex={1} numberOfLines={1}>
+                      {p.name}
+                    </Text>
+                  </XStack>
                   <StatusBadge variant={STATUS_LABELS[p.status].variant}>
                     {STATUS_LABELS[p.status].label}
                   </StatusBadge>

@@ -3,7 +3,16 @@ import type { OrgInsurance, SafetyIncident, Worker } from '@dala/shared-types';
 import { createOrgInsuranceSchema, createSafetyIncidentSchema } from '@dala/validation';
 import * as ImagePicker from 'expo-image-picker';
 import { useFocusEffect } from 'expo-router';
-import { CameraIcon, FilePdfIcon, PlusIcon, ShieldWarningIcon } from 'phosphor-react-native';
+import {
+  BuildingsIcon,
+  CameraIcon,
+  CalendarBlankIcon,
+  FilePdfIcon,
+  MapPinIcon,
+  PlusIcon,
+  ShieldCheckIcon,
+  ShieldWarningIcon,
+} from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, XStack, YStack } from 'tamagui';
@@ -12,7 +21,9 @@ import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
@@ -21,11 +32,13 @@ import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
 import { INCIDENT_TYPE_OPTIONS, INSURANCE_COVERAGE_OPTIONS } from '@/lib/pickerOptions';
 import { getSignedUrl, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/safety.tsx
@@ -92,8 +105,15 @@ function todayISO(): string {
 
 export default function SafetyScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
   const [tab, setTab] = useState<Tab>('incidents');
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the three parallel root queries below had no
+  // error capture; a failed fetch previously rendered as "Aucun
+  // incident"/empty insurance list on both tabs, indistinguishable from
+  // genuinely having neither.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -138,6 +158,7 @@ export default function SafetyScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -146,16 +167,25 @@ export default function SafetyScreen() {
       return;
     }
 
-    const [{ data: workerRows }, { data: incidentRows }, { data: insuranceRows }] =
-      await Promise.all([
-        supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
-        supabase
-          .from('safety_incidents')
-          .select('*')
-          .eq('org_id', org)
-          .order('created_at', { ascending: false }),
-        supabase.from('org_insurances').select('*').eq('org_id', org).order('expires_at'),
-      ]);
+    const [
+      { data: workerRows, error: workersError },
+      { data: incidentRows, error: incidentsError },
+      { data: insuranceRows, error: insuranceError },
+    ] = await Promise.all([
+      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase
+        .from('safety_incidents')
+        .select('*')
+        .eq('org_id', org)
+        .order('created_at', { ascending: false }),
+      supabase.from('org_insurances').select('*').eq('org_id', org).order('expires_at'),
+    ]);
+    if (workersError || incidentsError || insuranceError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     setWorkers((workerRows as Worker[] | null) ?? []);
     const incidentList = (incidentRows as SafetyIncident[] | null) ?? [];
     setIncidents(incidentList);
@@ -357,10 +387,18 @@ export default function SafetyScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -394,71 +432,75 @@ export default function SafetyScreen() {
             />
           ) : (
             <YStack gap="$2">
-              {incidents.map((incident) => (
-                <XStack
-                  key={incident.id}
-                  backgroundColor="$neutral0"
-                  borderRadius="$card"
-                  padding="$4"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  onPress={() => openIncidentDetail(incident)}
-                >
-                  <YStack flex={1} gap="$1">
-                    <Text fontSize={14.5} numberOfLines={2}>
-                      {incident.description}
-                    </Text>
-                    <Text fontSize={12} color="$neutral500">
-                      {new Date(incident.created_at).toLocaleDateString('fr-TN')}
-                      {incident.incident_type ? ` · ${incident.incident_type}` : ''}
-                      {incident.location ? ` · ${incident.location}` : ''}
-                    </Text>
-                  </YStack>
-                  <StatusBadge variant={SEVERITY_BADGE[incident.severity as SeverityValue]}>
-                    {SEVERITY_LABEL[incident.severity as SeverityValue]}
-                  </StatusBadge>
-                </XStack>
-              ))}
+              {/* UI/UX pass — composes the shared `ListCard`. Icon chip
+                  tinted by severity (reusing the existing status colors,
+                  not a new hue) so severity is visible before reading
+                  the badge text — same "status legible from card shape"
+                  principle as the Avances rework. */}
+              {incidents.map((incident) => {
+                const sev = incident.severity as SeverityValue;
+                const sevTint =
+                  sev === 'severe' ? tc.danger : sev === 'moderate' ? tc.warning : tc.success;
+                return (
+                  <ListCard
+                    key={incident.id}
+                    icon={ShieldWarningIcon}
+                    iconTint={sevTint}
+                    title={incident.incident_type || 'Incident'}
+                    subtitle={incident.description}
+                    metaItems={[
+                      {
+                        icon: CalendarBlankIcon,
+                        label: new Date(incident.created_at).toLocaleDateString('fr-TN'),
+                      },
+                      ...(incident.location
+                        ? [{ icon: MapPinIcon, label: incident.location }]
+                        : []),
+                    ]}
+                    onPress={() => openIncidentDetail(incident)}
+                    badge={
+                      <StatusBadge variant={SEVERITY_BADGE[sev]}>{SEVERITY_LABEL[sev]}</StatusBadge>
+                    }
+                  />
+                );
+              })}
             </YStack>
           )
         ) : insurances.length === 0 ? (
           <EmptyState
             icon={ShieldWarningIcon}
-            illustration="agreement"
+            illustration="property-agreement"
             title="Aucune assurance"
             description="Ajoutez les polices d'assurance de votre organisation."
           />
         ) : (
           <YStack gap="$2">
+            {/* UI/UX pass — composes the shared `ListCard`, same
+                treatment as the incidents tab above: a policy icon chip
+                (categoricalBlue — insurance isn't a status/severity
+                concept, so it doesn't borrow a status color) instead of
+                a plain text-only card. */}
             {insurances.map((insurance) => {
               const expiringSoon =
                 insurance.expires_at &&
                 new Date(insurance.expires_at).getTime() - Date.now() < 30 * 24 * 60 * 60 * 1000;
               return (
-                <YStack
+                <ListCard
                   key={insurance.id}
-                  backgroundColor="$neutral0"
-                  borderRadius="$card"
-                  padding="$4"
-                  gap="$1"
+                  icon={ShieldCheckIcon}
+                  iconTint={tc.categoricalBlue}
+                  title={insurance.provider_name}
+                  subtitle={insurance.coverage_type ?? undefined}
+                  badge={
+                    expiringSoon && <StatusBadge variant="warning">Expire bientôt</StatusBadge>
+                  }
                 >
-                  <XStack justifyContent="space-between" alignItems="center">
-                    <Text fontSize={15} fontWeight="600">
-                      {insurance.provider_name}
-                    </Text>
-                    {expiringSoon && <StatusBadge variant="warning">Expire bientôt</StatusBadge>}
-                  </XStack>
-                  {insurance.coverage_type && (
-                    <Text fontSize={13} color="$neutral500">
-                      {insurance.coverage_type}
-                    </Text>
-                  )}
                   {insurance.expires_at && (
                     <NumericText fontSize={13} color="$neutral500">
                       Expire le {new Date(insurance.expires_at).toLocaleDateString('fr-TN')}
                     </NumericText>
                   )}
-                </YStack>
+                </ListCard>
               );
             })}
           </YStack>
@@ -502,7 +544,12 @@ export default function SafetyScreen() {
             </Text>
             <SegmentedControl value={severity} options={SEVERITY_OPTIONS} onChange={setSeverity} />
           </YStack>
-          <FormField label="Lieu (optionnel)" value={location} onChangeText={setLocation} />
+          <FormField
+            label="Lieu (optionnel)"
+            icon={MapPinIcon}
+            value={location}
+            onChangeText={setLocation}
+          />
 
           <YStack gap="$1.5">
             <Text fontSize={14} fontWeight="500">
@@ -557,7 +604,12 @@ export default function SafetyScreen() {
         title="Nouvelle assurance"
       >
         <YStack gap="$3">
-          <FormField label="Fournisseur" value={providerName} onChangeText={setProviderName} />
+          <FormField
+            label="Fournisseur"
+            icon={BuildingsIcon}
+            value={providerName}
+            onChangeText={setProviderName}
+          />
           <FormField
             label="Numéro de police (optionnel)"
             value={policyNumber}
@@ -569,12 +621,14 @@ export default function SafetyScreen() {
               sheet opens); leaving it empty is allowed by the schema. */}
           <Select
             label="Type de couverture (optionnel)"
+            icon={ShieldCheckIcon}
             value={coverageType || null}
             onChange={setCoverageType}
             options={INSURANCE_COVERAGE_OPTIONS}
           />
           <FormField
             label="Date d'expiration (AAAA-MM-JJ)"
+            icon={CalendarBlankIcon}
             value={expiresAt}
             onChangeText={setExpiresAt}
           />

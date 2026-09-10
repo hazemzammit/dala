@@ -15,10 +15,12 @@ import { useCallback, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/project/[id].tsx
@@ -82,8 +84,18 @@ import { supabase } from '@/lib/supabase';
  * header for why that wasn't assumed.
  */
 export default function ProjectHubScreen() {
+  // Doc 05 §1.7k migration — Phase 19A: replaces the 10 untokenized
+  // `#8A8F98` icon colors below with the theme-aware neutral-400 token
+  // (Phase 17 audit logged 12 occurrences; recount here found 10 —
+  // noted, not re-audited).
+  const tc = useTokenColor();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — distinguishes "the fetch failed" from "this
+  // project genuinely doesn't exist," which previously both rendered
+  // the same "Chantier introuvable" text — misleading on a real fetch
+  // failure, since the project may well still exist.
+  const [loadError, setLoadError] = useState(false);
   const [project, setProject] = useState<Project | null>(null);
   const [isLead, setIsLead] = useState(false);
   const [leadOrgName, setLeadOrgName] = useState<string | null>(null);
@@ -97,12 +109,18 @@ export default function ProjectHubScreen() {
   async function load() {
     if (!id) return;
     setLoading(true);
+    setLoadError(false);
     const activeOrgId = await getActiveOrgId();
 
     // RLS (projects_select_lead_or_trade, 0006) already scopes this to
     // "lead OR trade-participant on this project" — no need to branch the
     // query by role, a trade org simply gets the same row a lead org would.
-    const { data } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
+    const { data, error } = await supabase.from('projects').select('*').eq('id', id).maybeSingle();
+    if (error) {
+      setLoadError(true);
+      setLoading(false);
+      return;
+    }
     if (!data) {
       setLoading(false);
       return;
@@ -130,6 +148,14 @@ export default function ProjectHubScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
         <SkeletonList rows={4} />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }
@@ -225,11 +251,11 @@ export default function ProjectHubScreen() {
               accessibilityRole="button"
               accessibilityLabel="Dépenses"
             >
-              <CoinsIcon size={20} color="#8A8F98" />
+              <CoinsIcon size={20} color={tc.neutral400} />
               <Text flex={1} fontSize={15} fontWeight="500">
                 Dépenses
               </Text>
-              <CaretRightIcon size={16} color="#8A8F98" />
+              <CaretRightIcon size={16} color={tc.neutral400} />
             </XStack>
           )}
 
@@ -243,11 +269,11 @@ export default function ProjectHubScreen() {
             accessibilityRole="button"
             accessibilityLabel="Dispatch"
           >
-            <TruckIcon size={20} color="#8A8F98" />
+            <TruckIcon size={20} color={tc.neutral400} />
             <Text flex={1} fontSize={15} fontWeight="500">
               Dispatch
             </Text>
-            <CaretRightIcon size={16} color="#8A8F98" />
+            <CaretRightIcon size={16} color={tc.neutral400} />
           </XStack>
 
           <XStack
@@ -260,11 +286,11 @@ export default function ProjectHubScreen() {
             accessibilityRole="button"
             accessibilityLabel="Journal de chantier"
           >
-            <NoteIcon size={20} color="#8A8F98" />
+            <NoteIcon size={20} color={tc.neutral400} />
             <Text flex={1} fontSize={15} fontWeight="500">
               Journal de chantier
             </Text>
-            <CaretRightIcon size={16} color="#8A8F98" />
+            <CaretRightIcon size={16} color={tc.neutral400} />
           </XStack>
 
           <XStack
@@ -277,11 +303,11 @@ export default function ProjectHubScreen() {
             accessibilityRole="button"
             accessibilityLabel="Équipe"
           >
-            <UsersIcon size={20} color="#8A8F98" />
+            <UsersIcon size={20} color={tc.neutral400} />
             <Text flex={1} fontSize={15} fontWeight="500">
               Équipe
             </Text>
-            <CaretRightIcon size={16} color="#8A8F98" />
+            <CaretRightIcon size={16} color={tc.neutral400} />
           </XStack>
         </YStack>
 
@@ -305,11 +331,11 @@ export default function ProjectHubScreen() {
               accessibilityRole="button"
               accessibilityLabel={m.label}
             >
-              <m.icon size={20} color="#8A8F98" />
+              <m.icon size={20} color={tc.neutral400} />
               <Text flex={1} fontSize={15} fontWeight="500">
                 {m.label}
               </Text>
-              <CaretRightIcon size={16} color="#8A8F98" />
+              <CaretRightIcon size={16} color={tc.neutral400} />
             </XStack>
           ))}
         </YStack>

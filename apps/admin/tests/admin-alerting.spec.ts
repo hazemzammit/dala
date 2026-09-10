@@ -75,7 +75,9 @@ test.describe('Admin alerting — state table', () => {
         .eq('entity_name', entityName);
 
       expect(rows).toHaveLength(1);
-      expect(rows?.[0].alerted_at).toBeNull();
+      const firstRow = rows?.[0];
+      if (!firstRow) throw new Error('Expected an admin alert state row');
+      expect(firstRow.alerted_at).toBeNull();
     } finally {
       await supabase
         .from('admin_alert_state')

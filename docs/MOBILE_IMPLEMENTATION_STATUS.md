@@ -3423,7 +3423,481 @@ app-lock (`AppLockGate.tsx`, `expo-local-authentication` — needs a dev/product
 build, doesn't work in Expo Go), an OTA/`expo-updates` checker, and a first-run
 onboarding checklist mirroring the existing org-completion-nudge pattern.
 
-## Consolidated outstanding manual-verification backlog (Gap-Fix Phases 1–12)
+## Org-creation wizard (post-Phase-12, separate work stream from the guide-linked task)
+
+Not part of the Gap-Fix Phase numbering — this closes out the
+`dala-full-org-creation-guide.md` task: extending organization creation to
+collect every real, user-writable `organizations` column across both
+places an org gets created. Verified first against the actual repo before
+any code changed (highest migration is 0077, not the guide's 0075 — the
+two migrations since, `subscription_status`/`billing_cycle_start`/
+`seat_price_millimes` (0043) and `onboarding_dismissed_at` (0077), are all
+system-managed and out of scope, same bucket as `plan`/`verification_status`).
+
+**Scope, per decisions made against the guide's §5 open questions**:
+RIB stays exclusively in `organization-settings.tsx`'s existing flow, never
+collected at creation; `apps/web` is untouched this pass; `sign-up.tsx` and
+`supabase/functions/sign-up` are untouched (no new fields, no schema
+widening) — sign-up stays exactly as minimal as it already was.
+
+**Real drift found and worked around, not just noted**: the sign-up Edge
+Function already carries Phase-4 `org_invite_token`/
+`org_invite_budget_rollup_opt_in` fields the guide's research missed (used
+by the org-to-org project-invite "no account yet" path) — left completely
+untouched, confirmed not to interact with anything this pass changed.
+Also found: `apps/mobile/src/app/auth/confirm.tsx`'s own header comment
+claiming it's reached via a sign-up deep link is stale — the sign-up Edge
+Function's own code/comment says it always builds a **web** confirmation
+URL, contrasting explicitly with `forgot-password`'s Edge Function, which
+does branch on the `x-dala-platform` header. So a mobile sign-up's
+confirmation tap lands on `apps/web`'s dashboard, never back in this app —
+which is why the "route into the wizard after first login" mechanism below
+is hooked to `login.tsx`, not to email confirmation.
+
+**What shipped**:
+
+- `packages/validation/src/organizations.ts` — new `createOrganizationFullSchema`,
+  additive only, no existing schema touched.
+- `apps/mobile/src/app/create-organization.tsx` — rebuilt as the 4-step
+  wizard described in Doc 03 §3.22.2a. Two modes on one screen: fresh
+  create (steps 1-4) and complete-an-existing-org (accepts an `?org_id=`
+  param, skips step 1, pre-populates from the org's current row, starts at
+  step 2) — the second mode exists solely for `login.tsx`'s redirect below.
+  Same 3 RPCs reused with zero signature changes
+  (`create_organization_for_current_user`, `update_organization_profile`,
+  `update_organization_extended_profile`); logo upload only from step 2
+  onward, once a real `org_id` exists (`uploadOrgFile`'s own hard
+  requirement). Every step persists the full accumulated state so far, not
+  just that step's new fields, so abandoning anywhere after step 1 leaves a
+  usable, actually-saved org.
+- `apps/mobile/src/app/login.tsx` — new post-login redirect, described in
+  full in Doc 03 §3.5. Gated on the exact same `org_checklist_dismissed_at`
+  flag and 5-field completion calc `organization-settings.tsx`'s own
+  banner already computes (duplicated inline rather than factored into a
+  shared helper — five field names, one call site each, not worth an
+  import for). Only fires when there's no explicit `next` param already
+  requested, so it never overrides e.g. the org-invite accept flow.
+- Docs updated: this entry, and Doc 03 (`docs/spec/03-screens-mobile-
+contractor-and-worker.md`) §3.5 and §3.22.2a, which described the OLD
+  2-field creation form and said nothing about the login redirect.
+
+**Verification actually run, not just claimed** (matching the guide's own
+requested rigor): `pnpm install` run clean from a bare clone state;
+baseline `cd apps/mobile && npx tsc --noEmit -p .` was 0 errors _before_
+any edit; after each of the three file changes, both `tsc --noEmit -p .`
+(whole mobile app) and `eslint` on the specific changed file were run and
+confirmed clean; `packages/validation`'s own `vitest run` (45 tests across
+4 files, including 18 in `organizations.test.ts`) passed unchanged after
+adding the new schema.
+
+**Still outstanding** (belongs in the manual-verification backlog below,
+not re-listed twice): the wizard's 4 steps, the step-skip/back/"Terminer
+plus tard" interactions, the logo upload inside step 2, and the
+post-login redirect all still need a real device/Expo Go run — nothing
+above required a live Supabase instance to verify, so none of it has been
+exercised against one yet.
+
+### Follow-on fix — dual first-run nudge suppression
+
+Auditing this work for other "organization data collected/exists but not
+fully wired up" gaps (parallel to the admin `OrgDetail.tsx` one below)
+surfaced a real interaction this pass's own login redirect created: a
+brand-new org fails BOTH this wizard's completion check AND the
+pre-existing `OnboardingChecklist` dashboard card's own conditions (no
+project/worker/pointage yet) at the same time — so a new user could get
+redirected into the wizard right after their first login, then land on
+the dashboard immediately afterward and get nudged a second time by that
+card too.
+
+Fixed by having every one of `create-organization.tsx`'s three exit paths
+(`handleFinish`, its own "Passer," and `handleFinishLater`) route to
+`/(contractor)/dashboard?from_wizard=1` instead of the bare route, and
+having `dashboard.tsx` capture that param once via a lazy `useState`
+initializer and skip rendering `OnboardingChecklist` for that one mounted
+instance of the screen only. Nothing is permanently hidden by this — the
+param is never re-read after that first capture, so the very next fresh
+mount of the dashboard (app relaunch, a later login) shows the checklist
+exactly as it always has if its own conditions are still unmet.
+`tsc --noEmit -p .` and `eslint` on both changed files confirmed clean
+(one pre-existing, unrelated `react-hooks/exhaustive-deps` warning on
+`dashboard.tsx`'s own `load` callback, not introduced by this change).
+
+### Follow-on fix — dashboard.tsx's own stale comment corrected
+
+The same audit found `dashboard.tsx`'s own header comment still claiming
+"Profile-completion checklist... still out of scope for this pass" — false
+since Phase 12 shipped `OnboardingChecklist`, which this very file imports
+and renders. Corrected in place rather than deleted outright, so the
+phase-history narrative the rest of that comment block maintains stays
+intact; the correction also documents the `from_wizard` suppression above
+in the same spot. Comment-only change — `tsc`/`eslint` re-confirmed clean.
+
+### Follow-on fix — cross-org identity for `collaboration.tsx`, and a real bug found underneath it
+
+Requested addition: let a person tap a collaborating org (on a shared
+project) to see more about them, mirroring how a client seeing your org's
+profile might work once that exists (client-portal access itself doesn't
+exist yet — see the admin/gaps discussion below — so that half is future
+work, not this pass's scope).
+
+Checking how `collaboration.tsx` currently gets a fellow org's name at all
+surfaced a real, currently-shipping bug, not just a missing feature: both
+of its org lookups —
+
+```
+.select('*, organizations(name)')                     -- member orgs
+.from('organizations').select('id, name').in(...)     -- lead orgs
+```
+
+are silently blocked by `organizations`' only-ever SELECT policy
+(`organizations_select_member`, migration 0005), which checks
+`is_org_member(id)` — same-org membership only, no carve-out for "shares a
+project with my org." Every fellow collaborator's name has been resolving
+to `null` and falling back to the screen's own `'—'` placeholder — not an
+edge case, the normal path for any two different orgs collaborating on a
+shared project today.
+
+**Deliberately not fixed by widening `organizations`' RLS.** A blanket
+"can read if sharing a project" policy would expose the whole row —
+`matricule_fiscal`, `rc_number`, everything — to anyone merely sharing a
+project, a much wider blast radius than this feature needs. Fixed instead
+with a new, narrow, purpose-built RPC,
+`get_shared_project_org_summaries(p_org_ids uuid[])` (migration 0078),
+returning only `name`/`logo_signed_url`/`trade_type`/`legal_form`/
+`verification_status`/`address`/`service_area` — the same reasoning
+`is_shared_site_log_file` (0025) and `get_project_invitation_by_token`
+(0024) already established for "let someone see a narrow slice of another
+org's data."
+
+**A second, adjacent problem the same RPC had to solve**: even with names
+fixed, cross-org _logo_ access has no path at all — `org-files` storage
+RLS only covers same-org participants (0020) or specifically-shared
+site-log attachments (0025), nothing general. Rather than add yet another
+storage policy, the RPC signs the logo server-side itself, mirroring
+0076's client-portal logo-signing function exactly (same bucket, same
+`storage.create_signed_url` call, same exception-safe "fall back to null,
+never a hard error" shape) — the client never touches a raw, unsignable
+storage path for another org's files.
+
+**A mistake caught before it shipped, worth recording so it isn't
+repeated**: the first draft of this RPC joined `project_memberships` on
+both sides of the comparison (target org has a membership row on project
+P, caller's org has a membership row on the same P). That would have
+silently reproduced the exact bug being fixed — per 0034's own header
+comment, **no code path anywhere in this schema ever inserts a `role =
+'lead'` row into `project_memberships`**; a lead org's association with
+its own project exists only via `projects.lead_org_id`. So looking up "the
+lead org of a project I'm a trade participant on" — precisely
+`collaboration.tsx`'s second list — would have always come up empty under
+the naive join. Fixed by checking `projects.lead_org_id` directly on both
+sides of the exists() clause instead of assuming either org has a
+membership row.
+
+**Shipped**: migration `0078_shared_project_org_summaries.sql`; a new
+reusable `apps/mobile/src/components/organizations/OrgIdentityRow.tsx`
+(logo/name/trade_type-or-legal_form subtitle/verified badge — no fetching
+of its own, takes already-resolved data); `collaboration.tsx` rewritten to
+batch-fetch every org it needs in one RPC call instead of two broken
+per-list queries, render `OrgIdentityRow` in both lists, and open a
+read-only detail sheet (adding `service_area`/`address`) on tap.
+`tsc --noEmit -p .` (whole mobile app) and `eslint` on both changed/added
+files confirmed clean.
+
+**Explicitly not done this pass, flagged not silently skipped**:
+`accept-org-invite.tsx` (pre-signup, anonymous-reachable) still shows only
+the lead org's bare name. Extending it the same way needs its own decision
+first — widening `get_project_invitation_by_token` (already anon-grantable)
+to expose logo/legal_form is a materially different exposure question than
+an already-authenticated screen like `collaboration.tsx`, and shouldn't be
+bundled into this fix without that being decided explicitly.
+
+**Still needs a live Supabase instance to verify** — this entire migration
+(the RPC, its SQL, the corrected join logic) has been read through
+carefully multiple times but never executed against a real Postgres
+instance; there is no Docker/live Supabase available in this environment.
+Add to the manual-verification backlog below: apply migration 0078 for
+real, then confirm `collaboration.tsx` actually shows names/logos/detail
+sheets correctly for two real orgs sharing a real project, in both
+directions (lead-viewing-trade and trade-viewing-lead).
+
+### Follow-on — own-org logo signing bug, `accept-org-invite.tsx` widened, web parity shipped
+
+Three more items closed in the same pass, all previously flagged rather
+than silently deferred:
+
+**Own-org logo signing bug (dashboard.tsx / OrgSwitcherSheet.tsx)**: found
+while building the RPC above — `activeOrg.logo_url` and every org row in
+the switcher sheet were passed straight to `Avatar` with no signing step
+at all, unlike `organization-settings.tsx`, which already did this
+correctly. `logo_url` is a private-bucket storage path, not a fetchable
+URL, so every org's logo (including the user's own) was very likely
+rendering broken/blank regardless of any permission question — not an
+RLS gap, just a missing line of code. Fixed by resolving every org's logo
+through the same batched `getSignedUrlMap` pattern this file already uses
+for worker/project photos, threaded through as a new `logoUrlByPath` prop
+on `OrgSwitcherSheet`. `tsc --noEmit -p .` and `eslint` on both changed
+files confirmed clean (same one pre-existing, unrelated `load`-dependency
+warning as every other dashboard.tsx entry above).
+
+**`accept-org-invite.tsx` widened to full identity** — explicitly decided
+by Hazem (not assumed): an anonymous, no-account-yet invite recipient
+should see the SAME full identity (name/logo/trade_type/legal_form/
+verification badge) an authenticated collaborator sees on
+`collaboration.tsx`, not a reduced anonymous-safe subset. Implemented by
+widening `get_project_invitation_by_token` (0024) in a new migration,
+`0079_invite_lead_org_full_identity.sql`, adding `lead_org_`-prefixed keys
+(`lead_org_logo_signed_url`/`lead_org_trade_type`/`lead_org_legal_form`/
+`lead_org_verification_status`) kept deliberately separate from the
+pre-existing `trade_type` key, which is the invite's own required trade
+("they need a plumber"), not the lead org's own trade — reusing that key
+for a different meaning would have silently broken the existing "Métier :
+{tradeType}" line. Converted from `language sql` to `plpgsql` to gain the
+same exception-safe logo-signing fallback 0078/0076 already established.
+Still never exposes `matricule_fiscal`/`rc_number`/RIB/
+`subscription_status`. `accept-org-invite.tsx` updated to render the new
+`OrgIdentityRow` above its existing headline. `tsc --noEmit -p .` and
+`eslint` confirmed clean (one pre-existing, unrelated `loadInvitation`-
+dependency warning). **Same live-Supabase caveat as migration 0078** —
+this SQL has been read through carefully but never executed against real
+Postgres.
+
+**Web parity shipped** — see `docs/spec/03-screens-mobile-contractor-and-
+worker.md` §3.22.2a and §3.5, and `docs/spec/04-screens-web-contractor-
+and-admin.md` §4.1.3/§4.2.1 for the spec-level description; the guide
+this was built from, `docs/dala-web-org-creation-parity-guide.md`, is now
+implemented rather than a forward-looking plan. `apps/web/src/app/
+create-organization/page.tsx` rebuilt into the same 4-step wizard, and
+`apps/web/src/app/(auth)/login/page.tsx` got the same completion redirect
+— both `tsc --noEmit` (web) and `eslint` confirmed clean on every changed
+file (one pre-existing, unrelated `portail/[token]/page.tsx` error,
+confirmed present before these changes too and outside anything touched
+here).
+
+### Follow-on — mobile-only silent-gap audit: worker "no site assigned" bug, vehicle document upload, dead search column
+
+A separate, narrower audit pass — explicitly looking for things that were
+BUILT but silently don't work, not new features — surfaced three more
+items, verified by reading actual RLS policy text and client code against
+each other, not live-instance testing:
+
+**Worker "no site assigned" bug (`material-request.tsx` /
+`update-chantier.tsx`)**: both screens embed `dispatch_assignments...
+projects(name)` to show "Pour {site}". `projects`' only SELECT policy
+(`projects_select_lead_or_trade`, 0006) checks `is_org_member`/
+`is_project_member` — both key off `organization_members`/
+`project_memberships`, tables a worker's own auth user is never a row in
+(confirmed by reading `is_org_member`'s body directly, 0005; workers get
+separate `_self` policies instead, e.g. `dispatch_assignments_select_self`,
+0019). So the embedded `projects(name)` silently returned null for every
+worker, every time — not an edge case. Both screens' fallback then
+rendered "Aucun chantier assigné aujourd'hui" even on a day the worker WAS
+assigned a site — actively telling the worker the opposite of the truth,
+not merely a blank field. Fixed via a new, additive-only RLS policy on
+`projects` (`projects_select_assigned_worker`, migration `0080`, new
+predicate `is_worker_assigned_to_project()`) — Postgres ORs multiple
+permissive policies for the same command, so `projects_select_lead_or_trade`
+and every existing caller of it are completely unaffected. Not scoped to
+"today only," matching how this schema's other membership predicates
+aren't time-scoped either. Neither screen's own code needed to change —
+the existing `.select()` embeds resolve correctly once the RLS gap closes.
+
+**`vehicle_documents.document_url` wired up**: schema-ready since 0073,
+and `createVehicleDocumentSchema` already accepted it, but the
+create-document sheet in `vehicle/[id].tsx` never collected it and the
+list never rendered it — confirmed via a whole-file grep turning up zero
+references before this fix. Closed by reusing `vehicles.tsx`'s own
+camera-or-library `ImagePicker` → `processPhoto` → `uploadOrgFile`
+pipeline verbatim (new `vehicle-documents` storage category under the
+existing private `org-files` bucket — its RLS only checks the `org_id`
+path segment, confirmed by reading `org_files_select_participant`'s
+policy text, so no new storage policy was needed). Deliberately a photo/
+scan, not a true PDF/file picker — `expo-document-picker` still isn't a
+dependency anywhere in this repo, the same constraint `safety.tsx`'s own
+header already discloses for `org_insurances.document_url`; this follows
+that same disclosed-gap reasoning rather than guessing at a new package.
+Saved documents now show a signed thumbnail (via the existing
+`getSignedUrlMap`) when a photo is attached, and an explicit "no photo
+attached" note when not.
+
+**Dead `organizations.search_vector` dropped** (migration `0081`): a
+generated tsvector column + GIN index from 0003, confirmed via full-repo
+grep to have never been queried by anything — `search_all()` (0012), the
+only full-text search RPC this schema has, only searches
+`projects`/`workers`/`vehicles`, each scoped to a single `p_org_id`; an
+"organizations" arm doesn't fit that shape (an org searching for its own
+name isn't a feature). Pure maintenance overhead until dropped —
+recomputed/re-indexed on every `organizations` write for zero read
+benefit. Deliberately NOT wired into `search_all()` as-is: a genuine
+cross-org directory search (using `service_area`/`legal_form`, 0075)
+would be a different, currently-undesigned feature with its own exposure
+questions, flagged rather than built silently.
+
+**Not run against a live Supabase instance or a real device** — same
+caveat as every other migration/RLS item in this document; added to the
+backlog below.
+
+### Follow-on — organizations.facebook_url/instagram_url/website_url wired up, worker-invite identity parity (migration 0082)
+
+Two more gaps closed in the same audit thread, one confirmed-and-fixed,
+one an explicitly-flagged judgment call:
+
+**`organizations.facebook_url`/`instagram_url`/`website_url` were
+write-only** since 0075 — that migration's own column comment frames
+Facebook/Instagram as _more important than a website_ for these
+businesses, but neither `get_shared_project_org_summaries` (0078) nor
+`get_project_invitation_by_token`'s widening (0079) included them,
+despite both already shipping `service_area` from the same source
+migration with the same "public profile" intent. Fixed by adding all
+three fields to both RPCs' return shape (still never
+`matricule_fiscal`/`rc_number`/RIB/`subscription_status`) and rendering
+them as a small row of tappable links (`Linking.openURL`, the app's
+existing convention) under `OrgIdentityRow` in `collaboration.tsx`'s
+detail sheet and `accept-org-invite.tsx`.
+
+**`get_worker_invitation_by_token` widened to match
+`accept-org-invite.tsx`'s identity richness** — before this,
+`accept-invite.tsx` (a worker's own invite, anon-reachable) showed a bare
+`Bienvenue chez {orgName}` with no logo/trade_type/legal_form/
+verification badge, while `accept-org-invite.tsx` (a trade-org's invite,
+also anon-reachable) got the full `OrgIdentityRow` treatment in `0079`.
+Same "an org is inviting you" conceptual flow, no documented reason for
+the gap. Applied `0079`'s own precedent here by parity — **this specific
+call was made without separate, explicit product sign-off** the way
+`0079`'s original widening was; stated plainly in migration `0082`'s
+header, easy to revert to the narrower original
+(`worker_full_name`/`worker_email`/`organization_name`/`status`/`expired`
+only) if that call turns out wrong. `accept-invite.tsx` rebuilt to render
+`OrgIdentityRow` + the same social-links row, mirroring
+`accept-org-invite.tsx`'s layout exactly.
+
+**Not run against a live Supabase instance or a real device** — same
+caveat, added to the backlog below.
+
+### Follow-on — the most serious finding in this audit: suspended_at was documented but completely unenforced (migration 0083)
+
+`organizations.suspended_at` and `profiles.suspended_at` (`0021`) have had
+explicit, unambiguous intent since day one — their own column comments
+say _"login blocked while set"_ and _"per-user login block"_ — but
+nothing anywhere in the entire stack ever checked either column. Grepped
+the full repo, not just mobile: the admin app sets the flag and shows a
+badge; RLS, every one of the 19 Edge Functions, and the mobile app itself
+never reference it at all. An admin could click "Suspend" and the
+suspended person's mobile app would keep working normally, forever — the
+one finding in this whole audit that's a documented access-control
+feature doing nothing, not a display bug.
+
+Three options were written up (RLS-level enforcement / a Supabase Custom
+Access Token auth hook / both, phased). Hazem chose the phased option —
+ship the auth hook first, treat RLS-level enforcement as a deliberate,
+disclosed follow-up. Implemented:
+
+- **`check_suspension_before_token_issuance`** (migration `0083`) — a
+  Postgres function wired up as a Supabase Custom Access Token Auth Hook
+  (`supabase/config.toml`'s new `[auth.hook.custom_access_token]`
+  section), which GoTrue calls on every JWT mint — both initial sign-in
+  AND token refresh, unlike a Password-Verification-only hook. Raises an
+  exception (marker: `DALA_ACCOUNT_SUSPENDED`) to block token issuance
+  when `profiles.suspended_at` or the user's `organizations.suspended_at`
+  is set.
+- **`login.tsx`** matches `authError.message` against that marker and
+  shows a clean French "your account/organization has been suspended,
+  contact your manager" message instead of a raw Supabase error, falling
+  back to the raw message if the marker doesn't survive GoTrue's error
+  wrapping (never silent failure either way).
+
+**Explicitly NOT done, disclosed rather than silently skipped:**
+
+1. **RLS-level enforcement (Option A)** was deliberately not built. An
+   access token issued before suspension keeps working against
+   RLS-gated queries for up to its own lifetime after suspension
+   (`jwt_expiry = 3600` in `config.toml`, so ≤1 hour) — this migration
+   only blocks _new_ token issuance and refresh, not an already-live
+   token's remaining validity window. Revisit only if an instant, not
+   ≤1-hour, cutoff becomes an actual requirement — folding this into
+   `is_org_member()`/`org_role_of()`/`is_project_member()`/
+   `is_own_worker()` touches the functions nearly every RLS policy in
+   this schema depends on, the same functions that had a real recursion
+   bug once already (`0039`).
+2. **No global auth-state-change listener exists anywhere in this app**
+   (confirmed by grep — every screen calls `supabase.auth.getSession()`
+   individually). So while the hook does reject a mid-session token
+   refresh for a newly-suspended user, there's currently no shared place
+   to catch that rejection and show a clean message — the practical
+   effect for "already logged in, suspended mid-session" is most likely
+   individual screens' queries failing piecemeal after the next refresh,
+   not a clean redirect. The common case (blocked at the login screen
+   itself) IS handled cleanly.
+3. Using this hook type to _reject_ issuance (rather than its primary
+   documented purpose of modifying JWT claims) is a widely-documented
+   community pattern, not confirmed against a live instance in this
+   sandbox — same for the exact error-message shape the client receives.
+   See `0083`'s own header for the full disclosure.
+
+**Not run against a live Supabase instance at all** — this is the single
+highest-priority item in the manual-verification backlog below; nothing
+about this fix has been confirmed to actually work yet.
+
+### Follow-on — cross-app audit remediation (migrations 0085–0089)
+
+A second targeted audit pass, widened past mobile-only this time (cf. the
+mobile-only sweep two follow-ons up) to cover web and admin as well, using
+the same method: reading `profiles_select_own`'s actual RLS text (0005)
+against every screen in all three apps that queries `profiles` for
+someone other than the caller.
+
+- **`get_org_member_profiles(p_org_id)`** (migration 0085) — batched
+  sibling of `get_profile_summary_for_org_member` (0075). Six call sites
+  were confirmed silently getting zero rows back under the RLS gap and
+  rewired: web's `settings/roles/page.tsx` and `pointage/history/page.tsx`;
+  mobile's `team-members.tsx`, `AttendanceHistory.tsx`, `dashboard.tsx`
+  (activity feed actor names), `team.tsx`, `journal.tsx` (site-log author
+  avatars). Also found and deleted a second bug on `worker/[id].tsx` — a
+  broken direct `profiles.avatar_url` query sitting right next to a
+  _working_ call to `get_profile_summary_for_org_member` that already
+  returned the same field.
+- **Web avatar signing** (no migration) — `AppShell.tsx` and
+  `settings/roles/page.tsx` were rendering raw `org-files` storage paths
+  instead of signed URLs. Fixed client-side, matching
+  `settings/account/page.tsx`'s existing correct pattern.
+- **`projects.search_vector` gained `project_type`** (migration 0086) —
+  same drop+recreate pattern 0075 used for `workers.search_vector`, plus
+  handling the same view-dependency landmine 0075 flagged: `active_projects`
+  depends on `search_vector` by column, so it had to be dropped and
+  recreated (with its `security_invoker` flag and comment restored)
+  around the swap.
+- **`advances` push-notification trigger** (migration 0087) —
+  `notify_advance_decision()` notifies `requested_by` on
+  `pending → approved/rejected`. Required a second fix:
+  `NotificationRouter.tsx`'s tap-listener has an explicit `default: no-op`
+  for unrecognized push types, so the new `'advance'` type needed an
+  explicit routing case or a tap on it would silently do nothing.
+- **Stale `deletion_requested_at` comment corrected** (migration 0088) —
+  comment-only, no behavior change.
+- **Org verification request queue** (migration 0089) —
+  `request_org_verification()` (owner/manager, via the existing
+  `org_role_of` helper) plus admin approve/reject wired into the existing
+  `organizations/[orgId]` mutation route (no second RPC needed for the
+  admin side) and a new pending-queue tab on admin's organizations list.
+  Mobile's `organization-settings.tsx` gained the missing "Demander la
+  vérification" button.
+- **Web dashboard activity feed rebuilt on `org_activity_feed`** (no
+  migration) — the existing "Activités récentes" card was a lookalike
+  built from `site_logs`/`invoices`/`dispatch_assignments` directly,
+  never the same table mobile uses, missing `expense_recorded` and
+  `safety_incident_reported` events entirely — a real violation of Doc 04
+  §4.2.2's "same underlying queries" requirement, not just an omission.
+  Replaced with the real feed; actor names routed through the new
+  `get_org_member_profiles` RPC from the start (mobile's own version of
+  this exact lookup independently had the same RLS-gap bug fixed above).
+- **Web site-log GPS display, display-only** (no migration) —
+  `journal/page.tsx` already selected `location_lat`/`location_lng`;
+  `JournalView.tsx` never rendered them. No capture path added on web.
+- **Web safety incident detail view** (no migration) — `SafetyView.tsx`
+  had no detail view at all; added one (photo, severity, location,
+  involved workers via `safety_incident_workers`, timestamp), batched in
+  `safety/page.tsx`.
+
+See Doc 01 §1.20.7 for the full per-item technical writeup.
 
 Every item below needs a live Supabase instance, a real device/simulator, or both —
 none can be closed by further reading/writing code. Grouped by area rather than by
@@ -3441,6 +3915,122 @@ phase-specific anymore):
 
 **Native pickers & UI on real devices**
 
+- Org-creation wizard (`create-organization.tsx`): all 4 steps, "Passer" vs
+  "Continuer," back navigation not losing state, "Terminer plus tard,"
+  logo pick/upload in step 2, and completion mode (`?org_id=`) pre-filling
+  correctly from a real org row — none of this has run on a device yet.
+- `login.tsx`'s post-login completion redirect firing (and NOT firing once
+  dismissed/complete) against a real account and a real
+  `org_checklist_dismissed_at` value.
+- The `from_wizard=1` suppression on `dashboard.tsx`: confirm
+  `OnboardingChecklist` is actually hidden on the one dashboard load right
+  after exiting the wizard, and reappears normally (if still unmet) on the
+  next fresh app open/login — hasn't run against a live session yet.
+- Migration 0078 (`get_shared_project_org_summaries`) needs to actually be
+  applied to a real Supabase instance and exercised with two real orgs on
+  a real shared project, in both directions — nothing about this RPC or
+  `collaboration.tsx`'s rewrite has run against live Postgres yet.
+- Migration 0079 (`get_project_invitation_by_token` widening) — same
+  caveat: needs a real invite token, a real anonymous (no-session) request,
+  and confirmation that `accept-org-invite.tsx` actually renders the lead
+  org's logo/legal_form/verification badge correctly.
+- Migration 0080 (`projects_select_assigned_worker`) needs to be applied
+  to a real Supabase instance and exercised with a real worker account
+  that has a real dispatch assignment for today — confirm
+  `material-request.tsx`/`update-chantier.tsx` now show the correct site
+  name instead of "Aucun chantier assigné" — nothing about this policy
+  has run against live Postgres yet.
+- `vehicle_documents.document_url` upload (`vehicle/[id].tsx`) needs a
+  real device camera/library permission flow, a real upload to the
+  `org-files` bucket under the new `vehicle-documents` category, and
+  confirmation the signed thumbnail actually renders — reasoned through
+  from reading the code and mirrored off `vehicles.tsx`'s existing photo
+  flow, never seen rendered.
+- Migration 0081 (drop `organizations.search_vector`/
+  `organizations_search_idx`) needs to be applied to a real Supabase
+  instance and confirmed to not break anything — expected to be a no-op
+  functionally (nothing reads the column today) but the drop itself has
+  never run against live Postgres.
+- Migration 0082 (`facebook_url`/`instagram_url`/`website_url` added to
+  `get_shared_project_org_summaries` and `get_project_invitation_by_token`;
+  `get_worker_invitation_by_token` widened to full org identity) needs a
+  real Supabase instance and real data to confirm: the new link rows
+  render/open correctly in `collaboration.tsx`'s detail sheet and
+  `accept-org-invite.tsx`, and — separately — that `accept-invite.tsx`'s
+  new `OrgIdentityRow` + links actually resolve for a real worker
+  invitation. Also worth a product check once visible on a real device,
+  given the worker-invite widening was a parity judgment call, not a
+  separately confirmed decision (see 0082's own header).
+- **Migration 0083 (`check_suspension_before_token_issuance` auth hook) —
+  the highest-priority item in this whole backlog.** Nothing about this
+  has been confirmed against a live Supabase instance:
+  1. The hook needs to actually be enabled — locally via
+     `supabase/config.toml`'s new `[auth.hook.custom_access_token]`
+     section (requires a full `supabase stop && supabase start`, config
+     changes aren't picked up live), and on HOSTED Supabase additionally
+     via the dashboard (Authentication → Hooks) — config.toml alone does
+     not enable it there.
+  2. Whether raising an exception inside a Custom Access Token hook
+     actually blocks token issuance the way this migration assumes needs
+     to be confirmed against a real GoTrue instance — test by suspending
+     a real test org/user via the admin app, then confirming
+     `signInWithPassword` genuinely fails for that account.
+  3. The exact shape of the resulting client-side error needs checking
+     against `login.tsx`'s `DALA_ACCOUNT_SUSPENDED` substring match — if
+     GoTrue wraps/replaces the message differently than expected, the
+     person still sees an error (never silence), just not the friendly
+     French one — confirm which actually happens.
+  4. Separately confirm the token-refresh case: suspend an account
+     mid-session (already logged in) and confirm the next refresh is
+     rejected — this is the part of the fix with no clean client-side
+     surfacing yet (see 0083's own header — no global auth-state listener
+     exists in this app to catch a mid-session rejection cleanly).
+  5. **The RLS-level follow-up (Option A from the suspend-enforcement
+     write-up) was deliberately NOT built** — an already-issued access
+     token keeps working against RLS-gated queries for up to its ~1 hour
+     lifetime (`jwt_expiry` in config.toml) after suspension. Revisit if
+     an instant cutoff ever becomes a real requirement.
+- **Migrations 0085–0089 (cross-app audit remediation)** — none of these
+  have run against a live Supabase instance or a real device:
+  1. `get_org_member_profiles` (0085) needs a real org with 2+ members to
+     confirm every one of the six rewired call sites now actually shows
+     other members' real names/avatars instead of the old fallback
+     strings — especially `worker/[id].tsx`, where the fix also changed
+     which of two code paths supplies the avatar.
+  2. Web avatar signing (`AppShell.tsx`, `settings/roles/page.tsx`) needs
+     a real org member with a real uploaded avatar to confirm the signed
+     URL actually renders instead of the old broken raw path.
+  3. Migration 0086 (`projects.search_vector` + `project_type`) needs to
+     be applied to a real instance and confirmed the `active_projects`
+     view drop/recreate didn't break anything reading from it, and that
+     `search_all()` now actually matches a project by its type.
+  4. Migration 0087 (`notify_advance_decision` trigger) needs a real
+     advance request approved/rejected against a real device with a
+     valid Expo push token to confirm the push arrives, and that tapping
+     it actually opens `(worker)/advance-request.tsx` via the new
+     `NotificationRouter.tsx` case.
+  5. Migration 0089 (org verification queue) needs a real org: request
+     verification as owner/manager on mobile, confirm it shows as
+     pending in admin's new queue tab, approve/reject it, and confirm
+     the status change is reflected back on mobile and in `OrgDetail.tsx`
+     without a stale cache anywhere in between.
+  6. The rebuilt web dashboard activity feed needs a real org with a mix
+     of all four event types to confirm every `activityEventText()`
+     branch renders correctly, not just the ones exercised while writing
+     it.
+  7. Web safety incident detail view needs a real incident with involved
+     workers and a photo to confirm the signed photo URL and the
+     `safety_incident_workers` join both actually resolve.
+- The own-org logo signing fix (dashboard.tsx / OrgSwitcherSheet.tsx) needs
+  a real device check that logos now actually render for real orgs with a
+  real uploaded logo — this was reasoned through from reading the code,
+  never seen rendered.
+- Web parity (`apps/web/src/app/create-organization/page.tsx` and
+  `apps/web/.../login/page.tsx`) — the whole 4-step wizard, the file-input
+  logo upload specifically (no existing web upload precedent existed to
+  verify this pattern against), and the login redirect all need a real
+  `next dev` run against live Supabase; nothing here has been rendered in
+  a browser.
 - `DatePicker` renders the correct native OS widget on both Android and iOS,
   including the two-ended range bounds on `reports.tsx` reacting live to the other
   field's change.
@@ -3481,8 +4071,8 @@ phase-specific anymore):
 - **RIB encryption is blocked end-to-end** until the Vault bootstrap script
   (`organization_rib_encryption_key_v1`) is written and run against a real instance —
   currently, no environment can successfully call `update_organization_rib()`.
-- Push notifications (dispatch/material/safety triggers) reaching a real device via
-  Expo's push service; cold-start notification-tap deep linking.
+- Push notifications (dispatch/material/safety/advance-decision triggers) reaching a
+  real device via Expo's push service; cold-start notification-tap deep linking.
 - `fetchWeeklyForecast()`'s Open-Meteo response parsing against real API responses.
 
 **Analytics**

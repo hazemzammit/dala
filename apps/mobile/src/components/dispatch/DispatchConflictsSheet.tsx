@@ -24,6 +24,24 @@ import { haptics } from '@/lib/haptics';
  * version" / "Utiliser la version du serveur" copy, reused verbatim rather
  * than re-worded for the same concept).
  *
+ * CORRECTION + CONSOLIDATION (Phase 19C — Doc 05 §1.7d): the spec
+ * describes this component as rendering BOTH the async conflict-list
+ * below AND dispatch.tsx's live, in-the-moment "Modifié ailleurs" decision
+ * (the one shown inline when a save/drag hits a version conflict in real
+ * time). That wasn't accurate as of 19C's start: this component only
+ * rendered the async list, and the live decision was a second, hand-rolled
+ * copy of the same JSX inside dispatch.tsx's own `renderSheet()`. Fixed
+ * by extracting the shared visual piece both need into `ConflictCard`
+ * (exported below) — dispatch.tsx's live branch now calls it directly
+ * instead of duplicating it. The two callers' data sources remain
+ * genuinely different and were NOT merged: this file's async conflicts
+ * come from the local `dispatch_assignment_conflicts` table (WatermelonDB
+ * local-first sync); dispatch.tsx's live conflict comes from a direct,
+ * online-only Supabase version check in `submitAssignmentPatch` (see that
+ * function's own comment — deliberately not local-first). `ConflictCard`
+ * is presentational only; each caller still owns its own resolution
+ * handlers and data-fetching, exactly as before.
+ *
  * WHAT THIS SHOWS: every unresolved `dispatch_assignment_conflicts` local
  * row, joined against its `dispatch_assignments` row by
  * `dispatch_assignment_id`. Per Doc 03 §3.11's design (server wins in the
@@ -120,10 +138,115 @@ interface ConflictRow {
   conflictId: string;
   dispatchAssignmentId: string;
   localSnapshot: Record<string, unknown>;
-  /** "What the server now has" — the current local mirror of the synced
-   * `dispatch_assignments` row. Null only if that row somehow no longer
-   * exists locally (shouldn't normally happen; handled defensively). */
+  /** The actual model — kept for `handleKeepMine` to write onto (needs
+   * the real WatermelonDB record, not just its values). Null only if the
+   * synced row somehow no longer exists locally. */
   serverRecord: DispatchAssignmentModel | null;
+  /** Same row's values, read out into a plain snake_case-keyed object via
+   * MODEL_PROPERTY — this is what gets passed to `ConflictCard` for
+   * display, so that component can render identically regardless of
+   * whether the caller has a real model (this file) or a plain object
+   * from a direct Supabase read (dispatch.tsx's live case). */
+  serverValues: Record<string, unknown> | null;
+}
+
+/**
+ * Doc 05 §1.7d consolidation (Phase 19C): the shared card both conflict
+ * surfaces render — extracted so dispatch.tsx's live, in-the-moment
+ * decision (`renderSheet()`'s `conflict` branch) can call the exact same
+ * implementation this file's own async list uses below, instead of a
+ * second, hand-rolled copy of the same JSX (the discrepancy the header
+ * comment above describes finding).
+ *
+ * The two callers' current visible output is preserved exactly, not
+ * merged into one appearance: the field-by-field diff block only renders
+ * when `changedKeys`/`localSnapshot` are actually provided. The async
+ * list always has real diff data (from `local_snapshot`), so its cards
+ * are unchanged. dispatch.tsx's live conflict never had per-field diff
+ * data (`submitAssignmentPatch`'s conflict result is only `{ serverVersion
+ * }` — no field-level compare was ever fetched for it), so passing no
+ * diff data here reproduces its existing simpler "title → description →
+ * two buttons" appearance exactly, rather than this consolidation
+ * silently adding a diff view it never had.
+ */
+interface ConflictCardProps {
+  /** Exact copy to show — the async list's and dispatch.tsx's live case
+   * use very slightly different wording (the live case appends "Que
+   * voulez-vous faire ?"), so this is a required prop rather than a
+   * hardcoded default, to guarantee neither caller's copy shifts. */
+  description: string;
+  changedKeys?: string[];
+  localSnapshot?: Record<string, unknown>;
+  serverValues?: Record<string, unknown> | null;
+  lookups?: { workers: Worker[]; vehicles: Vehicle[]; projects: Project[] };
+  onKeepMine: () => void;
+  onUseServer: () => void;
+  resolving: boolean;
+  /** "Garder ma version" needs a real server row to apply the diff onto —
+   * disabled when the caller has none (the async list's defensive
+   * `serverRecord === null` case; dispatch.tsx's live case always has one,
+   * since it was just fetched to detect the conflict in the first place). */
+  keepMineDisabled?: boolean;
+}
+
+export function ConflictCard({
+  description,
+  changedKeys = [],
+  localSnapshot = {},
+  serverValues = null,
+  lookups,
+  onKeepMine,
+  onUseServer,
+  resolving,
+  keepMineDisabled = false,
+}: ConflictCardProps) {
+  return (
+    <YStack backgroundColor="$neutral25" borderRadius="$card" padding="$3" gap="$3">
+      <Text fontFamily="$display" fontSize={15} fontWeight="600">
+        Modifié ailleurs
+      </Text>
+      <Text color="$neutral500" fontSize={13}>
+        {description}
+      </Text>
+
+      {changedKeys.length > 0 && lookups && (
+        <YStack gap="$2">
+          {changedKeys.map((key) => (
+            <YStack key={key} gap="$1">
+              <Text fontSize={12} fontWeight="500" color="$neutral500">
+                {FIELD_LABELS[key] ?? key}
+              </Text>
+              <XStack gap="$2">
+                <YStack flex={1} gap="$0.5">
+                  <Text fontSize={11} color="$neutral500">
+                    Version du serveur
+                  </Text>
+                  <Text fontSize={13.5}>
+                    {serverValues ? formatValue(key, serverValues[key], lookups) : '—'}
+                  </Text>
+                </YStack>
+                <YStack flex={1} gap="$0.5">
+                  <Text fontSize={11} color="$accent600">
+                    Vos changements
+                  </Text>
+                  <Text fontSize={13.5} fontWeight="500">
+                    {formatValue(key, localSnapshot[key], lookups)}
+                  </Text>
+                </YStack>
+              </XStack>
+            </YStack>
+          ))}
+        </YStack>
+      )}
+
+      <Button onPress={onKeepMine} loading={resolving} disabled={keepMineDisabled}>
+        Garder ma version
+      </Button>
+      <Button variant="secondary" onPress={onUseServer} loading={resolving}>
+        Utiliser la version du serveur
+      </Button>
+    </YStack>
+  );
 }
 
 function formatValue(
@@ -202,11 +325,20 @@ export function DispatchConflictsSheet({
         localSnapshot = {};
       }
 
+      let serverValues: Record<string, unknown> | null = null;
+      if (serverRecord) {
+        serverValues = {};
+        for (const [snakeKey, camelKey] of Object.entries(MODEL_PROPERTY)) {
+          serverValues[snakeKey] = (serverRecord as unknown as Record<string, unknown>)[camelKey];
+        }
+      }
+
       rows.push({
         conflictId: c.id,
         dispatchAssignmentId: c.dispatchAssignmentId,
         localSnapshot,
         serverRecord,
+        serverValues,
       });
     }
 
@@ -285,71 +417,18 @@ export function DispatchConflictsSheet({
             const changedKeys = Object.keys(row.localSnapshot);
             const lookups = { workers, vehicles, projects };
             return (
-              <YStack
+              <ConflictCard
                 key={row.conflictId}
-                backgroundColor="$neutral25"
-                borderRadius="$card"
-                padding="$3"
-                gap="$3"
-              >
-                <Text fontFamily="$display" fontSize={15} fontWeight="600">
-                  Modifié ailleurs
-                </Text>
-                <Text color="$neutral500" fontSize={13}>
-                  Cette affectation a été modifiée par quelqu&apos;un d&apos;autre entre-temps.
-                </Text>
-
-                <YStack gap="$2">
-                  {changedKeys.map((key) => (
-                    <YStack key={key} gap="$1">
-                      <Text fontSize={12} fontWeight="500" color="$neutral500">
-                        {FIELD_LABELS[key] ?? key}
-                      </Text>
-                      <XStack gap="$2">
-                        <YStack flex={1} gap="$0.5">
-                          <Text fontSize={11} color="$neutral500">
-                            Version du serveur
-                          </Text>
-                          <Text fontSize={13.5}>
-                            {row.serverRecord
-                              ? formatValue(
-                                  key,
-                                  (row.serverRecord as unknown as Record<string, unknown>)[
-                                    MODEL_PROPERTY[key] ?? key
-                                  ],
-                                  lookups,
-                                )
-                              : '—'}
-                          </Text>
-                        </YStack>
-                        <YStack flex={1} gap="$0.5">
-                          <Text fontSize={11} color="$accent600">
-                            Vos changements
-                          </Text>
-                          <Text fontSize={13.5} fontWeight="500">
-                            {formatValue(key, row.localSnapshot[key], lookups)}
-                          </Text>
-                        </YStack>
-                      </XStack>
-                    </YStack>
-                  ))}
-                </YStack>
-
-                <Button
-                  onPress={() => handleKeepMine(row)}
-                  loading={resolvingId === row.conflictId}
-                  disabled={!row.serverRecord}
-                >
-                  Garder ma version
-                </Button>
-                <Button
-                  variant="secondary"
-                  onPress={() => handleUseServer(row)}
-                  loading={resolvingId === row.conflictId}
-                >
-                  Utiliser la version du serveur
-                </Button>
-              </YStack>
+                description="Cette affectation a été modifiée par quelqu'un d'autre entre-temps."
+                changedKeys={changedKeys}
+                localSnapshot={row.localSnapshot}
+                serverValues={row.serverValues}
+                lookups={lookups}
+                onKeepMine={() => handleKeepMine(row)}
+                onUseServer={() => handleUseServer(row)}
+                resolving={resolvingId === row.conflictId}
+                keepMineDisabled={!row.serverRecord}
+              />
             );
           })}
         </YStack>

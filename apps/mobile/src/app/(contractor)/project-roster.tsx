@@ -17,11 +17,14 @@ import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -84,6 +87,12 @@ export default function ProjectRosterScreen() {
   const { project_id } = useLocalSearchParams<{ project_id: string }>();
 
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the project-status check and the roster/worker
+  // queries below had no error capture; a failed fetch previously
+  // rendered as "Aucun travailleur," indistinguishable from a genuinely
+  // unstaffed project.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [canWrite, setCanWrite] = useState(false);
@@ -112,17 +121,24 @@ export default function ProjectRosterScreen() {
     }
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
 
     const org = await getActiveOrgId();
     setOrgId(org);
 
     // Doc 03 §3.10.2 / decision #26 — staffing is locked once the project
     // is archived/completed, same readOnly reasoning as dispatch.tsx.
-    const { data: projectRow } = await supabase
+    const { data: projectRow, error: projectError } = await supabase
       .from('projects')
       .select('status')
       .eq('id', project_id)
       .maybeSingle();
+    if (projectError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     if (org) {
       const role = await getMyOrgRole(org);
@@ -133,12 +149,18 @@ export default function ProjectRosterScreen() {
     // RLS (project_workers_select_member, 0034) already scopes this to the
     // caller's own org's rows on the project — no need to filter by org_id
     // here, an unrelated or trade-participant org just gets its own subset.
-    const { data: rosterRows } = await supabase
+    const { data: rosterRows, error: rosterError } = await supabase
       .from('project_workers')
       .select('*')
       .eq('project_id', project_id)
       .is('removed_at', null)
       .order('added_at', { ascending: true });
+    if (rosterError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const workerIds = (rosterRows ?? []).map((r) => r.worker_id);
     const { data: workerRows } = workerIds.length
@@ -292,6 +314,14 @@ export default function ProjectRosterScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <XStack alignItems="center" gap="$3" paddingHorizontal="$4" marginBottom="$3">
@@ -310,7 +340,7 @@ export default function ProjectRosterScreen() {
       {roster.length === 0 ? (
         <EmptyState
           icon={UsersIcon}
-          illustration="team"
+          illustration="team-assignment"
           title="Aucun travailleur sur ce chantier"
           description={
             canWrite
@@ -320,7 +350,7 @@ export default function ProjectRosterScreen() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 120 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: fabBottomInset }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -330,38 +360,33 @@ export default function ProjectRosterScreen() {
           }
         >
           <YStack gap="$2">
+            {/* UI/UX pass — composes the shared `ListCard`. The remove
+                action stays a direct, visible trash icon (passed via
+                `badge`, which takes any node) rather than being moved
+                behind a generic overflow menu — a single, always-relevant
+                action is clearer as a direct icon than hidden behind
+                "⋮", per the audit's own principle of not manufacturing
+                secondary-action patterns where none is needed. */}
             {roster.map((row) => (
-              <XStack
+              <ListCard
                 key={row.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$4"
-                justifyContent="space-between"
-                alignItems="center"
-              >
-                <XStack gap="$3" alignItems="center" flex={1}>
-                  <Avatar name={row.worker?.full_name ?? '?'} />
-                  <YStack gap="$1" flex={1}>
-                    <Text fontSize={15.5} fontWeight="600" numberOfLines={1}>
-                      {row.worker?.full_name ?? 'Travailleur supprimé'}
-                    </Text>
-                    <Text fontSize={13} color="$neutral500">
-                      {row.worker?.trade ?? '—'}
-                    </Text>
-                  </YStack>
-                </XStack>
-                {canWrite && (
-                  <XStack
-                    padding={6}
-                    onPress={() => confirmRemove(row)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Retirer ${row.worker?.full_name ?? 'ce travailleur'} du chantier`}
-                    opacity={removingRowId === row.id ? 0.5 : 1}
-                  >
-                    <TrashIcon size={18} color={color.neutral[500]} />
-                  </XStack>
-                )}
-              </XStack>
+                leading={<Avatar name={row.worker?.full_name ?? '?'} />}
+                title={row.worker?.full_name ?? 'Travailleur supprimé'}
+                subtitle={row.worker?.trade ?? '—'}
+                badge={
+                  canWrite && (
+                    <XStack
+                      padding={6}
+                      onPress={() => confirmRemove(row)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Retirer ${row.worker?.full_name ?? 'ce travailleur'} du chantier`}
+                      opacity={removingRowId === row.id ? 0.5 : 1}
+                    >
+                      <TrashIcon size={18} color={color.neutral[500]} />
+                    </XStack>
+                  )
+                }
+              />
             ))}
           </YStack>
         </ScrollView>

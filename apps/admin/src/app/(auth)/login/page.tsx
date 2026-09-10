@@ -1,6 +1,6 @@
-import { LoginForm } from './LoginForm';
+import { Card } from '@dala/ui-web';
 
-import { Card } from '@/components/ui/Card';
+import { LoginForm } from './LoginForm';
 
 /**
  * Doc 04 §4.3.1 — Admin Login, step 1. Doc 05 §1.3 — auth screens use the

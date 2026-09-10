@@ -1,24 +1,26 @@
 import { color } from '@dala/design-tokens';
 import type { AttendanceStatus, OrgActivityEvent, Project, Worker } from '@dala/shared-types';
-import { router, useFocusEffect } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import {
   BuildingsIcon,
   CalendarBlankIcon,
   CaretDownIcon,
-  CaretRightIcon,
   CoinsIcon,
   HandCoinsIcon,
+  HandWavingIcon,
   NoteIcon,
   ShieldWarningIcon,
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
-import { Text, XStack, YStack, Image } from 'tamagui';
+import { Text, XStack, YStack, Image, View } from 'tamagui';
 
 import { OnboardingChecklist } from '@/components/onboarding/OnboardingChecklist';
 import { OrgSwitcherSheet } from '@/components/shell/OrgSwitcherSheet';
 import { Avatar } from '@/components/ui/Avatar';
+import { Button } from '@/components/ui/Button';
 import { Carousel } from '@/components/ui/Carousel';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { NumericText } from '@/components/ui/NumericText';
 import { ProgressBar } from '@/components/ui/Progress';
 import { SkeletonBlock } from '@/components/ui/Skeleton';
@@ -27,9 +29,11 @@ import { runSync } from '@/db/sync';
 import { getActiveOrgId, setActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { listMyOrganizations, listOwnedOrganizations, type MyOrgSummary } from '@/lib/myOrgs';
+import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
 import { cycleEndISO, cycleStartISO, todayISO } from '@/lib/salaryCycle';
 import { getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/dashboard.tsx
@@ -60,9 +64,21 @@ import { supabase } from '@/lib/supabase';
  *
  * STILL CUT, same reason as every prior phase — re-verified, not silently
  * dropped:
- *   - Profile-completion checklist / unverified-email banner: real §3.9
- *     elements, still out of scope for this pass — pulls from four
- *     different tables per Doc 01 §1.3.12–13, sized like its own phase.
+ *   - Unverified-email banner: still a real §3.9 element, still out of
+ *     scope for this pass.
+ *
+ * CORRECTION (org-creation-guide follow-on) — this comment previously also
+ * listed "profile-completion checklist" as still cut. That's no longer
+ * true and hadn't been since Phase 12: `OnboardingChecklist` (imported
+ * above, rendered below) IS that checklist — first-run nudge toward a
+ * first project/worker/pointage, dismissible via `onboarding_dismissed_at`.
+ * The org-creation-guide's later wizard work added a second, separate
+ * profile-COMPLETION nudge (org fields, not first actions) triggered from
+ * `login.tsx`, and a one-mount `from_wizard` param this screen reads to
+ * suppress `OnboardingChecklist`'s render just once right after exiting
+ * that wizard, so a brand-new org isn't nudged by both in the same
+ * breath — see this screen's own `suppressOnboardingChecklist` and Doc 03
+ * §3.9's edge cases for the full reasoning.
  *
  * UI/UX pass (post-Phase-27 audit): added pull-to-refresh on the main
  * ScrollView (was missing on every list screen in the app) and upgraded
@@ -136,7 +152,43 @@ const ACTIVITY_ICON: Record<OrgActivityEvent['event_type'], typeof NoteIcon> = {
   dispatch_assigned: CalendarBlankIcon,
 };
 
+// Round 2 audit (§1.4) — every activity row previously shared the same flat
+// `$accent50`/accent600 tint regardless of what actually happened (a
+// journal entry, an expense, an incident, a dispatch assignment), which
+// was the exact "one accent color for everything" finding the first audit
+// already flagged elsewhere. Keys here are `useTokenColor()` property
+// names, resolved at render time (module scope can't call the hook) so
+// each event type reads its own theme-aware color.
+const ACTIVITY_TINT: Record<
+  OrgActivityEvent['event_type'],
+  keyof ReturnType<typeof useTokenColor>
+> = {
+  site_log_added: 'categoricalBlue',
+  expense_recorded: 'categoricalAmber',
+  safety_incident_reported: 'danger',
+  dispatch_assigned: 'categoricalViolet',
+};
+
 export default function DashboardScreen() {
+  const tc = useTokenColor();
+
+  // Org-creation-guide addition — create-organization.tsx's wizard routes
+  // here with `?from_wizard=1` on every exit (finish, skip, or "Terminer
+  // plus tard"). A brand-new org fails BOTH this screen's own
+  // OnboardingChecklist conditions (no project/worker/pointage yet) AND
+  // the wizard's own completion check at the same time, so without this,
+  // someone could get nudged by the wizard right after signing up and
+  // then immediately nudged again by this card the moment they land here.
+  // Captured once via lazy useState init (not re-read from params on every
+  // render) so it suppresses for exactly this one mounted instance of the
+  // screen — the very next time this screen is freshly mounted (app
+  // relaunch, a new login) the param is gone and the checklist behaves
+  // exactly as it always has. Nothing is ever permanently dismissed by
+  // this — org.checklist's own "X" dismiss button is the only thing that
+  // does that, unchanged.
+  const params = useLocalSearchParams<{ from_wizard?: string }>();
+  const [suppressOnboardingChecklist] = useState(() => params.from_wizard === '1');
+
   const [orgs, setOrgs] = useState<MyOrgSummary[]>([]);
   const [ownedCount, setOwnedCount] = useState(0);
   const [activeOrgId, setActiveOrgIdState] = useState<string | null>(null);
@@ -144,6 +196,18 @@ export default function DashboardScreen() {
   const [firstName, setFirstName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Phase 20 (§1.7a) — Dashboard composes independent sources (dispatch-
+  // today, active-projects, payroll-summary, activity-feed), each its own
+  // loader, so per §1.7a's own worked example this needs section-level
+  // ErrorState, not one full-page one that would hide sections whose
+  // fetch actually succeeded. `loadGreetingName` deliberately left
+  // ungated — its failure just skips the personalized "Bonjour, X" and
+  // falls back to a generic greeting, a cosmetic degrade, not a broken
+  // section.
+  const [dispatchError, setDispatchError] = useState(false);
+  const [projectsError, setProjectsError] = useState(false);
+  const [payrollError, setPayrollError] = useState(false);
+  const [activityError, setActivityError] = useState(false);
 
   const [netThisWeek, setNetThisWeek] = useState(0);
   const [payrollDeltaPercent, setPayrollDeltaPercent] = useState<number | null>(null);
@@ -152,6 +216,15 @@ export default function DashboardScreen() {
   const [dispatchToday, setDispatchToday] = useState<DispatchTodayWorker[]>([]);
   const [dispatchPhotoUrlByPath, setDispatchPhotoUrlByPath] = useState<Record<string, string>>({});
   const [projectPhotoUrlByPath, setProjectPhotoUrlByPath] = useState<Record<string, string>>({});
+  // Bug fix (found while building the collaboration-screen org-identity
+  // work): logo_url is a private-bucket storage PATH, not a fetchable
+  // URL — every other photo on this screen (dispatchPhotoUrlByPath,
+  // projectPhotoUrlByPath below) is already resolved through
+  // getSignedUrlMap before being handed to an <Avatar>/<Image>; this one
+  // was never signed at all, so every org's logo in the switcher (and the
+  // header avatar below) was rendering broken/blank regardless of whose
+  // org it was — not a permissions issue, just a missing signing step.
+  const [orgLogoUrlByPath, setOrgLogoUrlByPath] = useState<Record<string, string>>({});
   const [activeProjects, setActiveProjects] = useState<ActiveProjectSummary[]>([]);
 
   // Phase 8 §1.7 — activity feed. actorNameById/workerNameById resolve the
@@ -171,6 +244,10 @@ export default function DashboardScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setDispatchError(false);
+    setProjectsError(false);
+    setPayrollError(false);
+    setActivityError(false);
     const [all, owned, active] = await Promise.all([
       listMyOrganizations(),
       listOwnedOrganizations(),
@@ -179,6 +256,7 @@ export default function DashboardScreen() {
     setOrgs(all);
     setOwnedCount(owned.length);
     setActiveOrgIdState(active);
+    void getSignedUrlMap(all.map((o) => o.logo_url ?? null)).then(setOrgLogoUrlByPath);
 
     await Promise.all([
       loadGreetingName(),
@@ -213,7 +291,10 @@ export default function DashboardScreen() {
       return;
     }
     const today = todayISO();
-    const [{ data: assignments }, { data: attendance }] = await Promise.all([
+    const [
+      { data: assignments, error: assignmentsError },
+      { data: attendance, error: attendanceError },
+    ] = await Promise.all([
       supabase
         .from('dispatch_assignments')
         .select('worker_id, actual_departure_time, workers(full_name, photo_url)')
@@ -225,18 +306,45 @@ export default function DashboardScreen() {
         .eq('org_id', org)
         .eq('record_date', today),
     ]);
+    if (assignmentsError || attendanceError) {
+      setDispatchError(true);
+      return;
+    }
 
+    // Bug fix: dispatch_assignments has no unique constraint on
+    // (worker_id, assignment_date) — a worker can legitimately have more
+    // than one assignment the same day (e.g. two different projects/
+    // vehicles). This card strip shows one avatar per *worker*, not per
+    // assignment, so multiple rows for the same worker must be folded
+    // into a single card here — otherwise React sees duplicate
+    // `worker.workerId` keys and the same worker renders twice. When a
+    // worker has more than one row, keep whichever status is furthest
+    // along (arrived beats en route beats not-yet-departed), since
+    // that's the most useful single status to surface for that worker.
+    const STATUS_RANK: Record<DispatchTodayWorker['status'], number> = {
+      sur_place: 2,
+      en_route: 1,
+      a_venir: 0,
+    };
     const arrivedIds = new Set((attendance ?? []).map((a) => a.worker_id));
-    const workers: DispatchTodayWorker[] = (assignments ?? []).map((a: any) => ({
-      workerId: a.worker_id,
-      name: a.workers?.full_name ?? 'Ouvrier',
-      photoPath: a.workers?.photo_url ?? null,
-      status: arrivedIds.has(a.worker_id)
+    const byWorker = new Map<string, DispatchTodayWorker>();
+    for (const a of (assignments ?? []) as any[]) {
+      const status: DispatchTodayWorker['status'] = arrivedIds.has(a.worker_id)
         ? 'sur_place'
         : a.actual_departure_time
           ? 'en_route'
-          : 'a_venir',
-    }));
+          : 'a_venir';
+      const existing = byWorker.get(a.worker_id);
+      if (!existing || STATUS_RANK[status] > STATUS_RANK[existing.status]) {
+        byWorker.set(a.worker_id, {
+          workerId: a.worker_id,
+          name: a.workers?.full_name ?? 'Ouvrier',
+          photoPath: a.workers?.photo_url ?? null,
+          status,
+        });
+      }
+    }
+    const workers = Array.from(byWorker.values());
     setDispatchToday(workers);
     // Phase 3 §1.5 — same simplification disclosed in dispatch.tsx/
     // pointage.tsx: workers.photo_url directly, not the profiles.avatar_url
@@ -253,7 +361,7 @@ export default function DashboardScreen() {
     // matches the "2–3 project cards" count Doc 05 §2.2 specs for this
     // block. Reuses projects.tsx's own consumedTotal-from-project_expenses
     // pattern rather than inventing a second way to compute it.
-    const { data: projects } = await supabase
+    const { data: projects, error: projectsErr } = await supabase
       .from('projects')
       .select('*')
       .eq('lead_org_id', org)
@@ -261,14 +369,22 @@ export default function DashboardScreen() {
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(3);
+    if (projectsErr) {
+      setProjectsError(true);
+      return;
+    }
 
     const projectIds = (projects ?? []).map((p) => p.id);
     let consumedById: Record<string, number> = {};
     if (projectIds.length > 0) {
-      const { data: expenseRows } = await supabase
+      const { data: expenseRows, error: expensesErr } = await supabase
         .from('project_expenses')
         .select('project_id, amount')
         .in('project_id', projectIds);
+      if (expensesErr) {
+        setProjectsError(true);
+        return;
+      }
       consumedById = (expenseRows ?? []).reduce<Record<string, number>>((acc, row) => {
         acc[row.project_id] = (acc[row.project_id] ?? 0) + Number(row.amount);
         return acc;
@@ -301,12 +417,16 @@ export default function DashboardScreen() {
       setFeedWorkerNameById({});
       return;
     }
-    const { data: events } = await supabase
+    const { data: events, error: eventsError } = await supabase
       .from('org_activity_feed')
       .select('*')
       .eq('org_id', org)
       .order('created_at', { ascending: false })
       .limit(8);
+    if (eventsError) {
+      setActivityError(true);
+      return;
+    }
     const feed = (events as OrgActivityEvent[] | null) ?? [];
     setActivityFeed(feed);
 
@@ -323,9 +443,15 @@ export default function DashboardScreen() {
       ),
     ) as string[];
 
+    // Audit fix 1c — profiles_select_own (0005) is `id = auth.uid()` only,
+    // so a direct `.from('profiles')` query here silently returned zero
+    // rows for any actor but the caller (masked by "Quelqu'un" below).
+    // get_org_member_profiles (0085) closes that gap.
     const [{ data: actorRows }, { data: projectRows }, { data: workerRows }] = await Promise.all([
       actorIds.length > 0
-        ? supabase.from('profiles').select('id, full_name').in('id', actorIds)
+        ? supabase.rpc('get_org_member_profiles', { p_org_id: org }).then(({ data }) => ({
+            data: (data ?? []).filter((p: any) => actorIds.includes(p.id)),
+          }))
         : Promise.resolve({ data: [] }),
       projectIds.length > 0
         ? supabase.from('projects').select('id, name').in('id', projectIds)
@@ -412,27 +538,35 @@ export default function DashboardScreen() {
     fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 21);
     const windowStartISO = fourWeeksAgo.toISOString().slice(0, 10);
 
-    const [{ data: workers }, { data: attendance }, { data: advancesThisWeek }, { data: cycles }] =
-      await Promise.all([
-        supabase.from('workers').select('id, daily_rate').eq('org_id', org),
-        supabase
-          .from('attendance_effective')
-          .select('worker_id, status, record_date')
-          .eq('org_id', org)
-          .gte('record_date', windowStartISO)
-          .lte('record_date', currentCycleEnd),
-        supabase
-          .from('advances')
-          .select('worker_id, amount')
-          .eq('org_id', org)
-          .eq('status', 'approved')
-          .gte('created_at', currentCycleStart),
-        supabase
-          .from('salary_cycles')
-          .select('worker_id, status')
-          .eq('org_id', org)
-          .eq('cycle_start', currentCycleStart),
-      ]);
+    const [
+      { data: workers, error: workersErr },
+      { data: attendance, error: attendanceErr },
+      { data: advancesThisWeek, error: advancesErr },
+      { data: cycles, error: cyclesErr },
+    ] = await Promise.all([
+      supabase.from('workers').select('id, daily_rate').eq('org_id', org),
+      supabase
+        .from('attendance_effective')
+        .select('worker_id, status, record_date')
+        .eq('org_id', org)
+        .gte('record_date', windowStartISO)
+        .lte('record_date', currentCycleEnd),
+      supabase
+        .from('advances')
+        .select('worker_id, amount')
+        .eq('org_id', org)
+        .eq('status', 'approved')
+        .gte('created_at', currentCycleStart),
+      supabase
+        .from('salary_cycles')
+        .select('worker_id, status')
+        .eq('org_id', org)
+        .eq('cycle_start', currentCycleStart),
+    ]);
+    if (workersErr || attendanceErr || advancesErr || cyclesErr) {
+      setPayrollError(true);
+      return;
+    }
 
     const rateByWorker: Record<string, number> = {};
     (workers ?? []).forEach((w: Pick<Worker, 'id' | 'daily_rate'>) => {
@@ -542,14 +676,21 @@ export default function DashboardScreen() {
           {loading ? (
             <SkeletonBlock width="60%" height={23} />
           ) : (
-            <Text fontFamily="$display" fontSize={23} fontWeight="600">
-              {firstName ? `Bonjour, ${firstName} 👋` : 'Bonjour 👋'}
-            </Text>
+            <XStack alignItems="center" gap="$2">
+              <Text fontFamily="$display" fontSize={23} fontWeight="600">
+                {firstName ? `Bonjour, ${firstName}` : 'Bonjour'}
+              </Text>
+              <HandWavingIcon size={20} weight="fill" color={tc.accent600} />
+            </XStack>
           )}
 
-          {/* Doc 05 §2.2 — org-switcher pill. Only rendered once org data
-              has loaded and there's something to switch between/toward. */}
-          {(orgs.length > 1 || ownedCount > 1) && activeOrg && (
+          {/* Round 2 audit (§1.9) — was conditionally hidden for
+              single-org accounts ("nothing to switch to"), but that also
+              meant a single-org user had zero on-screen confirmation of
+              which org they're in, and no path to add a second one. Now
+              always rendered; the sheet itself (OrgSwitcherSheet.tsx)
+              adapts its content to whether there's more than one org. */}
+          {activeOrg && (
             <XStack
               alignSelf="flex-start"
               alignItems="center"
@@ -562,7 +703,11 @@ export default function DashboardScreen() {
               accessibilityRole="button"
               accessibilityLabel="Changer d'entreprise"
             >
-              <Avatar name={activeOrg.name} imageUrl={activeOrg.logo_url ?? undefined} size={20} />
+              <Avatar
+                name={activeOrg.name}
+                imageUrl={activeOrg.logo_url ? orgLogoUrlByPath[activeOrg.logo_url] : undefined}
+                size={20}
+              />
               <Text fontSize={14} fontWeight="500">
                 {activeOrg.name}
               </Text>
@@ -578,25 +723,35 @@ export default function DashboardScreen() {
           ownedOrgCount={ownedCount}
           activeOrgId={activeOrgId}
           onSelect={handleSelect}
+          logoUrlByPath={orgLogoUrlByPath}
         />
 
         {/* Phase 12 (improvement-plan §10.7) — first-run guided
             walkthrough. Renders nothing once every step is done or the
-            org has dismissed it — see its own header. */}
-        <OnboardingChecklist orgId={activeOrgId} />
+            org has dismissed it — see its own header. Also skipped on
+            this one mount when arriving fresh from create-organization.tsx
+            (see suppressOnboardingChecklist above) so a brand-new org
+            isn't nudged by two different first-run cards back to back. */}
+        {!suppressOnboardingChecklist && <OnboardingChecklist orgId={activeOrgId} />}
 
         {/* Phase 27 — hero StatCard, the block Doc 05 §2.2 specs first and
             Phase 23 explicitly cut. */}
-        <StatCard
-          label="Net à payer cette semaine"
-          value={netThisWeek.toFixed(0)}
-          unit="TND"
-          delta={payrollDeltaPercent ?? undefined}
-          sparklineData={payrollSparkline}
-          sparklineVariant="bars"
-          loading={loading}
-          onPress={() => router.push('/advances')}
-        />
+        {payrollError && !loading ? (
+          <YStack backgroundColor="$neutral0" borderRadius="$card">
+            <ErrorState onRetry={() => void loadPayrollSummary(activeOrgId)} />
+          </YStack>
+        ) : (
+          <StatCard
+            label="Net à payer cette semaine"
+            value={netThisWeek.toFixed(0)}
+            unit="TND"
+            delta={payrollDeltaPercent ?? undefined}
+            sparklineData={payrollSparkline}
+            sparklineVariant="bars"
+            loading={loading}
+            onPress={() => router.push('/advances')}
+          />
+        )}
 
         {/* Dispatch-today — was a single aggregate tile; now a horizontal
             row of worker chips (avatar + name + status dot), matching
@@ -612,18 +767,14 @@ export default function DashboardScreen() {
             >
               Dispatch aujourd'hui
             </Text>
-            <XStack
-              alignItems="center"
-              gap={2}
+            <Button
+              variant="chip"
+              fullWidth={false}
               onPress={() => router.push('/dispatch')}
-              accessibilityRole="button"
               accessibilityLabel="Voir le dispatch du jour"
             >
-              <Text fontSize={13} color="$accent600" fontWeight="600">
-                Voir tout
-              </Text>
-              <CaretRightIcon size={12} weight="bold" color={color.accent[600]} />
-            </XStack>
+              Voir tout
+            </Button>
           </XStack>
 
           {loading ? (
@@ -632,6 +783,10 @@ export default function DashboardScreen() {
               <SkeletonBlock width={96} height={84} radius={16} />
               <SkeletonBlock width={96} height={84} radius={16} />
             </XStack>
+          ) : dispatchError ? (
+            <YStack backgroundColor="$neutral0" borderRadius="$card">
+              <ErrorState onRetry={() => void loadDispatchToday(activeOrgId)} />
+            </YStack>
           ) : dispatchToday.length === 0 ? (
             <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4">
               <Text fontSize={13.5} color="$neutral500">
@@ -703,18 +858,14 @@ export default function DashboardScreen() {
             >
               Chantiers actifs
             </Text>
-            <XStack
-              alignItems="center"
-              gap={2}
+            <Button
+              variant="chip"
+              fullWidth={false}
               onPress={() => router.push('/portfolio')}
-              accessibilityRole="button"
               accessibilityLabel="Voir tous les chantiers"
             >
-              <Text fontSize={13} color="$accent600" fontWeight="600">
-                Voir tout
-              </Text>
-              <CaretRightIcon size={12} weight="bold" color={color.accent[600]} />
-            </XStack>
+              Voir tout
+            </Button>
           </XStack>
 
           {loading ? (
@@ -722,6 +873,10 @@ export default function DashboardScreen() {
               <SkeletonBlock width={220} height={110} radius={16} />
               <SkeletonBlock width={220} height={110} radius={16} />
             </XStack>
+          ) : projectsError ? (
+            <YStack backgroundColor="$neutral0" borderRadius="$card">
+              <ErrorState onRetry={() => void loadActiveProjects(activeOrgId)} />
+            </YStack>
           ) : activeProjects.length === 0 ? (
             <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4">
               <Text fontSize={13.5} color="$neutral500">
@@ -742,6 +897,9 @@ export default function DashboardScreen() {
                         Math.round((project.consumedTotal / project.budget_total) * 100),
                       )
                     : null;
+                const typeMeta = getProjectTypeMeta(project.project_type);
+                const TypeIcon = typeMeta.icon;
+                const typeTint = tc[typeMeta.colorKey];
                 return (
                   <YStack
                     backgroundColor="$neutral0"
@@ -752,7 +910,7 @@ export default function DashboardScreen() {
                     accessibilityRole="button"
                     accessibilityLabel={project.name}
                   >
-                    {project.cover_photo_url && projectPhotoUrlByPath[project.cover_photo_url] && (
+                    {project.cover_photo_url && projectPhotoUrlByPath[project.cover_photo_url] ? (
                       <Image
                         src={projectPhotoUrlByPath[project.cover_photo_url]}
                         width="100%"
@@ -760,6 +918,17 @@ export default function DashboardScreen() {
                         borderRadius={10}
                         marginBottom="$1"
                       />
+                    ) : (
+                      <View
+                        width={36}
+                        height={36}
+                        borderRadius={10}
+                        alignItems="center"
+                        justifyContent="center"
+                        backgroundColor={toRgba(typeTint, 0.14)}
+                      >
+                        <TypeIcon size={18} weight="fill" color={typeTint} />
+                      </View>
                     )}
                     <Text fontSize={15} fontWeight="600" numberOfLines={1}>
                       {project.name}
@@ -795,13 +964,37 @@ export default function DashboardScreen() {
 
         {/* Quick actions — restyled from two stacked full-width rows into
             a 2-column grid. Still exactly the two destinations Phase 23
-            shipped, no complexity creep. */}
+            shipped, no complexity creep.
+
+            JUDGMENT CALL (Phase 19D, phase-18 proposal §24): the pastel-
+            icon-circle pattern is restricted to "genuinely small (2-4),
+            equal-weight shortcut sets... must never be the sole content
+            of a page section without a real data element alongside it."
+            This satisfies the first half exactly (2 destinations, equal
+            weight) — but has no real data element (no count, no figure),
+            and on a strict reading of the second half, that's a genuine
+            violation, not a pass. Considered adding a live count badge
+            to each tile (e.g. active chantiers, pending avances) instead
+            of resizing — rejected: the only chantiers count already
+            fetched on this screen (`activeProjects`) is capped at 3 for
+            the carousel above, so its length would silently under-report
+            once an org has more than 3 active projects (worse than no
+            data element at all); a pending-avances count needs a new
+            query this item's scope doesn't cover. Given the audit's own
+            stated complaint was specifically "quite large relative to
+            how little information they convey" — a size/information
+            imbalance — addressed here from the size side instead:
+            shrunk from a large vertical icon-over-label tile toward a
+            compact horizontal icon+label row, closer to a dense nav
+            shortcut than an app-icon-grid tile, so its visual weight
+            now roughly matches what it actually conveys. */}
         <XStack gap="$2.5">
-          <YStack
+          <XStack
             flex={1}
             backgroundColor="$neutral0"
             borderRadius="$card"
-            padding="$4"
+            paddingVertical="$2.5"
+            paddingHorizontal="$3"
             gap="$2"
             alignItems="center"
             onPress={() => router.push('/portfolio')}
@@ -809,25 +1002,26 @@ export default function DashboardScreen() {
             accessibilityLabel="Voir tous les chantiers"
           >
             <YStack
-              width={40}
-              height={40}
-              borderRadius={20}
-              backgroundColor="$accent50"
+              width={28}
+              height={28}
+              borderRadius={14}
+              backgroundColor={toRgba(tc.categoricalBlue, 0.14)}
               alignItems="center"
               justifyContent="center"
             >
-              <BuildingsIcon size={20} weight="bold" color={color.accent[600]} />
+              <BuildingsIcon size={15} weight="bold" color={tc.categoricalBlue} />
             </YStack>
-            <Text fontSize={14} fontWeight="600">
+            <Text fontSize={13.5} fontWeight="600">
               Chantiers
             </Text>
-          </YStack>
+          </XStack>
 
-          <YStack
+          <XStack
             flex={1}
             backgroundColor="$neutral0"
             borderRadius="$card"
-            padding="$4"
+            paddingVertical="$2.5"
+            paddingHorizontal="$3"
             gap="$2"
             alignItems="center"
             onPress={() => router.push('/advances')}
@@ -835,19 +1029,19 @@ export default function DashboardScreen() {
             accessibilityLabel="Voir les avances"
           >
             <YStack
-              width={40}
-              height={40}
-              borderRadius={20}
-              backgroundColor="$accent50"
+              width={28}
+              height={28}
+              borderRadius={14}
+              backgroundColor={toRgba(tc.success, 0.14)}
               alignItems="center"
               justifyContent="center"
             >
-              <HandCoinsIcon size={20} weight="bold" color={color.accent[600]} />
+              <HandCoinsIcon size={15} weight="bold" color={tc.success} />
             </YStack>
-            <Text fontSize={14} fontWeight="600">
+            <Text fontSize={13.5} fontWeight="600">
               Avances
             </Text>
-          </YStack>
+          </XStack>
         </XStack>
 
         {/* Phase 8 §1.7 — activity feed, previously "still deliberately
@@ -868,6 +1062,10 @@ export default function DashboardScreen() {
               <SkeletonBlock width="100%" height={44} radius={12} />
               <SkeletonBlock width="100%" height={44} radius={12} />
             </YStack>
+          ) : activityError ? (
+            <YStack backgroundColor="$neutral0" borderRadius="$card">
+              <ErrorState onRetry={() => void loadActivityFeed(activeOrgId)} />
+            </YStack>
           ) : activityFeed.length === 0 ? (
             <YStack backgroundColor="$neutral0" borderRadius="$card" padding="$4">
               <Text fontSize={13.5} color="$neutral500">
@@ -879,6 +1077,7 @@ export default function DashboardScreen() {
             <YStack backgroundColor="$neutral0" borderRadius="$card" overflow="hidden">
               {activityFeed.map((event, i) => {
                 const Icon = ACTIVITY_ICON[event.event_type];
+                const tint = tc[ACTIVITY_TINT[event.event_type]];
                 return (
                   <XStack
                     key={event.id}
@@ -893,11 +1092,11 @@ export default function DashboardScreen() {
                       width={32}
                       height={32}
                       borderRadius={16}
-                      backgroundColor="$accent50"
+                      backgroundColor={toRgba(tint, 0.14)}
                       alignItems="center"
                       justifyContent="center"
                     >
-                      <Icon size={16} weight="bold" color={color.accent[600]} />
+                      <Icon size={16} weight="bold" color={tint} />
                     </YStack>
                     <YStack flex={1} gap={2}>
                       <Text fontSize={13.5} numberOfLines={2}>

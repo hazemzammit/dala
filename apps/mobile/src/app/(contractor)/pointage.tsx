@@ -459,21 +459,24 @@ export default function PointageScreen() {
                   onPress={() => router.push('/(contractor)/attendance-history')}
                   accessibilityRole="button"
                   accessibilityLabel="Historique de pointage"
-                  padding={4}
+                  width={32}
+                  height={32}
+                  borderRadius={999}
+                  alignItems="center"
+                  justifyContent="center"
+                  backgroundColor="$accent50"
                 >
-                  <ClockCounterClockwiseIcon size={20} color={color.neutral[500]} />
+                  <ClockCounterClockwiseIcon size={18} color={color.accent[600]} />
                 </XStack>
               </XStack>
-              <Text
-                color="$accent600"
-                fontSize={14}
-                fontWeight="500"
+              <Button
+                variant="chip"
+                fullWidth={false}
                 onPress={markAllPresent}
-                accessibilityRole="button"
                 accessibilityLabel="Marquer tous les travailleurs présents"
               >
                 Marquer tous présents
-              </Text>
+              </Button>
             </XStack>
             <YStack marginBottom="$3">
               <DatePicker

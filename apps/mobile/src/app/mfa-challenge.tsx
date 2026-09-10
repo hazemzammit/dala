@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -16,6 +17,10 @@ import { supabase } from '@/lib/supabase';
  * factor is enrolled). Lists the user's verified TOTP factor, opens a
  * challenge, and verifies the 6-digit code — success elevates the session
  * to aal2 and navigation continues to wherever login was headed.
+ *
+ * IMPROVEMENT-PLAN Part A — `shield-lock` Icon3D added above the title.
+ * This screen had zero icon of any kind before (confirmed — nothing here
+ * imported an icon), despite being the app's actual 2FA code-entry moment.
  */
 export default function MfaChallengeScreen() {
   const { next } = useLocalSearchParams<{ next?: string }>();
@@ -69,6 +74,9 @@ export default function MfaChallengeScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center">
+        <Icon3D name="shield-lock" />
+      </YStack>
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Vérification en deux étapes
       </Text>

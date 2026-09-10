@@ -16,6 +16,12 @@
  * Admin remediation Tier 4.2 — search. `?q=` does `.ilike('name', ...)`,
  * applied before `.range()` so pagination is over the filtered set, not
  * the full table with client-side filtering on top.
+ *
+ * Audit fix 3b (Option B) — `?verificationPending=1` filters to
+ * verification_status = 'pending', ordered oldest-request-first
+ * (verification_requested_at), for the admin approval queue tab on
+ * OrganizationsTable.tsx. Same query-param-driven filter shape as `q`
+ * above, not a separate endpoint.
  */
 import { NextResponse } from 'next/server';
 
@@ -30,6 +36,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const q = searchParams.get('q')?.trim() ?? '';
+  const verificationPending = searchParams.get('verificationPending') === '1';
   const page = Math.max(1, Number(searchParams.get('page') ?? '1') || 1);
   const pageSize = Math.min(
     200,
@@ -43,11 +50,19 @@ export async function GET(request: Request) {
   const supabase = getAdminSupabaseClient();
   let query = supabase
     .from('organizations')
-    .select('id, name, trade_type, plan, created_at', { count: 'exact' })
-    .order('created_at', { ascending: false })
+    .select(
+      'id, name, trade_type, plan, created_at, verification_status, verification_requested_at',
+      {
+        count: 'exact',
+      },
+    )
+    .order(verificationPending ? 'verification_requested_at' : 'created_at', {
+      ascending: verificationPending,
+    })
     .range(offset, offset + pageSize - 1);
 
   if (q) query = query.ilike('name', `%${q}%`);
+  if (verificationPending) query = query.eq('verification_status', 'pending');
 
   const { data, error, count } = await query;
 

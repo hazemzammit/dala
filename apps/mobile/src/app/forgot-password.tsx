@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -12,6 +13,11 @@ import { supabase } from '@/lib/supabase';
  * Doc 01 §1.3.7 — same generic-response Edge Function as web. The
  * x-dala-platform header is what tells the function to send a `dala://`
  * deep link instead of a browser URL (see supabase/functions/forgot-password).
+ *
+ * IMPROVEMENT-PLAN Part A — this screen genuinely has two states
+ * (`message === null` before submit, set after), and the guide's two
+ * icons map onto them exactly: `forgot-password` on the entry form,
+ * swapping to `mail-question` once the reset request has been sent.
  */
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState('');
@@ -44,6 +50,9 @@ export default function ForgotPasswordScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center">
+        <Icon3D name={message ? 'mail-question' : 'forgot-password'} />
+      </YStack>
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Mot de passe oublié
       </Text>

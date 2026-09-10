@@ -62,8 +62,10 @@ test.describe('App versions', () => {
         .eq('action', 'app_version.update')
         .gte('created_at', since);
       expect(auditRows?.length).toBeGreaterThanOrEqual(1);
-      expect(auditRows?.[0].metadata?.platform).toBe('android');
-      expect(auditRows?.[0].metadata?.after?.min_supported_version).toBe('9.9.8');
+      const firstAuditRow = auditRows?.[0];
+      if (!firstAuditRow) throw new Error('Expected an app version audit row');
+      expect(firstAuditRow.metadata?.platform).toBe('android');
+      expect(firstAuditRow.metadata?.after?.min_supported_version).toBe('9.9.8');
     } finally {
       await supabase
         .from('app_versions')

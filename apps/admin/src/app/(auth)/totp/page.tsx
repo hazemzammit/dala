@@ -1,6 +1,6 @@
-import { TotpForm } from './TotpForm';
+import { Card } from '@dala/ui-web';
 
-import { Card } from '@/components/ui/Card';
+import { TotpForm } from './TotpForm';
 
 export default function TotpPage() {
   return (

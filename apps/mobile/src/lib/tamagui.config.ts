@@ -9,7 +9,7 @@
 import { color, motion, radius } from '@dala/design-tokens';
 import { createAnimations } from '@tamagui/animations-react-native';
 import { config as tamaguiDefaultConfig } from '@tamagui/config';
-import { createTamagui } from 'tamagui';
+import { createFont, createTamagui } from 'tamagui';
 
 /**
  * `@dala/design-tokens`' `motion.microInteractionMs` (135ms) is the single
@@ -46,9 +46,48 @@ const animations = createAnimations({
   },
 });
 
+/**
+ * IMPROVEMENT-PLAN — `@dala/design-tokens`' `typography.fontFamily.display:
+ * 'Sora'` (screen titles, hero numbers, the wordmark — ~90 call sites via
+ * `fontFamily="$display"`) was never actually backed by a real Tamagui
+ * font. `@tamagui/config`'s stock config only registers `heading`/`body`
+ * (verified against its own source/docs — no third key) — `$display` was
+ * an unresolved token, silently falling back to the OS system font on
+ * every single one of those call sites, on every device that's ever run
+ * this app. This is the other half of that fix (see _layout.tsx for the
+ * useFonts() call that actually loads the .ttf bytes) — without this
+ * `fonts.display` entry, loading the font file alone would NOT have fixed
+ * anything, since $display still wouldn't resolve to it.
+ *
+ * `family` is the fallback face; `face` maps each `fontWeight` this app
+ * actually passes alongside `$display` (600 everywhere except the
+ * wordmark and two NumericText hero figures, which pass 700) to the exact
+ * loaded font key from `useFonts()` in _layout.tsx — required on Android
+ * per Tamagui's own docs ("you need to set the face option ... or else
+ * fonts won't pick up different weights, due to a React Native
+ * restriction"). `size`/`lineHeight`/`weight`/`letterSpacing` are copied
+ * from the stock `body` font's scale rather than authored fresh: every
+ * `$display` call site in this app passes its own explicit `fontSize`/
+ * `fontWeight` props rather than using Tamagui's `$1..$16` size tokens, so
+ * these scales are only needed to satisfy `createFont`'s required shape —
+ * inheriting `body`'s is a safe default, not a real design decision.
+ */
+const displayFont = createFont({
+  ...tamaguiDefaultConfig.fonts.body,
+  family: 'Sora_600SemiBold',
+  face: {
+    600: { normal: 'Sora_600SemiBold' },
+    700: { normal: 'Sora_700Bold' },
+  },
+});
+
 const dalaConfig = createTamagui({
   ...tamaguiDefaultConfig,
   animations,
+  fonts: {
+    ...tamaguiDefaultConfig.fonts,
+    display: displayFont,
+  },
   tokens: {
     ...tamaguiDefaultConfig.tokens,
     color: {
@@ -65,12 +104,17 @@ const dalaConfig = createTamagui({
       neutral100: color.neutral[100],
       neutral200: color.neutral[200],
       neutral300: color.neutral[300],
+      neutral400: color.neutral[400],
       neutral500: color.neutral[500],
       neutral0: color.neutral[0],
       neutral900: color.neutral[900],
       success: color.status.success,
       warning: color.status.warning,
       danger: color.status.danger,
+      warningTint: color.status.warningTint,
+      categoricalBlue: color.categorical.blue,
+      categoricalViolet: color.categorical.violet,
+      categoricalAmber: color.categorical.amber,
     },
     radius: {
       ...tamaguiDefaultConfig.tokens.radius,
@@ -118,14 +162,27 @@ const dalaConfig = createTamagui({
       neutral100: color.neutral[100],
       neutral200: color.neutral[200],
       neutral300: color.neutral[300],
+      neutral400: color.neutral[400],
       neutral500: color.neutral[500],
       neutral0: color.neutral[0],
       neutral900: color.neutral[900],
       success: color.status.success,
       warning: color.status.warning,
       danger: color.status.danger,
+      warningTint: color.status.warningTint,
+      categoricalBlue: color.categorical.blue,
+      categoricalViolet: color.categorical.violet,
+      categoricalAmber: color.categorical.amber,
     },
     dark: {
+      // NOTE (Phase 19A, superseded 19F): `neutral400`/`warningTint` were
+      // flagged here as missing their own contrast-audited dark values.
+      // Migration 0090's sibling change (design-tokens' `color.dark`) has
+      // now added both — `neutral400` unchanged (already clears AA at
+      // both dark backgrounds), `warningTint` a darkened amber tint (see
+      // design-tokens/src/index.ts's own comments for the actual
+      // contrast-ratio numbers on each). Wired in below like every other
+      // dark-mode key.
       ...tamaguiDefaultConfig.themes.dark,
       accent600: color.dark.accent600,
       accent700: color.dark.accent700,
@@ -135,6 +192,7 @@ const dalaConfig = createTamagui({
       neutral100: color.dark.neutral100,
       neutral200: color.dark.neutral200,
       neutral300: color.dark.neutral300,
+      neutral400: color.dark.neutral400,
       neutral500: color.dark.neutral500,
       neutral0: color.dark.neutral0,
       neutral900: color.dark.neutral900,
@@ -144,6 +202,10 @@ const dalaConfig = createTamagui({
       success: color.dark.success,
       warning: color.dark.warning,
       danger: color.dark.danger,
+      warningTint: color.dark.warningTint,
+      categoricalBlue: color.dark.categoricalBlue,
+      categoricalViolet: color.dark.categoricalViolet,
+      categoricalAmber: color.dark.categoricalAmber,
     },
   },
 });

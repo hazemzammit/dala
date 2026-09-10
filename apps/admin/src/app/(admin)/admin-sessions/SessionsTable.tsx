@@ -1,9 +1,8 @@
 'use client';
 
+import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface SessionRow {
@@ -35,14 +34,28 @@ export function SessionsTable() {
 
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as admin's OrganizationsTable: no
+  // res.ok check on the primary fetch, no way to distinguish a failure
+  // from a genuinely session-free result.
+  const [loadError, setLoadError] = useState(false);
   const [revokingId, setRevokingId] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/sessions');
-    const data = await res.json();
-    setSessions(data.sessions ?? []);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const res = await fetch('/api/admin/sessions');
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setSessions(data.sessions ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -133,6 +146,7 @@ export function SessionsTable() {
   ];
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => void load()} />;
 
   return <DataTable columns={columns} rows={sessions} getRowId={(s) => s.id} />;
 }

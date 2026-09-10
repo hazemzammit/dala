@@ -1,8 +1,10 @@
+import type { OrganizationLegalForm, OrganizationVerificationStatus } from '@dala/shared-types';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Switch } from 'react-native';
+import { Linking, Switch } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { OrgIdentityRow } from '@/components/organizations/OrgIdentityRow';
 import { Button } from '@/components/ui/Button';
 import { Illustration } from '@/components/ui/Illustration';
 import { haptics } from '@/lib/haptics';
@@ -38,14 +40,50 @@ import { supabase } from '@/lib/supabase';
  * No lookup tries to guess which of the last two applies — see
  * get_project_invitation_by_token's own comment on why that would leak
  * account-existence for a phone/email pair. The person picks.
+ *
+ * Org-creation-guide/gaps follow-on (migration 0079) — the inviting org's
+ * FULL identity (logo/trade_type/legal_form/verification_status, not just
+ * its name) is now shown here too, via the same reusable OrgIdentityRow
+ * collaboration.tsx uses. This was a deliberate decision (Hazem, not
+ * assumed): showing an anonymous, no-account-yet visitor this much about
+ * another org is a materially different exposure question than an
+ * already-authenticated screen, so it's its own migration
+ * (0079_invite_lead_org_full_identity.sql) rather than silently reusing
+ * 0078's narrower default reasoning.
+ *
+ * Widened again in migration 0082 to add facebook_url/instagram_url/
+ * website_url (shown as a small row of links below OrgIdentityRow) — these
+ * had been write-only since 0075 despite that migration's own framing of
+ * Facebook/Instagram as more important than a website for these
+ * businesses; see 0082's header for the full reasoning.
  */
 type LoadState = 'loading' | 'ready' | 'expired' | 'already_accepted' | 'not_found' | 'accepted';
+
+interface LeadOrgIdentity {
+  name: string;
+  logoSignedUrl: string | null;
+  tradeType: string | null;
+  legalForm: OrganizationLegalForm | null;
+  verificationStatus: OrganizationVerificationStatus | null;
+  facebookUrl: string | null;
+  instagramUrl: string | null;
+  websiteUrl: string | null;
+}
 
 export default function AcceptOrgInviteScreen() {
   const { token } = useLocalSearchParams<{ token?: string }>();
   const [loadState, setLoadState] = useState<LoadState>('loading');
   const [projectName, setProjectName] = useState('');
-  const [leadOrgName, setLeadOrgName] = useState('');
+  const [leadOrg, setLeadOrg] = useState<LeadOrgIdentity>({
+    name: '',
+    logoSignedUrl: null,
+    tradeType: null,
+    legalForm: null,
+    verificationStatus: null,
+    facebookUrl: null,
+    instagramUrl: null,
+    websiteUrl: null,
+  });
   const [tradeType, setTradeType] = useState<string | null>(null);
 
   const [budgetRollup, setBudgetRollup] = useState(false);
@@ -86,7 +124,16 @@ export default function AcceptOrgInviteScreen() {
     }
 
     setProjectName(data.project_name);
-    setLeadOrgName(data.lead_org_name);
+    setLeadOrg({
+      name: data.lead_org_name,
+      logoSignedUrl: data.lead_org_logo_signed_url ?? null,
+      tradeType: data.lead_org_trade_type ?? null,
+      legalForm: data.lead_org_legal_form ?? null,
+      verificationStatus: data.lead_org_verification_status ?? null,
+      facebookUrl: data.lead_org_facebook_url ?? null,
+      instagramUrl: data.lead_org_instagram_url ?? null,
+      websiteUrl: data.lead_org_website_url ?? null,
+    });
     setTradeType(data.trade_type ?? null);
     setLoadState('ready');
   }
@@ -125,7 +172,7 @@ export default function AcceptOrgInviteScreen() {
         org_invite_token: token,
         trade_type: tradeType ?? '',
         project_name: projectName,
-        lead_org_name: leadOrgName,
+        lead_org_name: leadOrg.name,
         org_invite_budget_rollup_opt_in: String(budgetRollup),
       },
     });
@@ -207,8 +254,48 @@ export default function AcceptOrgInviteScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center">
+        <OrgIdentityRow
+          name={leadOrg.name}
+          logoSignedUrl={leadOrg.logoSignedUrl}
+          tradeType={leadOrg.tradeType}
+          legalForm={leadOrg.legalForm}
+          verificationStatus={leadOrg.verificationStatus}
+        />
+        {(leadOrg.websiteUrl || leadOrg.facebookUrl || leadOrg.instagramUrl) && (
+          <XStack gap="$3" marginTop="$2">
+            {leadOrg.websiteUrl && (
+              <Text
+                fontSize={13}
+                color="$accent600"
+                onPress={() => Linking.openURL(leadOrg.websiteUrl!)}
+              >
+                Site web
+              </Text>
+            )}
+            {leadOrg.facebookUrl && (
+              <Text
+                fontSize={13}
+                color="$accent600"
+                onPress={() => Linking.openURL(leadOrg.facebookUrl!)}
+              >
+                Facebook
+              </Text>
+            )}
+            {leadOrg.instagramUrl && (
+              <Text
+                fontSize={13}
+                color="$accent600"
+                onPress={() => Linking.openURL(leadOrg.instagramUrl!)}
+              >
+                Instagram
+              </Text>
+            )}
+          </XStack>
+        )}
+      </YStack>
       <Text fontFamily="$display" fontSize={22} fontWeight="600" textAlign="center">
-        {leadOrgName} vous invite sur « {projectName} »
+        {leadOrg.name} vous invite sur « {projectName} »
       </Text>
       {tradeType && (
         <Text color="$neutral500" textAlign="center">
@@ -223,12 +310,12 @@ export default function AcceptOrgInviteScreen() {
         borderRadius="$card"
         padding="$4"
       >
-        <YStack flex={1} paddingRight="$3">
+        <YStack flex={1} paddingEnd="$3">
           <Text fontSize={14.5} fontWeight="500">
-            Partager mon budget consommé avec {leadOrgName} pour ce chantier
+            Partager mon budget consommé avec {leadOrg.name} pour ce chantier
           </Text>
           <Text fontSize={12.5} color="$neutral500" marginTop="$1">
-            {leadOrgName} verra un pourcentage agrégé, jamais le détail de vos dépenses. Désactivé
+            {leadOrg.name} verra un pourcentage agrégé, jamais le détail de vos dépenses. Désactivé
             par défaut, modifiable à tout moment.
           </Text>
         </YStack>

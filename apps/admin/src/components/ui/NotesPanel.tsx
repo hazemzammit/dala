@@ -1,9 +1,8 @@
 'use client';
 
+import { Button, Card } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface Note {

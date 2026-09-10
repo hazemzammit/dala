@@ -200,19 +200,23 @@ export function AttendanceHistory({ workerId, lockToWorker = false }: Attendance
 
         // recorded_by -> name resolution (see file header: currently always
         // null in practice, implemented for when a future write path sets it).
+        // Audit fix 1b — profiles_select_own (0005) is `id = auth.uid()`
+        // only, so the old direct `.from('profiles')` query here silently
+        // returned zero rows for anyone but the caller. get_org_member_profiles
+        // (0085) closes that gap.
         const distinctRecordedBy = Array.from(
           new Set(
             (rawRows ?? []).map((r: any) => r.recorded_by).filter((v: unknown): v is string => !!v),
           ),
         );
         if (distinctRecordedBy.length > 0) {
-          const { data: profileRows } = await supabase
-            .from('profiles')
-            .select('id, full_name')
-            .in('id', distinctRecordedBy);
+          const { data: profileRows } = await supabase.rpc('get_org_member_profiles', {
+            p_org_id: orgId,
+          });
+          const distinctSet = new Set(distinctRecordedBy);
           const map: Record<string, string> = {};
           (profileRows ?? []).forEach((p: any) => {
-            if (p.full_name) map[p.id] = p.full_name;
+            if (p.full_name && distinctSet.has(p.id)) map[p.id] = p.full_name;
           });
           setRecordedByName(map);
         } else {

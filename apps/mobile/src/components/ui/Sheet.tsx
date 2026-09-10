@@ -53,7 +53,11 @@ export function Sheet({ visible, onClose, title, children, scroll = true }: Shee
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <Pressable style={{ flex: 1, backgroundColor: 'rgba(17,19,24,0.4)' }} onPress={onClose} />
+      <Pressable
+        accessibilityRole="button"
+        style={{ flex: 1, backgroundColor: 'rgba(17,19,24,0.4)' }}
+        onPress={onClose}
+      />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}

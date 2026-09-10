@@ -1,15 +1,19 @@
 'use client';
 
+import {
+  ConfirmTypingDialog,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { UsersThreeIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
-import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { SearchInput } from '@/components/ui/SearchInput';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 const PAGE_SIZE = 50;
@@ -44,6 +48,10 @@ export function UsersTable() {
 
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as OrganizationsTable/SessionsTable:
+  // no res.ok check, no way to distinguish a failure from a genuinely
+  // empty result.
+  const [loadError, setLoadError] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState(initialQ);
@@ -52,13 +60,23 @@ export function UsersTable() {
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-    if (q) params.set('q', q);
-    const res = await fetch(`/api/admin/users?${params.toString()}`);
-    const data = await res.json();
-    setUsers(data.users ?? []);
-    setTotal(data.total ?? 0);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (q) params.set('q', q);
+      const res = await fetch(`/api/admin/users?${params.toString()}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setUsers(data.users ?? []);
+      setTotal(data.total ?? 0);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -212,6 +230,8 @@ export function UsersTable() {
 
       {loading ? (
         <p className="text-sm text-neutral-500">Chargement…</p>
+      ) : loadError ? (
+        <ErrorState onRetry={() => void load()} />
       ) : (
         <DataTable
           columns={columns}
@@ -223,6 +243,12 @@ export function UsersTable() {
           // canMutate-gated), so selection itself is hidden for Support
           // rather than showing checkboxes that lead nowhere.
           selectable={canMutate}
+          // Phase 19B item 3 — preserves Admin's pre-extraction behavior
+          // exactly: this component used to always clear selection when
+          // `rows` changed, unconditionally. The shared component now
+          // makes that opt-in (Web's DataTable never had it), so this
+          // flag is set explicitly rather than silently dropped.
+          resetSelectionOnRowsChange
           bulkActions={
             canMutate
               ? (ids) => (

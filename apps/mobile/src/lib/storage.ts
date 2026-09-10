@@ -47,16 +47,24 @@ export async function uploadOrgFile(
   extension: string,
   contentType: string,
 ): Promise<string> {
-  const path = `${orgId}/${category}/${Crypto.randomUUID()}.${extension}`;
+  const fileName = `${Crypto.randomUUID()}.${extension}`;
+  const path = `${orgId}/${category}/${fileName}`;
 
-  // React Native's fetch can read a local file:// URI as a Blob directly on
-  // both iOS and Android with modern Expo/RN — no separate base64 round
-  // trip needed, which keeps a multi-MB photo from being inflated ~33%
-  // by base64 encoding before it even reaches Supabase.
-  const response = await fetch(localUri);
-  const blob = await response.blob();
+  // Bug fix: fetch(localUri).blob() was producing an effectively-empty
+  // body on this RN/Hermes bridgeless setup — Storage's own request log
+  // showed the multipart upload arriving as ~160 bytes total (just
+  // boundary/header framing, no actual file content), and rejecting it
+  // with "No content provided". Reading a local file:// URI through
+  // fetch().blob() and handing that Blob to a multipart upload isn't
+  // reliable across every RN/architecture combination. The
+  // documented-reliable way to upload a local file in React Native is to
+  // skip the Blob step and give FormData a { uri, name, type } object —
+  // RN's native networking layer recognizes that shape and streams the
+  // file straight from disk instead of materializing it as a JS Blob.
+  const formData = new FormData();
+  formData.append('file', { uri: localUri, name: fileName, type: contentType } as any);
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, blob, {
+  const { error } = await supabase.storage.from(BUCKET).upload(path, formData, {
     contentType,
     upsert: false,
   });
@@ -76,11 +84,23 @@ export async function getSignedUrl(
   expiresInSeconds = 3600,
 ): Promise<string | null> {
   if (!path) return null;
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUrl(path, expiresInSeconds);
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
+  // Bug fix: @supabase/storage-js only resolves `{ data: null, error }` for
+  // API-level errors (a 4xx response from the storage service). A genuine
+  // low-level network failure (connection refused, DNS failure, no route
+  // to host) makes it REJECT the promise instead — so the `if (error)`
+  // check below never even runs for that case, and this function's own
+  // documented "never throws" contract silently didn't hold. Wrapping the
+  // call itself in try/catch closes that gap without changing behavior
+  // for the ordinary API-error case.
+  try {
+    const { data, error } = await supabase.storage
+      .from(BUCKET)
+      .createSignedUrl(path, expiresInSeconds);
+    if (error || !data?.signedUrl) return null;
+    return data.signedUrl;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -12,6 +12,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { WeatherStrip } from '@/components/dispatch/WeatherStrip';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { supabase } from '@/lib/supabase';
@@ -101,6 +102,10 @@ export default function DispatchWeekScreen() {
   const [projectsById, setProjectsById] = useState<Record<string, Project>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Phase 20 (§1.7a) — neither query below had its error captured; a
+  // failed fetch previously rendered as an empty week, indistinguishable
+  // from a genuinely unplanned one.
+  const [loadError, setLoadError] = useState(false);
 
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
   const days = useMemo(
@@ -110,15 +115,21 @@ export default function DispatchWeekScreen() {
   const todayISO = toISO(new Date());
 
   const load = useCallback(async (org: string, from: string, to: string) => {
-    const [{ data: rows }, { data: projects }] = await Promise.all([
-      supabase
-        .from('dispatch_assignments')
-        .select('assignment_date, project_id, worker_id')
-        .eq('org_id', org)
-        .gte('assignment_date', from)
-        .lte('assignment_date', to),
-      supabase.from('active_projects').select('*').eq('lead_org_id', org),
-    ]);
+    const [{ data: rows, error: assignmentsError }, { data: projects, error: projectsError }] =
+      await Promise.all([
+        supabase
+          .from('dispatch_assignments')
+          .select('assignment_date, project_id, worker_id')
+          .eq('org_id', org)
+          .gte('assignment_date', from)
+          .lte('assignment_date', to),
+        supabase.from('active_projects').select('*').eq('lead_org_id', org),
+      ]);
+    if (assignmentsError || projectsError) {
+      setLoadError(true);
+      return;
+    }
+    setLoadError(false);
     setAssignments(rows ?? []);
     setProjectsById(Object.fromEntries((projects ?? []).map((p: Project) => [p.id, p])));
   }, []);
@@ -231,6 +242,8 @@ export default function DispatchWeekScreen() {
 
       {loading ? (
         <SkeletonCardList cards={4} />
+      ) : loadError ? (
+        <ErrorState onRetry={() => void load(orgId!, weekStart, weekEnd)} />
       ) : (
         <ScrollView
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32, gap: 12 }}

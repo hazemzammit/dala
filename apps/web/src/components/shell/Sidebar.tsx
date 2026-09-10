@@ -1,5 +1,6 @@
 'use client';
 
+import { Avatar } from '@dala/ui-web';
 import {
   BuildingsIcon,
   CarIcon,
@@ -19,7 +20,6 @@ import {
   WalletIcon,
 } from '@phosphor-icons/react';
 
-import { Avatar } from '@/components/ui/Avatar';
 import { NavItem } from '@/components/ui/NavItem';
 import { createClient } from '@/lib/supabase/client';
 

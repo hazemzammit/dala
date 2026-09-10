@@ -1,10 +1,8 @@
 'use client';
 
+import { Button, Card, ErrorState, FormField } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { FormField } from '@/components/ui/FormField';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface Flag {
@@ -128,6 +126,10 @@ export function FeatureFlagsTable() {
 
   const [flags, setFlags] = useState<Flag[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — no res.ok check on the primary flags fetch (the
+  // per-flag overrides panel's own plain-disabled pattern is unrelated
+  // and stays exactly as-is — the sanctioned exception noted in Step 0).
+  const [loadError, setLoadError] = useState(false);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
   const [newKey, setNewKey] = useState('');
@@ -138,10 +140,20 @@ export function FeatureFlagsTable() {
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/feature-flags');
-    const data = await res.json();
-    setFlags(data.flags ?? []);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const res = await fetch('/api/admin/feature-flags');
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setFlags(data.flags ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -197,6 +209,7 @@ export function FeatureFlagsTable() {
   }
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => void load()} />;
 
   return (
     <div className="space-y-4">

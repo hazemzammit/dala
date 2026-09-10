@@ -1,10 +1,8 @@
 'use client';
 
+import { Button, FormField } from '@dala/ui-web';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
-
-import { Button } from '@/components/ui/Button';
-import { FormField } from '@/components/ui/FormField';
 
 export function LoginForm() {
   const router = useRouter();
@@ -47,6 +45,10 @@ export function LoginForm() {
       <FormField
         label="Mot de passe"
         type="password"
+        // Phase 19B item 3 — the shared FormField auto-shows a password
+        // toggle for type="password" (matching Web's original behavior).
+        // Admin's login field never had one; this keeps that unchanged.
+        showPasswordToggle={false}
         required
         value={password}
         onChange={(e) => setPassword(e.target.value)}

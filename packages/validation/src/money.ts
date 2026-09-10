@@ -19,17 +19,36 @@ export const createAdvanceSchema = z
   .merge(idempotencyKeySchema);
 export type CreateAdvanceInput = z.infer<typeof createAdvanceSchema>;
 
+/**
+ * Doc 05 §1.7c (Tier 3) — 10-character minimum mirrors the shared
+ * ConfirmTypingDialog's (packages/ui-web) own `requireReason` rule for
+ * Admin's org suspend/delete actions; Advances is held to the same bar,
+ * not a lighter one (migration 0090).
+ */
+const managerReasonSchema = z
+  .string()
+  .trim()
+  .min(10, 'Indiquez une raison (10 caractères minimum).');
+
 export const approveAdvanceSchema = z
   .object({
     advance_id: z.string().uuid(),
+    reason: managerReasonSchema,
   })
   .merge(idempotencyKeySchema);
 export type ApproveAdvanceInput = z.infer<typeof approveAdvanceSchema>;
+
+export const rejectAdvanceSchema = z.object({
+  advance_id: z.string().uuid(),
+  reason: managerReasonSchema,
+});
+export type RejectAdvanceInput = z.infer<typeof rejectAdvanceSchema>;
 
 /** Doc 02 §2.3 — "mark cycle as paid." */
 export const markSalaryCyclePaidSchema = z
   .object({
     salary_cycle_id: z.string().uuid(),
+    reason: managerReasonSchema,
   })
   .merge(idempotencyKeySchema);
 export type MarkSalaryCyclePaidInput = z.infer<typeof markSalaryCyclePaidSchema>;

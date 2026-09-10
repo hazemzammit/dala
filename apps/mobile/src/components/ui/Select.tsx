@@ -1,3 +1,4 @@
+import type { Icon } from 'phosphor-react-native';
 import { CaretDownIcon, CheckIcon, MagnifyingGlassIcon } from 'phosphor-react-native';
 import { useMemo, useState } from 'react';
 import { Input, Text, XStack, YStack } from 'tamagui';
@@ -80,6 +81,11 @@ interface SelectProps {
   placeholder?: string;
   /** Label for the free-text row, e.g. "Autre — préciser". */
   otherLabel?: string;
+  /** Leading icon, rendered left of the value text — matches
+   * `DatePicker`'s icon-row and `FormField`'s new `icon` prop (Round 2
+   * audit §1.12), so `Select` finally picks up the leading icon its own
+   * header comment says it was modeled on `DatePicker` for but never got. */
+  icon?: Icon;
 }
 
 export function Select({
@@ -90,6 +96,7 @@ export function Select({
   error,
   placeholder = 'Sélectionner',
   otherLabel = 'Autre — préciser',
+  icon: IconComponent,
 }: SelectProps) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -162,6 +169,7 @@ export function Select({
         accessibilityRole="button"
         accessibilityLabel={`${label}, ${displayText ?? 'non défini'}`}
       >
+        {IconComponent && <IconComponent size={18} color={tc.neutral500} />}
         <Text fontSize={15.5} color={displayText ? '$neutral900' : '$neutral500'} flex={1}>
           {displayText ?? placeholder}
         </Text>

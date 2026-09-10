@@ -19,7 +19,9 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -28,6 +30,7 @@ import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/client-portal.tsx
@@ -77,6 +80,7 @@ function isoDate(d: Date): string {
 
 export default function ClientPortalScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -86,6 +90,12 @@ export default function ClientPortalScreen() {
   const [pinEnabledDraft, setPinEnabledDraft] = useState<'on' | 'off'>('off');
   const [pin, setPin] = useState('');
   const [error, setError] = useState<string | null>(null);
+  // Phase 20 (§1.7a) — separate from `error` above, which is scoped to
+  // the pin/invoice sheet flow. This one distinguishes "the primary list
+  // fetch failed" from "there are genuinely no chantiers yet," which
+  // previously rendered identically (both fell through to the
+  // `projects.length === 0` EmptyState branch below).
+  const [loadError, setLoadError] = useState(false);
   const [busy, setBusy] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
@@ -117,6 +127,7 @@ export default function ClientPortalScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     if (!org) {
       setLoading(false);
@@ -124,15 +135,22 @@ export default function ClientPortalScreen() {
       return;
     }
 
-    const [{ data: projectRows }, { data: portalRows }] = await Promise.all([
-      supabase
-        .from('projects')
-        .select('*')
-        .eq('lead_org_id', org)
-        .is('deleted_at', null)
-        .order('name'),
-      supabase.from('client_portals').select('*').eq('org_id', org),
-    ]);
+    const [{ data: projectRows, error: projectsError }, { data: portalRows, error: portalsError }] =
+      await Promise.all([
+        supabase
+          .from('projects')
+          .select('*')
+          .eq('lead_org_id', org)
+          .is('deleted_at', null)
+          .order('name'),
+        supabase.from('client_portals').select('*').eq('org_id', org),
+      ]);
+    if (projectsError || portalsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     setProjects((projectRows as Project[] | null) ?? []);
     const map: Record<string, ClientPortal> = {};
     ((portalRows as ClientPortal[] | null) ?? []).forEach((p) => (map[p.project_id] = p));
@@ -320,12 +338,20 @@ export default function ClientPortalScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (projects.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={HandshakeIcon}
-          illustration="agreement"
+          illustration="handshake-deal"
           title="Aucun chantier"
           description="Créez d'abord un chantier pour configurer un portail client."
         />
@@ -353,32 +379,28 @@ export default function ClientPortalScreen() {
         </Text>
 
         <YStack gap="$2">
+          {/* UI/UX pass — composes the shared `ListCard`. Icon chip tints
+              green (active-portal `success`) when a link exists, neutral
+              otherwise — status visible before reading the badge/subtitle
+              text, same principle as the other reworked screens. */}
           {projects.map((p) => {
             const portal = portalsByProject[p.id];
             return (
-              <XStack
+              <ListCard
                 key={p.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$4"
-                justifyContent="space-between"
-                alignItems="center"
+                icon={LinkIcon}
+                iconTint={portal ? tc.success : tc.neutral500}
+                title={p.name}
+                subtitle={
+                  portal
+                    ? portal.pin_enabled
+                      ? 'Lien actif · PIN activé'
+                      : 'Lien actif'
+                    : 'Aucun lien généré'
+                }
                 onPress={() => openDetail(p)}
-              >
-                <YStack flex={1}>
-                  <Text fontSize={15} fontWeight="600">
-                    {p.name}
-                  </Text>
-                  <Text fontSize={12.5} color="$neutral500">
-                    {portal
-                      ? portal.pin_enabled
-                        ? 'Lien actif · PIN activé'
-                        : 'Lien actif'
-                      : 'Aucun lien généré'}
-                  </Text>
-                </YStack>
-                {portal && <StatusBadge variant="success">Actif</StatusBadge>}
-              </XStack>
+                badge={portal && <StatusBadge variant="success">Actif</StatusBadge>}
+              />
             );
           })}
         </YStack>

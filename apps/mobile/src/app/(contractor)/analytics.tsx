@@ -1,7 +1,13 @@
 import type { AttendanceStatus, Project } from '@dala/shared-types';
 import { useQuery } from '@tanstack/react-query';
 import { router, useFocusEffect } from 'expo-router';
-import { ArrowLeftIcon } from 'phosphor-react-native';
+import {
+  ArrowLeftIcon,
+  BuildingsIcon,
+  CoinsIcon,
+  TruckIcon,
+  UsersIcon,
+} from 'phosphor-react-native';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
@@ -9,12 +15,14 @@ import { Text, View, XStack, YStack } from 'tamagui';
 import { BarChart, LineChart } from '@/components/ui/Chart';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { thresholdColor } from '@/components/ui/Progress';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
+import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
 import { cycleEndISO, cycleStartISO } from '@/lib/salaryCycle';
 import { supabase } from '@/lib/supabase';
-import { useTokenColor } from '@/lib/useTokenColor';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/analytics.tsx
@@ -419,17 +427,29 @@ export default function AnalyticsScreen() {
     data.workers.forEach((w) => {
       nameById[w.id] = w.full_name;
     });
+    // Round 2 audit (§1.10) — sorted worst-first ON PURPOSE (see comment
+    // above), but every bar rendered flat teal, so the worst performers
+    // (the ones a manager most needs to notice) didn't stand out at all.
+    // Reliability runs the OPPOSITE direction from Progress.tsx's
+    // budget-consumed threshold (high % is GOOD here, not bad), so this
+    // is its own threshold rather than a reuse of `thresholdColor()` —
+    // reusing it as-is would have painted a 90% reliability bar amber.
+    const reliabilityColor = (percent: number) => {
+      if (percent < 70) return tc.danger;
+      if (percent < 90) return tc.warning;
+      return tc.success;
+    };
     const rows = Array.from(byWorker.entries())
-      .map(([workerId, b]) => ({
-        label: nameById[workerId] ?? '—',
-        value: b.total > 0 ? Math.round((b.resolved / b.total) * 100) : 0,
-      }))
+      .map(([workerId, b]) => {
+        const value = b.total > 0 ? Math.round((b.resolved / b.total) * 100) : 0;
+        return { label: nameById[workerId] ?? '—', value, color: reliabilityColor(value) };
+      })
       .sort((a, b) => a.value - b.value);
     return {
       reliabilityBars: rows.slice(0, MAX_BARS),
       reliabilityOmitted: rows.length,
     };
-  }, [data]);
+  }, [data, tc]);
 
   // ---------------------------------------------------------------------
   // Workforce §3 — headcount by project, 8 weeks, ONE project at a time
@@ -477,7 +497,7 @@ export default function AnalyticsScreen() {
       expensesByProject.set(e.project_id, list);
     });
     let excluded = 0;
-    const rows: { label: string; value: number }[] = [];
+    const rows: { label: string; value: number; color: string }[] = [];
     activeProjects.forEach((p) => {
       const percent = calculateConsumedPercent(
         calculateConsumedTotal(expensesByProject.get(p.id) ?? []),
@@ -487,7 +507,7 @@ export default function AnalyticsScreen() {
         excluded += 1;
         return;
       }
-      rows.push({ label: p.name, value: percent });
+      rows.push({ label: p.name, value: percent, color: thresholdColor(percent, tc) });
     });
     rows.sort((a, b) => b.value - a.value); // most-consumed (most at-risk) first
     return {
@@ -495,7 +515,7 @@ export default function AnalyticsScreen() {
       budgetConsumedExcluded: excluded,
       budgetConsumedOmitted: rows.length,
     };
-  }, [data, activeProjects]);
+  }, [data, activeProjects, tc]);
 
   // ---------------------------------------------------------------------
   // Operations §1 — vehicle utilization, 30-day trailing window.
@@ -517,14 +537,26 @@ export default function AnalyticsScreen() {
       set.add(a.assignment_date);
       daysByVehicle.set(a.vehicle_id, set);
     });
+    // Round 2 audit (§1.10) — utilization thresholds are a fleet-ops
+    // definition, not a visual one, so these bands were confirmed with
+    // Hazem rather than invented unilaterally: <30% underused (idle
+    // capital, amber), 30-85% healthy (green), >85% overbooked (a vehicle
+    // that's a likely bottleneck, red). Revisit once real multi-month
+    // usage data exists to validate these numbers against actual fleet
+    // behavior — they're a reasonable starting point, not a measured fact.
+    const utilizationColor = (percent: number) => {
+      if (percent > 85) return tc.danger;
+      if (percent < 30) return tc.warning;
+      return tc.success;
+    };
     const rows = data.vehicles
-      .map((v) => ({
-        label: v.name,
-        value: Math.round(((daysByVehicle.get(v.id)?.size ?? 0) / 30) * 100),
-      }))
+      .map((v) => {
+        const value = Math.round(((daysByVehicle.get(v.id)?.size ?? 0) / 30) * 100);
+        return { label: v.name, value, color: utilizationColor(value) };
+      })
       .sort((a, b) => b.value - a.value);
     return { utilizationBars: rows.slice(0, MAX_BARS), utilizationOmitted: rows.length };
-  }, [data]);
+  }, [data, tc]);
 
   // ---------------------------------------------------------------------
   // Operations §2 — safety incident trend by severity, 6 months. Three
@@ -577,7 +609,7 @@ export default function AnalyticsScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <Header />
-        <ErrorState onRetry={() => analyticsQuery.refetch()} />
+        <ErrorState icon3d="warning-circle" onRetry={() => analyticsQuery.refetch()} />
       </YStack>
     );
   }
@@ -597,7 +629,12 @@ export default function AnalyticsScreen() {
         {/* ---------------- Financier ---------------- */}
         <SectionLabel label="Financier" />
         <YStack gap="$3">
-          <ChartCard title="Budget vs coût réel" subtitle="Chantiers actifs, cumul depuis le début">
+          <ChartCard
+            title="Budget vs coût réel"
+            subtitle="Chantiers actifs, cumul depuis le début"
+            icon={CoinsIcon}
+            iconTint={tc.accent600}
+          >
             {costBars.length === 0 ? (
               <ChartEmpty />
             ) : (
@@ -618,6 +655,8 @@ export default function AnalyticsScreen() {
           <ChartCard
             title="Sorties de trésorerie"
             subtitle="6 derniers mois — avances approuvées + dépenses"
+            icon={CoinsIcon}
+            iconTint={tc.accent600}
           >
             {cashOutLine.length < 2 ? <ChartEmpty /> : <LineChart data={cashOutLine} />}
           </ChartCard>
@@ -626,7 +665,12 @@ export default function AnalyticsScreen() {
         {/* ---------------- Main-d'œuvre ---------------- */}
         <SectionLabel label="Main-d'œuvre" />
         <YStack gap="$3">
-          <ChartCard title="Taux de présence" subtitle="8 dernières semaines, toute l'organisation">
+          <ChartCard
+            title="Taux de présence"
+            subtitle="8 dernières semaines, toute l'organisation"
+            icon={UsersIcon}
+            iconTint={tc.categoricalBlue}
+          >
             {attendanceRateLine.length < 2 ? (
               <ChartEmpty />
             ) : (
@@ -637,6 +681,8 @@ export default function AnalyticsScreen() {
           <ChartCard
             title="Fiabilité par ouvrier"
             subtitle="Cycle de paie en cours, du moins au plus fiable"
+            icon={UsersIcon}
+            iconTint={tc.categoricalBlue}
           >
             {reliabilityBars.length === 0 ? (
               <ChartEmpty />
@@ -651,6 +697,8 @@ export default function AnalyticsScreen() {
           <ChartCard
             title="Effectif par chantier"
             subtitle="8 dernières semaines — présences réelles, pas la planification"
+            icon={UsersIcon}
+            iconTint={tc.categoricalBlue}
           >
             {activeProjects.length === 0 ? (
               <ChartEmpty />
@@ -660,17 +708,21 @@ export default function AnalyticsScreen() {
                   <XStack gap="$2">
                     {activeProjects.map((p) => {
                       const active = p.id === headcountProjectId;
+                      const meta = getProjectTypeMeta(p.project_type);
+                      const TypeIcon = meta.icon;
+                      const tint = tc[meta.colorKey];
                       return (
                         <XStack
                           key={p.id}
                           paddingVertical={7}
                           paddingHorizontal={14}
                           borderRadius={999}
-                          backgroundColor={active ? '$accent600' : '$neutral0'}
-                          borderWidth={1}
-                          borderColor={active ? '$accent600' : '$neutral300'}
+                          backgroundColor={active ? tint : toRgba(tint, 0.12)}
+                          alignItems="center"
+                          gap={5}
                           onPress={() => setHeadcountProjectId(p.id)}
                         >
+                          <TypeIcon size={13} weight="fill" color={active ? tc.neutral0 : tint} />
                           <Text
                             fontSize={13.5}
                             fontWeight="500"
@@ -695,6 +747,8 @@ export default function AnalyticsScreen() {
           <ChartCard
             title="Budget consommé"
             subtitle="% du budget alloué déjà dépensé, chantiers actifs"
+            icon={BuildingsIcon}
+            iconTint={tc.categoricalViolet}
           >
             {budgetConsumedBars.length === 0 ? (
               <ChartEmpty />
@@ -720,7 +774,12 @@ export default function AnalyticsScreen() {
         {/* ---------------- Opérations ---------------- */}
         <SectionLabel label="Opérations" />
         <YStack gap="$3">
-          <ChartCard title="Taux d'utilisation des véhicules" subtitle="30 derniers jours">
+          <ChartCard
+            title="Taux d'utilisation des véhicules"
+            subtitle="30 derniers jours"
+            icon={TruckIcon}
+            iconTint={tc.categoricalAmber}
+          >
             {utilizationBars.length === 0 ? (
               <ChartEmpty />
             ) : (
@@ -736,7 +795,12 @@ export default function AnalyticsScreen() {
             )}
           </ChartCard>
 
-          <ChartCard title="Incidents de sécurité par gravité" subtitle="6 derniers mois">
+          <ChartCard
+            title="Incidents de sécurité par gravité"
+            subtitle="6 derniers mois"
+            icon={TruckIcon}
+            iconTint={tc.categoricalAmber}
+          >
             {!hasAnySafetyIncident ? (
               <ChartEmpty />
             ) : (

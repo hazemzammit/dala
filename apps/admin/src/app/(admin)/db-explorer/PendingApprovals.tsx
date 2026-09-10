@@ -1,9 +1,8 @@
 'use client';
 
+import { Button, Card, ErrorState } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface ApprovalRequest {
@@ -26,13 +25,30 @@ export function PendingApprovals() {
 
   const [requests, setRequests] = useState<ApprovalRequest[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — no res.ok check on this fetch; a failure
+  // previously left `requests` at [], which combined with the panel's
+  // own "hide entirely when empty" design meant a failed fetch silently
+  // hid the pending-approvals panel from the super-admin altogether —
+  // worse than an ambiguous empty state, since there was no way to even
+  // notice something had gone wrong.
+  const [loadError, setLoadError] = useState(false);
 
   async function load() {
     setLoading(true);
-    const res = await fetch('/api/admin/db-explorer/approvals');
-    const data = await res.json();
-    setRequests(data.requests ?? []);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const res = await fetch('/api/admin/db-explorer/approvals');
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setRequests(data.requests ?? []);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
@@ -53,7 +69,17 @@ export function PendingApprovals() {
     await load();
   }
 
-  if (!isSuperAdmin || loading || requests.length === 0) return null;
+  if (!isSuperAdmin || loading) return null;
+
+  if (loadError) {
+    return (
+      <Card className="border-warning p-6">
+        <ErrorState onRetry={() => void load()} />
+      </Card>
+    );
+  }
+
+  if (requests.length === 0) return null;
 
   return (
     <Card className="border-warning space-y-3 p-6">

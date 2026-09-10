@@ -26,6 +26,19 @@ interface PopoverProps {
    * (the common case for a trailing "..." button); 'start' aligns left. */
   align?: 'start' | 'end';
   width?: number;
+  /** Gap between the anchor's bottom edge and the popover's top edge, in
+   * px. Default (6) is enough when nothing else sits between the anchor
+   * and where the popover should open. Doc 05 phase-17 audit / Phase 19D
+   * — Projects list's filter popover is anchored to the filter BUTTON,
+   * but a whole filter-chip row (dynamic height, wraps by content) sits
+   * between that button and where the list actually starts; the default
+   * 6px only cleared the button, not the chip row below it, so the
+   * popover visually cut across the "Tous" chip. This screen passes a
+   * larger explicit value instead. Per this file's own header comment,
+   * Popover deliberately doesn't do live collision-aware repositioning
+   * against other on-screen elements — this stays a static, per-call-site
+   * number, not a second measurement of the chip row's actual height. */
+  verticalOffset?: number;
 }
 
 export function Popover({
@@ -35,13 +48,14 @@ export function Popover({
   children,
   align = 'end',
   width = 200,
+  verticalOffset = 6,
 }: PopoverProps) {
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
   function measureAndShow() {
     anchorRef.current?.measureInWindow?.((x: number, y: number, w: number, h: number) => {
       setPosition({
-        top: y + h + 6,
+        top: y + h + verticalOffset,
         left: align === 'end' ? x + w - width : x,
       });
     });
@@ -53,6 +67,7 @@ export function Popover({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <Pressable
+        accessibilityRole="button"
         style={{ flex: 1 }}
         onPress={() => {
           onClose();

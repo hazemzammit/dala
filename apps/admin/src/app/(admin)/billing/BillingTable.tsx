@@ -1,13 +1,17 @@
 'use client';
 
+import {
+  Card,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { Card } from '@/components/ui/Card';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface SubscriptionRow {
@@ -219,7 +223,7 @@ export function BillingTable() {
   if (error) {
     return (
       <Card className="mt-6 p-8">
-        <p className="text-danger text-sm">Erreur : {error}</p>
+        <ErrorState description={error} onRetry={() => void load()} />
       </Card>
     );
   }

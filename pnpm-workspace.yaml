@@ -1,6 +1,10 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
+nodeLinker: hoisted
+overrides:
+  '@babel/runtime': '^7.29.7'
+  'expo-constants': '18.0.14'
 allowBuilds:
   '@sentry/cli': true
   core-js: true

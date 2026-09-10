@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -15,6 +16,14 @@ const newPasswordSchema = z.object({ new_password: passwordSchema });
 /**
  * Reached from auth/confirm.tsx after verifyOtp() already established the
  * recovery session — same division of responsibility as the web version.
+ *
+ * IMPROVEMENT-PLAN Part A — `lock-open` Icon3D added above the title. The
+ * guide describes this as the icon for "new password set," implying a
+ * post-submit confirmation moment — there isn't one: `handleSubmit` on
+ * success goes straight to `router.replace('/login')` with no confirmation
+ * screen or toast in between. Building that moment is new UX, not icon
+ * wiring, so it's out of scope here; the icon is placed on the form itself
+ * instead, same treatment as mfa-challenge.tsx/mfa-recover.tsx.
  */
 export default function ResetPasswordScreen() {
   const [password, setPassword] = useState('');
@@ -50,6 +59,9 @@ export default function ResetPasswordScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center">
+        <Icon3D name="lock-open" />
+      </YStack>
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Choisir un nouveau mot de passe
       </Text>

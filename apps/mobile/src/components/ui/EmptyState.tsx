@@ -3,6 +3,8 @@ import type { Icon } from 'phosphor-react-native';
 import { Text, View, YStack } from 'tamagui';
 
 import { Button } from './Button';
+import { Icon3D } from './Icon3D';
+import type { Icon3DName } from './icons3d';
 import { Illustration } from './Illustration';
 import type { IllustrationName } from './illustrations';
 
@@ -17,13 +19,15 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * actionHref/onAction split, a single actionHref (expo-router path) is
  * enough — router.push works from anywhere in the tree.
  *
- * `illustration` takes priority over `icon` when both are given — pass an
- * unDraw illustration name for the real empty-state artwork; `icon` alone
- * (the pre-illustration behavior, a filled accent circle) still works for
- * any spot that hasn't been assigned an illustration yet.
+ * `illustration` takes priority over `icon3d`/`icon` when given — pass an
+ * unDraw illustration name for the real empty-state artwork. Priority
+ * below that is `icon3d` (IMPROVEMENT-PLAN Part A — new), then `icon` (the
+ * original pre-illustration behavior, a filled accent circle) — still
+ * works for any spot that hasn't been assigned either.
  */
 interface EmptyStateProps {
   icon: Icon;
+  icon3d?: Icon3DName;
   illustration?: IllustrationName;
   title: string;
   description?: string;
@@ -33,6 +37,7 @@ interface EmptyStateProps {
 
 export function EmptyState({
   icon: IconComponent,
+  icon3d,
   illustration,
   title,
   description,
@@ -44,6 +49,8 @@ export function EmptyState({
     <YStack alignItems="center" justifyContent="center" paddingHorizontal="$4" paddingVertical={48}>
       {illustration ? (
         <Illustration name={illustration} size={168} />
+      ) : icon3d ? (
+        <Icon3D name={icon3d} />
       ) : (
         <View
           width={64}

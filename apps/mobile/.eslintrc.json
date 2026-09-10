@@ -1,9 +1,16 @@
 {
   "root": false,
   "extends": ["../../.eslintrc.json"],
-  "plugins": ["react-hooks"],
+  "plugins": ["react-hooks", "react-native-a11y"],
   "rules": {
     "react-hooks/rules-of-hooks": "error",
-    "react-hooks/exhaustive-deps": "warn"
+    "react-hooks/exhaustive-deps": "warn",
+
+    "react-native-a11y/has-valid-accessibility-descriptors": "warn",
+    "react-native-a11y/has-valid-accessibility-role": "warn",
+    "react-native-a11y/has-accessibility-props": "warn",
+    "react-native-a11y/has-valid-accessibility-state": "warn",
+    "react-native-a11y/has-valid-accessibility-states": "warn",
+    "react-native-a11y/no-nested-touchables": "warn"
   }
 }

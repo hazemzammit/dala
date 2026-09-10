@@ -1,9 +1,7 @@
 'use client';
 
+import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
-
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 interface EmailEvent {
   id: string;
@@ -32,13 +30,24 @@ const EVENT_LABELS: Record<EmailEvent['event_type'], string> = {
 export function EmailDeliverabilityTable() {
   const [events, setEvents] = useState<EmailEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as this route's other two tables: no
+  // res.ok check, so a failed fetch previously rendered identically to
+  // "no bounces/complaints yet."
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
+    setLoadError(false);
     fetch('/api/admin/services-health/email-events')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed');
+        return res.json();
+      })
       .then((data) => setEvents(data.events ?? []))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, []);
+  }, [reloadKey]);
 
   const columns: DataTableColumn<EmailEvent>[] = [
     {
@@ -69,6 +78,7 @@ export function EmailDeliverabilityTable() {
   ];
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   if (events.length === 0) {
     return (

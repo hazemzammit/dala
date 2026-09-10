@@ -8,23 +8,28 @@ import {
 } from '@dala/validation';
 import { useFocusEffect } from 'expo-router';
 import {
+  BuildingsIcon,
   CheckIcon,
-  MagnifyingGlassIcon,
+  CoinsIcon,
   PackageIcon,
   PlusIcon,
   UserSwitchIcon,
   XIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useState } from 'react';
-import { RefreshControl, ScrollView, TextInput } from 'react-native';
+import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
 import { Sheet } from '@/components/ui/Sheet';
@@ -32,10 +37,12 @@ import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { newIdempotencyKey } from '@/lib/idempotency';
 import { MATERIAL_OPTIONS } from '@/lib/pickerOptions';
 import { supabase } from '@/lib/supabase';
+import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/materials.tsx
@@ -121,7 +128,12 @@ const STATUS_LABEL: Record<Material['status'], string> = {
 
 export default function MaterialsScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
   const [loading, setLoading] = useState(true);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — same fix as safety/expenses/collaboration: the
+  // three parallel root queries had no error capture.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [workers, setWorkers] = useState<Worker[]>([]);
@@ -133,6 +145,9 @@ export default function MaterialsScreen() {
 
   const [detailId, setDetailId] = useState<string | null>(null);
   const [refuseSheetOpen, setRefuseSheetOpen] = useState(false);
+  // Doc 05 §1.7c (Tier 2, Phase 19C) — Approve gates through the existing
+  // shared ConfirmDialog now, reused as-is rather than rebuilt.
+  const [approveConfirmOpen, setApproveConfirmOpen] = useState(false);
   const [reassignSheetOpen, setReassignSheetOpen] = useState(false);
   const [rejectionReason, setRejectionReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -163,6 +178,7 @@ export default function MaterialsScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const org = await getActiveOrgId();
     setOrgId(org);
     if (!org) {
@@ -171,24 +187,32 @@ export default function MaterialsScreen() {
       return;
     }
 
-    const [{ data: materialRows }, { data: workerRows }, { data: projectRows }] = await Promise.all(
-      [
-        supabase
-          .from('materials')
-          .select('*')
-          .eq('org_id', org)
-          .order('created_at', { ascending: false }),
-        supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
-        // Phase 8 §1.9 item 1 — project picker for the contractor-create
-        // sheet and the detail sheet's project-linking editor.
-        supabase
-          .from('projects')
-          .select('*')
-          .eq('lead_org_id', org)
-          .is('deleted_at', null)
-          .order('name'),
-      ],
-    );
+    const [
+      { data: materialRows, error: materialsError },
+      { data: workerRows, error: workersError },
+      { data: projectRows, error: projectsError },
+    ] = await Promise.all([
+      supabase
+        .from('materials')
+        .select('*')
+        .eq('org_id', org)
+        .order('created_at', { ascending: false }),
+      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      // Phase 8 §1.9 item 1 — project picker for the contractor-create
+      // sheet and the detail sheet's project-linking editor.
+      supabase
+        .from('projects')
+        .select('*')
+        .eq('lead_org_id', org)
+        .is('deleted_at', null)
+        .order('name'),
+    ]);
+    if (materialsError || workersError || projectsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
     setMaterials((materialRows as Material[] | null) ?? []);
     setWorkers((workerRows as Worker[] | null) ?? []);
     setProjects((projectRows as Project[] | null) ?? []);
@@ -461,12 +485,20 @@ export default function MaterialsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (materials.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={PackageIcon}
-          illustration="to-do-app"
+          icon3d="to-do-list"
           title="Aucune demande de matériaux"
           description="Les demandes de matériaux de vos chantiers apparaîtront ici."
         />
@@ -477,7 +509,7 @@ export default function MaterialsScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <ScrollView
-        contentContainerStyle={{ padding: 16, paddingBottom: 100 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: fabBottomInset }}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -499,27 +531,17 @@ export default function MaterialsScreen() {
         </Text>
 
         <YStack marginBottom="$4" gap="$2.5">
-          {/* Phase 11 §9.1 — search field. */}
-          <XStack
-            backgroundColor="$neutral0"
-            borderRadius="$control"
-            paddingHorizontal={12}
-            paddingVertical={9}
-            alignItems="center"
-            gap="$2"
-            borderWidth={1}
-            borderColor="$neutral300"
-          >
-            <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-            <TextInput
-              placeholder="Rechercher un article ou un travailleur"
-              placeholderTextColor={color.neutral[500]}
-              value={search}
-              onChangeText={setSearch}
-              style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-              accessibilityLabel="Rechercher dans les matériaux"
-            />
-          </XStack>
+          {/* Phase 11 §9.1 — search field. UI/UX pass: now on
+              SearchFilterBar (components/ui/SearchFilterBar.tsx) for the
+              same fixed-height, consistent-radius treatment as Chantiers
+              — no filter button here (SegmentedControl below already
+              covers status filtering for this screen), so it renders as
+              a search-only bar. */}
+          <SearchFilterBar
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Rechercher un article ou un travailleur"
+          />
           <SegmentedControl value={filter} options={FILTER_OPTIONS} onChange={setFilter} />
         </YStack>
 
@@ -529,32 +551,34 @@ export default function MaterialsScreen() {
           </Text>
         ) : (
           <YStack gap="$2">
+            {/* UI/UX pass — composes the shared `ListCard` (see Chantiers/
+                Avances) instead of a hand-rolled row: icon chip tinted
+                danger for urgent requests (so urgency is visible at a
+                glance, not only inside a badge) or the materials
+                categorical amber otherwise, requesting-worker + quantity
+                as a metadata row, status badge in the header. */}
             {filtered.map((m) => (
-              <XStack
+              <ListCard
                 key={m.id}
-                backgroundColor="$neutral0"
-                borderRadius="$card"
-                padding="$4"
-                justifyContent="space-between"
-                alignItems="center"
+                icon={PackageIcon}
+                iconTint={m.urgency === 'urgent' ? tc.danger : tc.categoricalAmber}
+                title={m.item}
                 onPress={() => openDetail(m.id)}
-              >
-                <YStack flex={1} gap="$1">
-                  <XStack alignItems="center" gap="$2">
-                    <Text fontSize={15.5} fontWeight="600">
-                      {m.item}
-                    </Text>
+                metaItems={[
+                  { icon: UserSwitchIcon, label: requestingWorkerName(m) },
+                  ...(m.quantity != null
+                    ? [{ icon: PackageIcon, label: `Qté ${m.quantity}` }]
+                    : []),
+                ]}
+                badge={
+                  <XStack gap="$2">
                     {m.urgency === 'urgent' && <StatusBadge variant="danger">Urgent</StatusBadge>}
+                    <StatusBadge variant={STATUS_VARIANT[m.status]}>
+                      {STATUS_LABEL[m.status]}
+                    </StatusBadge>
                   </XStack>
-                  <Text fontSize={13} color="$neutral500">
-                    {requestingWorkerName(m)}
-                    {m.quantity != null ? ` · Qté ${m.quantity}` : ''}
-                  </Text>
-                </YStack>
-                <StatusBadge variant={STATUS_VARIANT[m.status]}>
-                  {STATUS_LABEL[m.status]}
-                </StatusBadge>
-              </XStack>
+                }
+              />
             ))}
           </YStack>
         )}
@@ -649,6 +673,7 @@ export default function MaterialsScreen() {
                   </Text>
                   <Select
                     label="Chantier"
+                    icon={BuildingsIcon}
                     value={editProjectId}
                     onChange={setEditProjectId}
                     options={projects.map((p) => ({ value: p.id, label: p.name }))}
@@ -657,6 +682,7 @@ export default function MaterialsScreen() {
                 </YStack>
                 <FormField
                   label="Coût (optionnel)"
+                  icon={CoinsIcon}
                   value={editCost}
                   onChangeText={setEditCost}
                   keyboardType="numeric"
@@ -681,7 +707,7 @@ export default function MaterialsScreen() {
                   <Button
                     icon={CheckIcon}
                     loading={actionLoadingId === detail.id}
-                    onPress={() => handleApprove(detail.id)}
+                    onPress={() => setApproveConfirmOpen(true)}
                   >
                     Approuver
                   </Button>
@@ -694,6 +720,20 @@ export default function MaterialsScreen() {
           </YStack>
         )}
       </Sheet>
+
+      <ConfirmDialog
+        visible={approveConfirmOpen}
+        title="Approuver la demande ?"
+        description={detail ? `Vous êtes sur le point d'approuver "${detail.item}".` : undefined}
+        confirmLabel="Approuver"
+        destructive={false}
+        loading={Boolean(detail && actionLoadingId === detail.id)}
+        onConfirm={() => {
+          setApproveConfirmOpen(false);
+          if (detail) void handleApprove(detail.id);
+        }}
+        onCancel={() => setApproveConfirmOpen(false)}
+      />
 
       <Sheet
         visible={refuseSheetOpen}
@@ -746,6 +786,7 @@ export default function MaterialsScreen() {
         <YStack gap="$3">
           <Select
             label="Article"
+            icon={PackageIcon}
             value={createItem || null}
             onChange={setCreateItem}
             options={MATERIAL_OPTIONS}
@@ -772,6 +813,7 @@ export default function MaterialsScreen() {
           </YStack>
           <Select
             label="Chantier (optionnel)"
+            icon={BuildingsIcon}
             value={createProjectId}
             onChange={setCreateProjectId}
             options={projects.map((p) => ({ value: p.id, label: p.name }))}
@@ -779,6 +821,7 @@ export default function MaterialsScreen() {
           />
           <FormField
             label="Coût (optionnel)"
+            icon={CoinsIcon}
             value={createCost}
             onChangeText={setCreateCost}
             keyboardType="numeric"

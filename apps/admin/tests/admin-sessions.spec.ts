@@ -55,6 +55,7 @@ test.describe('Admin sessions', () => {
     const { sessions } = await res.json();
     const own = sessions.find((s: { is_current: boolean }) => s.is_current);
     expect(own).toBeTruthy();
+    if (!own) throw new Error('Expected a current admin session');
     expect(own.ip_address).toBeTruthy();
   });
 
@@ -69,7 +70,9 @@ test.describe('Admin sessions', () => {
     await loginAsAdmin(pageB, fixtures.adminB);
     const sessionsResB = await pageB.request.get('/api/admin/sessions');
     const { sessions: sessionsB } = await sessionsResB.json();
-    const adminBSessionId = sessionsB.find((s: { is_current: boolean }) => s.is_current).id;
+    const adminBSession = sessionsB.find((s: { is_current: boolean }) => s.is_current);
+    if (!adminBSession) throw new Error('Expected a current admin B session');
+    const adminBSessionId = adminBSession.id;
     await contextB.close();
 
     await loginAsAdmin(page, fixtures.adminA);
@@ -91,7 +94,9 @@ test.describe('Admin sessions', () => {
     await loginAsAdmin(pageOther, fixtures.adminA);
     const otherSessionRes = await pageOther.request.get('/api/admin/sessions');
     const { sessions: otherSessions } = await otherSessionRes.json();
-    const otherSessionId = otherSessions.find((s: { is_current: boolean }) => s.is_current).id;
+    const otherSession = otherSessions.find((s: { is_current: boolean }) => s.is_current);
+    if (!otherSession) throw new Error('Expected another current admin session');
+    const otherSessionId = otherSession.id;
     await contextOther.close();
 
     await loginAsAdmin(page, fixtures.adminA);
@@ -124,7 +129,9 @@ test.describe('Admin sessions', () => {
     await loginAsAdmin(pageB, fixtures.adminB);
     const sessionsResB = await pageB.request.get('/api/admin/sessions');
     const { sessions: sessionsB } = await sessionsResB.json();
-    const adminBSessionId = sessionsB.find((s: { is_current: boolean }) => s.is_current).id;
+    const adminBSession = sessionsB.find((s: { is_current: boolean }) => s.is_current);
+    if (!adminBSession) throw new Error('Expected a current admin B session');
+    const adminBSessionId = adminBSession.id;
     await contextB.close();
 
     await loginAsAdmin(page, fixtures.adminSuper);
@@ -140,7 +147,9 @@ test.describe('Admin sessions', () => {
       .eq('action', 'admin.revoke_session')
       .gte('created_at', since);
     expect(auditRows?.length).toBeGreaterThanOrEqual(1);
-    expect(auditRows?.[0].target_id).toBe(adminBSessionId);
-    expect((auditRows?.[0].metadata as any)?.selfRevoke).toBe(false);
+    const firstAuditRow = auditRows?.[0];
+    if (!firstAuditRow) throw new Error('Expected a session revocation audit row');
+    expect(firstAuditRow.target_id).toBe(adminBSessionId);
+    expect((firstAuditRow.metadata as any)?.selfRevoke).toBe(false);
   });
 });

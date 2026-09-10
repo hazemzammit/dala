@@ -36,7 +36,14 @@ export async function GET(_request: Request, { params }: { params: { orgId: stri
   return NextResponse.json({ organization, members: members ?? [] });
 }
 
-type OrgAction = 'suspend' | 'unsuspend' | 'soft_delete' | 'change_plan' | 'restore';
+type OrgAction =
+  | 'suspend'
+  | 'unsuspend'
+  | 'soft_delete'
+  | 'change_plan'
+  | 'restore'
+  | 'verify_org'
+  | 'reject_org_verification';
 
 export async function POST(request: Request, { params }: { params: { orgId: string } }) {
   const ctx = await getAdminSessionContext();
@@ -108,6 +115,30 @@ export async function POST(request: Request, { params }: { params: { orgId: stri
       // reserved for destructive actions, and undoing a soft-delete
       // within its recovery window isn't one.
       await supabase.rpc('restore_organization', { p_org_id: org.id });
+      break;
+    case 'verify_org':
+      // Audit fix 3b (Option B) — the admin-side half of the
+      // verification queue. request_org_verification() (0089) is the
+      // client-writable RPC that moves unverified -> pending; the actual
+      // verified decision is admin-only, so it's a plain service-role
+      // update here (same "not everything needs its own RPC" reasoning
+      // every other action in this switch already follows), not a
+      // second Postgres function.
+      await supabase
+        .from('organizations')
+        .update({ verification_status: 'verified', verification_requested_at: null })
+        .eq('id', org.id);
+      break;
+    case 'reject_org_verification':
+      // Sends the org back to unverified (not a separate 'rejected'
+      // value — the CHECK constraint only has unverified/pending/
+      // verified) so it can request again later; verification_requested_at
+      // is cleared so organization-settings.tsx's request button
+      // re-enables rather than looking permanently stuck.
+      await supabase
+        .from('organizations')
+        .update({ verification_status: 'unverified', verification_requested_at: null })
+        .eq('id', org.id);
       break;
     case 'change_plan': {
       const plan = typeof body?.plan === 'string' ? body.plan : null;

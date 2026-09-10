@@ -1,14 +1,18 @@
 'use client';
 
+import {
+  ConfirmTypingDialog,
+  DataTable,
+  type DataTableColumn,
+  EmptyState,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
-import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { SearchInput } from '@/components/ui/SearchInput';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 const PAGE_SIZE = 50;
@@ -21,6 +25,8 @@ interface OrgRow {
   created_at: string;
   member_count: number;
   storage_used_bytes?: number;
+  verification_status?: string;
+  verification_requested_at?: string | null;
 }
 
 function formatBytes(bytes: number): string {
@@ -44,9 +50,21 @@ export function OrganizationsTable() {
 
   const [orgs, setOrgs] = useState<OrgRow[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — this fetch had no error handling at all: a
+  // failed response wasn't checked (`res.ok`), so a server error or
+  // network failure either threw uncaught from `res.json()` on a
+  // non-JSON body (leaving `loading` stuck true forever, no retry) or
+  // silently rendered "Aucune organisation," indistinguishable from a
+  // genuinely empty result.
+  const [loadError, setLoadError] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
+  // Audit fix 3b (Option B) — the admin approval queue tab. A plain
+  // client-side toggle on top of the existing search/pagination state,
+  // same shape as `q` — flips ?verificationPending=1 on the list route
+  // rather than a separate screen for what's still the same table.
+  const [verificationQueueOnly, setVerificationQueueOnly] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [pendingAction, setPendingAction] = useState<{
     org: OrgRow;
@@ -55,19 +73,35 @@ export function OrganizationsTable() {
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
-    if (q) params.set('q', q);
-    const res = await fetch(`/api/admin/organizations?${params.toString()}`);
-    const data = await res.json();
-    setOrgs(data.organizations ?? []);
-    setTotal(data.total ?? 0);
-    setLoading(false);
+    setLoadError(false);
+    try {
+      const params = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (q) params.set('q', q);
+      if (verificationQueueOnly) params.set('verificationPending', '1');
+      const res = await fetch(`/api/admin/organizations?${params.toString()}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setOrgs(data.organizations ?? []);
+      setTotal(data.total ?? 0);
+    } catch {
+      setLoadError(true);
+    } finally {
+      setLoading(false);
+    }
   }
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, q]);
+  }, [page, q, verificationQueueOnly]);
+
+  function toggleVerificationQueue(value: boolean) {
+    setVerificationQueueOnly(value);
+    setPage(1); // same "any filter change resets to page 1" convention as handleSearchChange.
+  }
 
   function handleSearchChange(value: string) {
     setQ(value);
@@ -160,6 +194,26 @@ export function OrganizationsTable() {
     await load();
   }
 
+  // Audit fix 3b (Option B) — no ConfirmTypingDialog here, same reasoning
+  // as OrgDetail.tsx's verifyOrgAction: approving/rejecting a self-serve
+  // request isn't in the destructive tier that warrants typed confirmation.
+  async function runVerificationAction(
+    org: OrgRow,
+    action: 'verify_org' | 'reject_org_verification',
+  ) {
+    setBulkBusy(true);
+    try {
+      await fetch(`/api/admin/organizations/${org.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      await load();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   const columns: DataTableColumn<OrgRow>[] = [
     {
       key: 'name',
@@ -208,12 +262,47 @@ export function OrganizationsTable() {
       sortValue: (r) => r.created_at,
       render: (r) => new Date(r.created_at).toLocaleDateString('fr-FR'),
     },
+    // Audit fix 3b (Option B) — only shown in the queue view; the default
+    // org listing already has 6 columns and every org there is
+    // 'unverified' or 'verified' by definition (queue only ever shows
+    // 'pending'), so the column would be redundant noise outside this tab.
+    ...(verificationQueueOnly
+      ? [
+          {
+            key: 'verification_requested_at',
+            header: 'Demandée le',
+            sortValue: (r: OrgRow) => r.verification_requested_at ?? '',
+            render: (r: OrgRow) =>
+              r.verification_requested_at
+                ? new Date(r.verification_requested_at).toLocaleDateString('fr-FR')
+                : '—',
+          } satisfies DataTableColumn<OrgRow>,
+        ]
+      : []),
     {
       key: 'actions',
       header: '',
       align: 'right',
       render: (r) => (
         <div className="flex justify-end gap-2">
+          {verificationQueueOnly && canSuspend && (
+            <>
+              <button
+                onClick={() => runVerificationAction(r, 'verify_org')}
+                disabled={bulkBusy}
+                className="text-success text-xs font-medium hover:underline disabled:opacity-60"
+              >
+                Approuver
+              </button>
+              <button
+                onClick={() => runVerificationAction(r, 'reject_org_verification')}
+                disabled={bulkBusy}
+                className="text-danger text-xs font-medium hover:underline disabled:opacity-60"
+              >
+                Refuser
+              </button>
+            </>
+          )}
           {canSuspend && (
             <button
               onClick={() => setPendingAction({ org: r, action: 'suspend' })}
@@ -243,18 +332,37 @@ export function OrganizationsTable() {
 
   return (
     <>
-      <div className="mb-4">
+      <div className="mb-4 flex items-center justify-between gap-4">
         <SearchInput onChange={handleSearchChange} placeholder="Rechercher par nom…" />
+        {/* Audit fix 3b (Option B) — toggles the same list between "all
+            orgs" and "pending verification requests only", rather than a
+            separate route/screen for what's still the same table and
+            the same row actions. */}
+        <button
+          onClick={() => toggleVerificationQueue(!verificationQueueOnly)}
+          className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium ${
+            verificationQueueOnly
+              ? 'border-accent-600 bg-accent-50 text-accent-700'
+              : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+          }`}
+        >
+          {verificationQueueOnly ? 'Toutes les organisations' : 'File de vérification'}
+        </button>
       </div>
 
       {loading ? (
         <p className="text-sm text-neutral-500">Chargement…</p>
+      ) : loadError ? (
+        <ErrorState onRetry={() => void load()} />
       ) : (
         <DataTable
           columns={columns}
           rows={orgs}
           getRowId={(r) => r.id}
           selectable
+          // Phase 19B item 3 — see UsersTable.tsx's identical comment;
+          // preserves Admin's pre-extraction always-reset behavior.
+          resetSelectionOnRowsChange
           bulkActions={(ids) => (
             <>
               {canBulkChangePlan && (

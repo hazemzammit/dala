@@ -3,41 +3,50 @@ import type { Organization, Project } from '@dala/shared-types';
 import { createProjectSchema, PROJECT_TYPES } from '@dala/validation';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
+import type { Icon } from 'phosphor-react-native';
 import {
   BuildingsIcon,
+  CalendarBlankIcon,
   CameraIcon,
-  CaretRightIcon,
-  FunnelIcon,
+  CheckCircleIcon,
+  CoinsIcon,
   ImageIcon,
   ListIcon,
-  MagnifyingGlassIcon,
+  MapPinIcon,
+  PlayIcon,
   PlusIcon,
   SquaresFourIcon,
+  UserIcon,
+  UsersIcon,
 } from 'phosphor-react-native';
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { RefreshControl, ScrollView, TextInput, View as RNView } from 'react-native';
-import { Image, Text, View, XStack, YStack } from 'tamagui';
+import { RefreshControl, ScrollView, View as RNView } from 'react-native';
+import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
 import { Button } from '@/components/ui/Button';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { Grid } from '@/components/ui/Grid';
-import { NumericText } from '@/components/ui/NumericText';
+import { ListCard } from '@/components/ui/ListCard';
 import { Popover } from '@/components/ui/Popover';
-import { ProgressBar } from '@/components/ui/Progress';
+import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { Slider } from '@/components/ui/Slider';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
+import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
+import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
 import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
  * apps/mobile/src/app/(contractor)/projects.tsx
@@ -92,11 +101,11 @@ interface ProjectRow extends Project {
 
 type FilterKey = 'tous' | 'actifs' | 'termines' | 'invites';
 
-const FILTERS: { key: FilterKey; label: string }[] = [
+const FILTERS: { key: FilterKey; label: string; icon?: Icon }[] = [
   { key: 'tous', label: 'Tous' },
-  { key: 'actifs', label: 'Actifs' },
-  { key: 'termines', label: 'Terminés' },
-  { key: 'invites', label: 'Invités' },
+  { key: 'actifs', label: 'Actifs', icon: PlayIcon },
+  { key: 'termines', label: 'Terminés', icon: CheckCircleIcon },
+  { key: 'invites', label: 'Invités', icon: UsersIcon },
 ];
 
 const PROJECT_TYPE_LABELS: Record<(typeof PROJECT_TYPES)[number], string> = {
@@ -128,8 +137,15 @@ const EMPTY_FORM: ProjectFormState = {
 
 export default function ProjectsScreen() {
   const toast = useToast();
+  const tc = useTokenColor();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const fabBottomInset = useFabBottomContentInset();
+  // Phase 20 (§1.7a) — the two root queries below (leadProjects,
+  // membershipRows) had no error capture; a failed fetch previously
+  // rendered as an empty projects list, indistinguishable from
+  // genuinely having none.
+  const [loadError, setLoadError] = useState(false);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [filter, setFilter] = useState<FilterKey>('tous');
   const [search, setSearch] = useState('');
@@ -172,6 +188,7 @@ export default function ProjectsScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setProjects([]);
@@ -183,16 +200,28 @@ export default function ProjectsScreen() {
     const role = await getMyOrgRole(orgId);
     setOrgRole(role);
 
-    const { data: leadProjects } = await supabase
+    const { data: leadProjects, error: leadError } = await supabase
       .from('projects')
       .select('*')
       .eq('lead_org_id', orgId)
       .is('deleted_at', null);
+    if (leadError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
-    const { data: membershipRows } = await supabase
+    const { data: membershipRows, error: membershipError } = await supabase
       .from('project_memberships')
       .select('project_id')
       .eq('org_id', orgId);
+    if (membershipError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const memberProjectIds = (membershipRows ?? []).map((r) => r.project_id);
     let memberProjects: Project[] = [];
@@ -342,24 +371,35 @@ export default function ProjectsScreen() {
   // Extracted so the list/grid toggle (UI/UX pass) can reuse the exact
   // same card in either a single-column YStack or a 2-column Grid without
   // duplicating the JSX.
+  //
+  // Component-architecture pass — this now composes the shared `ListCard`
+  // primitive (components/ui/ListCard.tsx) instead of a hand-rolled
+  // YStack: icon chip (by project_type, via projectTypeMeta.ts) · title/
+  // client · overflow "⋮" · address/date metadata row · status badges ·
+  // budget-consumed progress bar. The cover photo is the one piece that
+  // doesn't fit ListCard's generic slots, so it's rendered as a child
+  // above the card (ListCard has no "hero image" slot by design — not
+  // every list screen has one, and forcing it into the shared primitive
+  // would add a prop only this screen uses).
   function renderProjectCard(project: ProjectRow) {
     const consumedPercent =
       project.budget_total && project.budget_total > 0
         ? Math.min(100, Math.round((project.consumedTotal / project.budget_total) * 100))
         : null;
 
+    const typeMeta = getProjectTypeMeta(project.project_type);
+    const chipTint = tc[typeMeta.colorKey];
+
+    const metaItems =
+      viewMode === 'list'
+        ? [
+            project.address ? { icon: MapPinIcon, label: project.address } : null,
+            project.start_date ? { icon: CalendarBlankIcon, label: project.start_date } : null,
+          ].filter((x): x is { icon: typeof MapPinIcon; label: string } => x !== null)
+        : undefined;
+
     return (
-      <YStack
-        key={project.id}
-        backgroundColor="$neutral0"
-        borderRadius="$card"
-        padding="$4"
-        gap="$2"
-        onPress={() => router.push(`/project/${project.id}` as never)}
-        onLongPress={() => setDetailProject(project)}
-        accessibilityRole="button"
-        accessibilityLabel={project.name}
-      >
+      <YStack key={project.id} gap="$2">
         {project.cover_photo_url && cardPhotoUrlByPath[project.cover_photo_url] && (
           <Image
             src={cardPhotoUrlByPath[project.cover_photo_url]}
@@ -368,59 +408,41 @@ export default function ProjectsScreen() {
             borderRadius={10}
           />
         )}
-        <XStack justifyContent="space-between" alignItems="flex-start">
-          <YStack flex={1} gap="$1">
-            <Text fontSize={16} fontWeight="600" numberOfLines={1}>
-              {project.name}
-            </Text>
-            {project.client_name && (
-              <Text fontSize={13} color="$neutral500" numberOfLines={1}>
-                {project.client_name}
-              </Text>
-            )}
-          </YStack>
-          {viewMode === 'list' && <CaretRightIcon size={18} color={color.neutral[500]} />}
-        </XStack>
-
-        <XStack gap="$2" flexWrap="wrap">
-          <StatusBadge
-            variant={
-              project.status === 'active'
-                ? 'success'
-                : project.status === 'completed'
-                  ? 'neutral'
-                  : 'warning'
-            }
-          >
-            {project.status === 'active'
-              ? 'Actif'
-              : project.status === 'completed'
-                ? 'Terminé'
-                : 'Archivé'}
-          </StatusBadge>
+        <ListCard
+          icon={typeMeta.icon}
+          iconTint={chipTint}
+          title={project.name}
+          subtitle={project.client_name ?? undefined}
+          metaItems={metaItems}
+          onPress={() => router.push(`/project/${project.id}` as never)}
+          onLongPress={() => setDetailProject(project)}
+          onOverflowPress={viewMode === 'list' ? () => setDetailProject(project) : undefined}
+          progressValue={consumedPercent ?? undefined}
+          progressLabel="Budget consommé"
+          badge={
+            <XStack gap="$2" flexWrap="wrap">
+              <StatusBadge
+                variant={
+                  project.status === 'active'
+                    ? 'success'
+                    : project.status === 'completed'
+                      ? 'neutral'
+                      : 'warning'
+                }
+              >
+                {project.status === 'active'
+                  ? 'Actif'
+                  : project.status === 'completed'
+                    ? 'Terminé'
+                    : 'Archivé'}
+              </StatusBadge>
+            </XStack>
+          }
+        >
           {!project.isLead && project.leadOrgName && (
             <StatusBadge variant="info">{project.leadOrgName}</StatusBadge>
           )}
-        </XStack>
-
-        {consumedPercent !== null && (
-          <YStack gap="$1.5" marginTop="$1">
-            <XStack justifyContent="space-between">
-              <Text fontSize={12.5} color="$neutral500">
-                Budget consommé
-              </Text>
-              <NumericText fontSize={12.5} fontWeight="600">
-                {consumedPercent}%
-              </NumericText>
-            </XStack>
-            {/* Phase 27 — refactored onto the shared ProgressBar
-                (components/ui/Progress.tsx) instead of a hand-rolled View
-                — picks up Doc 05 §3.3's full green/amber(80%)/red(100%)
-                threshold instead of this card's previous two-step
-                accent/red-at-90% logic. */}
-            <ProgressBar value={consumedPercent} />
-          </YStack>
-        )}
+        </ListCard>
       </YStack>
     );
   }
@@ -511,9 +533,25 @@ export default function ProjectsScreen() {
 
     // Phase 3 §1.5 — upload-on-save-not-on-pick, same pattern as
     // vehicles.tsx: a cancelled sheet never orphans a Storage file.
+    //
+    // Bug fix: this call had no try/catch. uploadOrgFile() throws on any
+    // Storage error (`if (error) throw error;` in lib/storage.ts), and an
+    // uncaught throw here meant the whole handleSave promise rejected
+    // silently — setSaving(true) above never got reset (Save button stuck
+    // spinning), and none of this function's own setFormError/haptics.error
+    // error-surfacing (used for every other failure path just below) ever
+    // ran. Wrapping it brings a failed cover upload in line with how every
+    // other failure in this function is already handled.
     let finalCoverPath = coverPath;
     if (coverLocalUri) {
-      finalCoverPath = await uploadOrgFile(orgId, 'projects', coverLocalUri, 'jpg', 'image/jpeg');
+      try {
+        finalCoverPath = await uploadOrgFile(orgId, 'projects', coverLocalUri, 'jpg', 'image/jpeg');
+      } catch {
+        setFormError("Impossible d'envoyer la photo de couverture. Réessayez.");
+        haptics.error();
+        setSaving(false);
+        return;
+      }
     }
 
     if (editingProject) {
@@ -589,6 +627,14 @@ export default function ProjectsScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3" gap="$3">
@@ -596,61 +642,31 @@ export default function ProjectsScreen() {
           Chantiers
         </Text>
 
-        <XStack gap="$2" alignItems="center">
-          <XStack
-            flex={1}
-            backgroundColor="$neutral0"
-            borderRadius="$control"
-            paddingHorizontal={12}
-            paddingVertical={9}
-            alignItems="center"
-            gap="$2"
-            borderWidth={1}
-            borderColor="$neutral300"
-          >
-            <MagnifyingGlassIcon size={16} color={color.neutral[500]} />
-            <TextInput
-              placeholder="Rechercher un chantier ou un client"
-              placeholderTextColor={color.neutral[500]}
-              value={search}
-              onChangeText={setSearch}
-              style={{ flex: 1, fontSize: 14, color: color.neutral[900] }}
-            />
-          </XStack>
-
-          {/* Budget-consumed threshold filter — first real call site for
-              both Popover and Slider (both built in the prior pass but
-              unused until now). A small anchored panel is the right
-              container here: one control, triggered from one button, no
-              need for a full bottom sheet. */}
-          <View ref={filterAnchorRef} collapsable={false}>
-            <XStack
-              width={40}
-              height={40}
-              borderRadius="$control"
-              backgroundColor={minConsumedFilter > 0 ? '$accent600' : '$neutral0'}
-              borderWidth={1}
-              borderColor={minConsumedFilter > 0 ? '$accent600' : '$neutral300'}
-              alignItems="center"
-              justifyContent="center"
-              onPress={() => setFilterPopoverOpen(true)}
-              accessibilityRole="button"
-              accessibilityLabel="Filtrer par budget consommé"
-            >
-              <FunnelIcon
-                size={17}
-                weight={minConsumedFilter > 0 ? 'fill' : 'regular'}
-                color={minConsumedFilter > 0 ? 'white' : color.neutral[900]}
-              />
-            </XStack>
-          </View>
-        </XStack>
+        {/* UI/UX pass — search field and filter button now share one
+            component (SearchFilterBar) with a single height source
+            (ICON_BUTTON_SIZE, 44), rather than two independently-sized
+            controls that could never reliably line up. See
+            SearchFilterBar.tsx's own comment for the root cause this
+            replaces. */}
+        <SearchFilterBar
+          value={search}
+          onChangeText={setSearch}
+          placeholder="Rechercher un chantier ou un client"
+          onFilterPress={() => setFilterPopoverOpen(true)}
+          filterActive={minConsumedFilter > 0}
+          filterAccessibilityLabel="Filtrer par budget consommé"
+          filterAnchorRef={filterAnchorRef}
+        />
 
         <Popover
           visible={filterPopoverOpen}
           onClose={() => setFilterPopoverOpen(false)}
           anchorRef={filterAnchorRef}
           width={240}
+          // Doc 05 phase-17 audit / Phase 19D — clears the filter-chip
+          // row below the search bar too, not just the filter button
+          // itself. See Popover.tsx's own comment on this prop.
+          verticalOffset={56}
         >
           <YStack padding="$2" gap="$3">
             <Text fontSize={13} fontWeight="600" color="$neutral900">
@@ -658,14 +674,10 @@ export default function ProjectsScreen() {
             </Text>
             <Slider value={minConsumedFilter} onChange={setMinConsumedFilter} />
             {minConsumedFilter > 0 && (
-              <XStack
-                onPress={() => setMinConsumedFilter(0)}
-                paddingVertical={6}
-                justifyContent="center"
-              >
-                <Text fontSize={13} color="$accent600" fontWeight="500">
+              <XStack justifyContent="center">
+                <Button variant="chip" fullWidth={false} onPress={() => setMinConsumedFilter(0)}>
                   Réinitialiser
-                </Text>
+                </Button>
               </XStack>
             )}
           </YStack>
@@ -675,6 +687,7 @@ export default function ProjectsScreen() {
           <XStack gap="$2" flex={1} flexWrap="wrap">
             {FILTERS.map((f) => {
               const active = filter === f.key;
+              const FilterIcon = f.icon;
               return (
                 <XStack
                   key={f.key}
@@ -687,7 +700,16 @@ export default function ProjectsScreen() {
                   onPress={() => setFilter(f.key)}
                   accessibilityRole="button"
                   accessibilityLabel={f.label}
+                  alignItems="center"
+                  gap={5}
                 >
+                  {FilterIcon && (
+                    <FilterIcon
+                      size={13}
+                      weight="bold"
+                      color={active ? tc.neutral0 : tc.neutral500}
+                    />
+                  )}
                   <Text fontSize={13} fontWeight="600" color={active ? '$neutral0' : '$neutral900'}>
                     {f.label}
                   </Text>
@@ -735,7 +757,7 @@ export default function ProjectsScreen() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={BuildingsIcon}
-          illustration="under-construction"
+          icon3d="info"
           title={
             projects.length === 0 ? 'Aucun chantier pour le moment' : 'Aucun chantier ne correspond'
           }
@@ -747,7 +769,7 @@ export default function ProjectsScreen() {
         />
       ) : (
         <ScrollView
-          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 96 }}
+          contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: fabBottomInset }}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -866,6 +888,7 @@ export default function ProjectsScreen() {
               <XStack gap="$2">
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={CameraIcon}
                   loading={processingCover}
                   onPress={() => void pickCoverPhoto('camera')}
@@ -874,6 +897,7 @@ export default function ProjectsScreen() {
                 </Button>
                 <Button
                   variant="secondary"
+                  shareRow
                   icon={ImageIcon}
                   loading={processingCover}
                   onPress={() => void pickCoverPhoto('library')}
@@ -892,6 +916,7 @@ export default function ProjectsScreen() {
           <YStack gap="$1.5">
             <FormField
               label="Client"
+              icon={UserIcon}
               value={form.client_name}
               onChangeText={(v) => setForm((f) => ({ ...f, client_name: v }))}
             />
@@ -934,6 +959,7 @@ export default function ProjectsScreen() {
           <YStack gap="$1.5">
             <FormField
               label="Adresse"
+              icon={MapPinIcon}
               value={form.address}
               onChangeText={(v) => setForm((f) => ({ ...f, address: v }))}
             />
@@ -977,6 +1003,7 @@ export default function ProjectsScreen() {
           />
           <FormField
             label="Budget total (TND)"
+            icon={CoinsIcon}
             value={form.budget_total}
             onChangeText={(v) => setForm((f) => ({ ...f, budget_total: v }))}
             keyboardType="numeric"
@@ -989,17 +1016,23 @@ export default function ProjectsScreen() {
             <XStack flexWrap="wrap" gap="$2">
               {PROJECT_TYPES.map((type) => {
                 const active = form.project_type === type;
+                const meta = getProjectTypeMeta(type);
+                const TypeIcon = meta.icon;
+                const tint = tc[meta.colorKey];
                 return (
                   <XStack
                     key={type}
                     paddingHorizontal={14}
                     paddingVertical={8}
                     borderRadius={999}
-                    backgroundColor={active ? '$accent600' : '$neutral100'}
+                    backgroundColor={active ? tint : toRgba(tint, 0.12)}
+                    alignItems="center"
+                    gap={6}
                     onPress={() => setForm((f) => ({ ...f, project_type: type }))}
                     accessibilityRole="button"
                     accessibilityLabel={PROJECT_TYPE_LABELS[type]}
                   >
+                    <TypeIcon size={14} weight="fill" color={active ? tc.neutral0 : tint} />
                     <Text
                       fontSize={13}
                       fontWeight="600"

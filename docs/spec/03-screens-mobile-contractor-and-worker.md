@@ -165,6 +165,24 @@ point — the single most consequential screen in this rework.
 
 **Edge cases**: unverified account logging in successfully still routes to Home in the soft-gated state (§3.4), not blocked entirely.
 
+**Org-completion redirect (added alongside the §3.22.2a wizard rework)**:
+since Sign Up (§3.3) stays intentionally minimal (nom de l'entreprise +
+type d'activité only — no logo, no legal/public-profile fields), a fresh
+account's active organization is usually incomplete on first login. Right
+after a successful `signInWithPassword` — and only when there's no
+explicit `next` destination already requested (e.g. an org-invite deep
+link) — the app checks the active org's completion using the same
+5-field signal (logo, forme juridique, taille de l'équipe, zone
+d'intervention, matricule fiscal) and the same `org_checklist_dismissed_at`
+flag §3.22.2's completion banner already uses. If incomplete and not
+dismissed, login routes into §3.22.2a's wizard (starting at its step 2,
+pre-populated for the existing org) instead of Home. This is why the
+wizard's sign-up-time confirmation-link path was never built: a mobile
+sign-up's confirmation e-mail always opens `apps/web`'s browser-based
+`/auth/confirm`, not a deep link back into this app, so the reliable place
+to catch "first time this org is really being looked at" is this screen,
+not the e-mail-confirmation moment.
+
 ---
 
 ## 3.6 Forgot Password
@@ -243,7 +261,7 @@ anything" hub (Doc 00 §0.6).
 
 **States**: empty state for a brand-new org with zero projects — illustration + "Créez votre premier chantier" primary CTA straight into Project Create (§3.10.3).
 
-**Edge cases**: users belonging to more than one organization — whether as owner of several or a member/trade-participant of others (Doc 01 §1.3.13) — see an org switcher pinned under the greeting; switching orgs re-scopes every card on the dashboard and updates `profiles.active_org_id`.
+**Edge cases**: users belonging to more than one organization — whether as owner of several or a member/trade-participant of others (Doc 01 §1.3.13) — see an org switcher pinned under the greeting; switching orgs re-scopes every card on the dashboard and updates `profiles.active_org_id`. Arriving here straight from §3.22.2a's org-creation/completion wizard (any of its three exit paths — Terminer, its own Passer, or "Terminer plus tard") suppresses that first-run `OnboardingChecklist` card for this one load only, so a brand-new org isn't nudged by the wizard and this card back to back; nothing is dismissed by this — the very next fresh visit (a later app open or login) shows the checklist normally if its own conditions are still unmet.
 
 **Status (Phase 23):** built out for real, replacing the Phase-4 placeholder — see `dashboard.tsx`'s own header for the full reasoning. Shipped: hero/greeting card (first name from `profiles.full_name`), a dispatch-today summary tile (vans-out / total, tap-through to Dispatch), plus an unrequested-but-low-risk plain nav row to Advances (disclosed as an addition beyond this phase's stated scope, not a stat tile — no live weekly total). Org-switcher pill and the "Chantiers" entry row are unchanged from Phase 4/6. **Cut, each for a stated reason**: the activity feed has no backing data source — `audit_log` (migration 0009) has RLS enabled with zero client-facing policies, by explicit original design ("never queried directly by mobile/web clients"); this is a real product gap (needs a new policy or a purpose-built feed table/view), not invented silently. The weekly-cash stat (a real number, not just a nav link), profile-completion checklist card, unverified-email banner, active-projects carousel, empty state, and FAB are all real §3.9 elements not yet built — genuinely still the Phase-4/6 placeholder for those specific pieces, scoped out to keep this pass bounded to what Phase 23's brief named. Dispatch-today reads Supabase directly rather than the WatermelonDB `dispatch_assignments` collection, matching `dispatch.tsx`'s own established read pattern and avoiding a first-screen dependency on native WatermelonDB linking, which has never been verified working on a real build (Item 2b, every phase since 18).
 
@@ -435,6 +453,10 @@ screen, since it's the highest-consequence tap target in the app.
 
 **Accept invitation (recipient side)**: shows the lead org's name, the project name, and the two opt-in toggles from Doc 02 §2.8 — "Partager mon budget consommé" (default off) and report-branding opt-out — before the final "Rejoindre le chantier" confirm.
 
+**Fellow-collaborator identity (org-creation-guide follow-on)**: both of this screen's lists — the trade orgs invited onto a project I lead, and the lead org of a project I'm a trade participant on — render each other's identity via a compact `OrgIdentityRow` (logo, name, trade_type/legal_form subtitle, a verified checkmark if `verification_status = 'verified'`) rather than a bare name string. Tapping it opens a read-only detail sheet adding `service_area`/`address` if set. This closes a real bug: neither list could actually display the other org's name before this — `organizations`' only SELECT policy (`organizations_select_member`) only covers same-org membership, so a fellow collaborator's row silently failed to load and fell back to "—". Fixed via a new, narrow, purpose-built RPC (`get_shared_project_org_summaries`, migration 0078) that returns only a safe, non-sensitive subset — never `matricule_fiscal`/`rc_number`/RIB — rather than widening `organizations`' own RLS to expose the whole row to anyone sharing a project. The RPC also resolves the logo to an already-signed URL server-side, since cross-org logo access has no client-reachable path either (`org-files` storage RLS only covers same-org participants or specifically-shared site-log files).
+
+**Not yet done, flagged not silently skipped**: ~~`accept-org-invite.tsx` (the pre-signup invite-acceptance screen) still shows only the lead org's bare name — extending it the same way needs a separate decision first, since that screen is reachable by an anonymous, no-account-yet visitor, and widening its backing RPC (`get_project_invitation_by_token`, anon-grantable) to expose logo/legal_form is a different, more sensitive exposure question than an already-authenticated in-app screen like this one.~~ **Done** — Hazem decided this screen should show the full identity (name/logo/trade_type/legal_form/verification badge), same as `collaboration.tsx`. `get_project_invitation_by_token` (migration 0024) widened in migration 0079 with new `lead_org_*`-prefixed keys (kept separate from the pre-existing `trade_type` key, which is the invite's own required trade, not the lead org's) — still never exposes `matricule_fiscal`/`rc_number`/RIB.
+
 ---
 
 ## 3.20 Reports & exports
@@ -520,16 +542,66 @@ org's logo/initial, name, and the user's role badge in that org. The
 currently-active org has a checkmark. A pinned row at the bottom: "+
 Créer une nouvelle entreprise."
 
-**"Create organization" form** (Doc 01 §1.3.13's flow):
+**Bug fix (found while building the collaboration-screen org-identity
+work)**: each row's logo — and the small logo shown next to the org name
+under the Home greeting (§3.9) — was rendering broken/blank for every org,
+including the user's own, regardless of any permission question. `logo_url`
+is a private-bucket storage PATH, not a fetchable URL, and both this sheet
+and the dashboard's header avatar were passing it straight to `Avatar`
+with no signing step at all — not an RLS gap (the user has full read
+rights to their own org's logo), just a missing line of code, in contrast
+to `organization-settings.tsx`, which already signed it correctly. Fixed
+by resolving every org's logo through the same batched `getSignedUrlMap`
+pattern already used elsewhere on the dashboard for worker/project photos.
 
-| Field               | Type   | Rules                 |
-| ------------------- | ------ | --------------------- |
-| Nom de l'entreprise | text   | Required, 2–100 chars |
-| Type d'activité     | select | Required              |
+**"Create organization" form — 4-step wizard** (superseded from the
+original single-screen `name` + `trade_type` form; this same screen also
+serves as the completion wizard §3.5's post-login redirect sends an
+existing, incomplete org into, starting at step 2 in that case):
 
-**Primary action**: "Créer" → creates the org, sets the user as owner, sets it as the new `active_org_id`, dismisses the sheet, and every screen re-scopes to the new (empty) org — landing on Home's empty state (§3.9) prompting "Créez votre premier chantier," exactly like a brand-new sign-up would see, since a freshly created second org is genuinely empty.
+| Step | Title                | Fields                                                                                                    | RPC called on Continuer/Passer                                                                                                     |
+| ---- | -------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Essentials           | Nom de l'entreprise (required, 2–100 chars), Type d'activité (optional — picker with free-text "Autre")   | `create_organization_for_current_user` — skipped entirely when arriving via the redirect (org already exists)                      |
+| 2    | Coordonnées          | Adresse, Téléphone de contact, E-mail de contact, Logo (upload starts here — needs a real `org_id`)       | `update_organization_profile` (resends the full accumulated state so far)                                                          |
+| 3    | Informations légales | Forme juridique (chip row: Personne physique / SARL / SUARL / SA), Matricule fiscal, Registre de commerce | `update_organization_profile` again (now including matricule/RC) + `update_organization_extended_profile` (legal_form only so far) |
+| 4    | Profil public        | Taille de l'équipe (chip row: 1 / 2–10 / 11–50 / 51+), Zone d'intervention, Facebook, Instagram, Site web | `update_organization_extended_profile` (everything)                                                                                |
 
-**Edge cases**: no cap on the number of orgs a user can create (Doc 01 §1.3.13) — the switcher sheet simply scrolls if the list grows long. Switching orgs mid-task (e.g. mid-way through creating a dispatch assignment) discards the in-progress unsaved form with a confirm dialog, since the destination org's data (workers, vehicles) wouldn't be valid for a form built against the source org anyway.
+Every step but the first has a "Passer" (skip) button beside "Continuer" —
+steps 2–4 are all optional, matching the DB's own nullability (§1.1 of the
+org-creation guide this wizard was built from — only `name` is NOT NULL).
+A step dot indicator (not a field-count progress bar, since skipping is
+expected and normal) shows "Étape X sur 4." A "Terminer plus tard" text
+link is available from step 2 onward, routing straight to Home/Dashboard
+without forcing the rest of the wizard. Every exit path (Terminer, this
+screen's own Passer, and "Terminer plus tard") routes to Home with a
+one-time `from_wizard` marker — see §3.9's edge cases — so the dashboard's
+own `OnboardingChecklist` card doesn't nudge the person a second time in
+the same breath.
+
+**RIB is never collected on this screen** — it remains exclusively
+§3.22.2's "Ajouter un RIB" flow, owner-only.
+
+**Save-as-you-go**: each step's RPC call resends the FULL accumulated
+wizard state (not just that step's new fields) — mirrors §3.22.2's own
+handleSave/handleSaveExtended pattern. This means abandoning the wizard at
+any point after step 1 (including via "Terminer plus tard" or backing out
+of the app) leaves a usable org with everything typed so far actually
+saved, not just whatever the last-completed step's RPC happened to cover.
+
+**Primary action** (final step): "Terminer" → persists step 4's fields,
+sets the org as the new `active_org_id` (create mode only), and routes to
+Home. For a brand-new org this still lands on Home's empty state (§3.9)
+prompting "Créez votre premier chantier," exactly as before.
+
+**Edge cases**: no cap on the number of orgs a user can create (Doc 01
+§1.3.13) — the switcher sheet simply scrolls if the list grows long.
+Switching orgs mid-task (e.g. mid-way through creating a dispatch
+assignment) discards the in-progress unsaved form with a confirm dialog,
+since the destination org's data (workers, vehicles) wouldn't be valid for
+a form built against the source org anyway. Reopening this screen from the
+switcher (`+ Créer une nouvelle entreprise`) always starts a fresh create
+flow at step 1, never the completion mode — completion mode is only ever
+reached via §3.5's login redirect, with an explicit org already targeted.
 
 ---
 
@@ -656,7 +728,38 @@ v4.0 baseline that were never folded back into the sections above._
   assignments, alongside the existing daily dispatch screen.
 - **`vehicle/[id].tsx`** — new vehicle detail screen, reusing the same
   `WorkerHubTabs.tsx` two-tab pattern originally built for the worker
-  detail screen (Infos / Maintenance-and-Documents).
+  detail screen (Infos / Maintenance-and-Documents). **Documents tab
+  updated post-launch**: `vehicle_documents.document_url` (schema-ready
+  since 0073, but uncollected) is now wired up via the same
+  camera-or-library photo picker `vehicles.tsx` already uses for its own
+  photo field — a photo/scan of the document, not a true PDF picker
+  (`expo-document-picker` isn't a dependency here, same as the disclosed
+  gap on `org_insurances.document_url` in `safety.tsx`). Saved documents
+  show a signed thumbnail when a photo is attached; a plain note
+  ("Aucune photo du document jointe") when not.
+- **Worker "no site assigned" display bug fixed** —
+  `(worker)/material-request.tsx` and `(worker)/update-chantier.tsx` both
+  show a "Pour {site}" subtitle sourced from
+  `dispatch_assignments... projects(name)`. Before migration 0080, the
+  embedded `projects(name)` silently returned null for every worker
+  session (`projects`' RLS only covered org/project members, not a
+  worker's own auth user), so both screens fell back to "Aucun chantier
+  assigné aujourd'hui" even on a day the worker WAS assigned a site — the
+  opposite of the truth, not just a blank field. Fixed by an additive RLS
+  policy (`projects_select_assigned_worker`, 0080); no changes were
+  needed in either screen's own code.
+- **`accept-invite.tsx` (worker invite) rebuilt for identity parity with
+  `accept-org-invite.tsx`** — previously showed only bare text ("Bienvenue
+  chez {orgName}"), no logo/trade_type/legal_form/verification badge,
+  unlike the org-to-org invite screen sitting right next to it in the same
+  auth-flow family, which got that treatment in `0079`. Migration `0082`
+  widened `get_worker_invitation_by_token` to match, and this screen now
+  renders `OrgIdentityRow` plus a small row of Facebook/Instagram/website
+  links (same component, same link-row pattern as `collaboration.tsx`'s
+  detail sheet and `accept-org-invite.tsx`). Flagged explicitly in `0082`'s
+  own header as a parity judgment call, not a separately confirmed product
+  decision — easy to revert to the bare-name version if that's the wrong
+  call.
 - **Worker detail screen** — rebuilt as `WorkerHubTabs.tsx`, a tabbed hub
   (Infos / Pointage / Avances / Dispatch) assembling logic already
   present in `pointage.tsx`/`advances.tsx`/`dispatch.tsx`, filtered to one

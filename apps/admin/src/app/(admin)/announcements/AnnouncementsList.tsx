@@ -1,24 +1,31 @@
 'use client';
 
 import type { Announcement } from '@dala/shared-types';
+import { DataTable, type DataTableColumn, EmptyState, ErrorState, StatusBadge } from '@dala/ui-web';
 import { MegaphoneIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
-
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
-import { EmptyState } from '@/components/ui/EmptyState';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 
 export function AnnouncementsList({ refreshKey }: { refreshKey: number }) {
   const [items, setItems] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — same gap as the other admin tables: no res.ok
+  // check, so a failed fetch silently rendered "Aucune annonce,"
+  // indistinguishable from a genuinely-empty announcements list.
+  const [loadError, setLoadError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     setLoading(true);
+    setLoadError(false);
     fetch('/api/admin/announcements')
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed');
+        return res.json();
+      })
       .then((data) => setItems(data.announcements ?? []))
+      .catch(() => setLoadError(true))
       .finally(() => setLoading(false));
-  }, [refreshKey]);
+  }, [refreshKey, reloadKey]);
 
   const columns: DataTableColumn<Announcement>[] = [
     {
@@ -70,6 +77,7 @@ export function AnnouncementsList({ refreshKey }: { refreshKey: number }) {
   ];
 
   if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return (
     <DataTable

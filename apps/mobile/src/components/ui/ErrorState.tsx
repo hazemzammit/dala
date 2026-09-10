@@ -1,7 +1,9 @@
-import { ArrowClockwiseIcon, type Icon, WarningCircleIcon } from 'phosphor-react-native';
+import { ArrowClockwiseIcon, type Icon } from 'phosphor-react-native';
 import { Text, View, YStack } from 'tamagui';
 
 import { Button } from './Button';
+import { Icon3D } from './Icon3D';
+import type { Icon3DName } from './icons3d';
 import { Illustration } from './Illustration';
 import type { IllustrationName } from './illustrations';
 
@@ -28,13 +30,27 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * `onRetry`. Still usable standalone by any screen that hasn't migrated to
  * React Query yet — `onRetry` just needs to re-run whatever `load()` is.
  *
- * Defaults `icon` to `WarningCircleIcon` and `retryLabel` to "Réessayer" so
- * the common case (`<ErrorState onRetry={refetch} />`) needs no other
- * prop, while still allowing a screen-specific illustration/title/
- * description when the generic wording doesn't fit.
+ * `retryLabel` defaults to "Réessayer" so the common case
+ * (`<ErrorState onRetry={refetch} />`) needs no other prop, while still
+ * allowing a screen-specific illustration/title/description when the
+ * generic wording doesn't fit.
+ *
+ * IMPROVEMENT-PLAN Part A — the old Phosphor `WarningCircleIcon` badge
+ * default is replaced with Icon3D's `x-circle` as the new generic-failure
+ * default (confirmed across every call site in the app: ~25+ bare
+ * `<ErrorState onRetry={...} />` uses with no `icon`/`illustration`
+ * override — all of them pick this up automatically). `illustration` still
+ * wins when a screen sets one (vehicles.tsx and pointage.tsx already have
+ * bespoke `illustration="warning"` + custom copy — left untouched, that's
+ * a richer treatment already, not the generic gap this default addresses).
+ * New `icon3d` prop lets a screen ask for a specific Icon3D instead of the
+ * x-circle default without dropping to the old Phosphor `icon` escape
+ * hatch — used at analytics.tsx for `warning-circle`, the one guide-named
+ * target screen that actually had zero customization before this.
  */
 interface ErrorStateProps {
   icon?: Icon;
+  icon3d?: Icon3DName;
   illustration?: IllustrationName;
   title?: string;
   description?: string;
@@ -43,29 +59,22 @@ interface ErrorStateProps {
 }
 
 export function ErrorState({
-  icon: IconComponent = WarningCircleIcon,
+  icon: IconComponent,
+  icon3d,
   illustration,
   title = 'Un problème est survenu',
   description = 'Impossible de charger ces données. Vérifiez votre connexion et réessayez.',
   retryLabel = 'Réessayer',
   onRetry,
 }: ErrorStateProps) {
-  const tc = useTokenColor();
   return (
     <YStack alignItems="center" justifyContent="center" paddingHorizontal="$4" paddingVertical={48}>
       {illustration ? (
         <Illustration name={illustration} size={168} />
+      ) : IconComponent ? (
+        <PhosphorBadge Icon={IconComponent} />
       ) : (
-        <View
-          width={64}
-          height={64}
-          borderRadius={999}
-          backgroundColor="$neutral100"
-          alignItems="center"
-          justifyContent="center"
-        >
-          <IconComponent size={28} weight="fill" color={tc.danger} />
-        </View>
+        <Icon3D name={icon3d ?? 'x-circle'} />
       )}
 
       <Text fontFamily="$display" fontSize={18} fontWeight="600" marginTop="$3" textAlign="center">
@@ -89,5 +98,27 @@ export function ErrorState({
         </Button>
       </View>
     </YStack>
+  );
+}
+
+/**
+ * Kept for the `icon` escape hatch — no call site in the app currently
+ * uses it (every existing usage was relying on the old default, which is
+ * now Icon3D's `x-circle`), but a screen that genuinely wants a flat
+ * Phosphor glyph instead of a 3D render still can.
+ */
+function PhosphorBadge({ Icon: IconComponent }: { Icon: Icon }) {
+  const tc = useTokenColor();
+  return (
+    <View
+      width={64}
+      height={64}
+      borderRadius={999}
+      backgroundColor="$neutral100"
+      alignItems="center"
+      justifyContent="center"
+    >
+      <IconComponent size={28} weight="fill" color={tc.danger} />
+    </View>
   );
 }

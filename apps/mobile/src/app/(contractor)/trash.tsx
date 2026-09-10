@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
@@ -79,6 +80,11 @@ export default function TrashScreen() {
   const [items, setItems] = useState<TrashItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Phase 20 (§1.7a) — same fix as the other list screens this batch:
+  // none of the four deleted-entity queries below had their errors
+  // captured, so a failed fetch rendered identically to a genuinely-empty
+  // trash.
+  const [loadError, setLoadError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -89,6 +95,7 @@ export default function TrashScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     const orgId = await getActiveOrgId();
     if (!orgId) {
       setItems([]);
@@ -98,10 +105,10 @@ export default function TrashScreen() {
     }
 
     const [
-      { data: deletedProjects },
-      { data: deletedWorkers },
-      { data: deletedVehicles },
-      { data: deletedLogs },
+      { data: deletedProjects, error: projectsError },
+      { data: deletedWorkers, error: workersError },
+      { data: deletedVehicles, error: vehiclesError },
+      { data: deletedLogs, error: logsError },
     ] = await Promise.all([
       supabase
         .from('projects')
@@ -124,10 +131,11 @@ export default function TrashScreen() {
       // org_id column directly (confirmed by re-reading 0008) — scoped
       // via project_id in (org's own project ids) instead.
       (async () => {
-        const { data: orgProjectIds } = await supabase
+        const { data: orgProjectIds, error: idsError } = await supabase
           .from('projects')
           .select('id')
           .eq('lead_org_id', orgId);
+        if (idsError) return { data: null, error: idsError };
         const ids = (orgProjectIds ?? []).map((p) => p.id);
         if (ids.length === 0)
           return {
@@ -137,6 +145,7 @@ export default function TrashScreen() {
               note_text: string | null;
               deleted_at: string;
             }[],
+            error: null,
           };
         return supabase
           .from('site_logs')
@@ -145,6 +154,13 @@ export default function TrashScreen() {
           .not('deleted_at', 'is', null);
       })(),
     ]);
+
+    if (projectsError || workersError || vehiclesError || logsError) {
+      setLoadError(true);
+      setLoading(false);
+      setRefreshing(false);
+      return;
+    }
 
     const merged: TrashItem[] = [
       ...(deletedProjects ?? []).map((p) => ({
@@ -213,12 +229,20 @@ export default function TrashScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={TrashIcon}
-          illustration="clean-up"
+          icon3d="archive-box"
           title="La corbeille est vide"
           description="Les chantiers, travailleurs, véhicules et entrées de journal supprimés apparaissent ici pendant 30 jours avant suppression définitive."
         />

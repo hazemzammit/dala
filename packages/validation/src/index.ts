@@ -24,3 +24,4 @@ export * from './collaboration';
 export * from './notifications';
 export * from './exports';
 export * from './mfa';
+export * from './feedback';

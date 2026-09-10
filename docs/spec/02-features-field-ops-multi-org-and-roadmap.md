@@ -517,9 +517,12 @@ by phase number, since the phase numbering is its own separate track._
   required), lowest priority item in its phase.
 - **In-app feedback**: a dedicated `feedback.tsx` screen, separate from any
   support-ticket system (none exists).
-- **Push notifications**: dispatch/material/safety events now reach a
-  worker's device via Expo push, with deep-linking so tapping the
-  notification opens the relevant record directly.
+- **Push notifications**: dispatch/material/safety/advance-decision events
+  now reach a worker's device via Expo push, with deep-linking so tapping
+  the notification opens the relevant record directly. (Advance-decision
+  notifications shipped later than the other three — migration 0087, see
+  Doc 01 §1.20.7 — after an audit found the `advances` toggle in
+  notification settings had no trigger wired to it since launch.)
 - **Smart input pickers**: a shared bottom-sheet `Select.tsx` component
   (pick-or-specify, "Autre — préciser" free text) replaces several ad hoc
   text inputs (trade type, worker trade, insurance type, incident type,

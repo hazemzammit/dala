@@ -7,6 +7,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { SiteLogForm } from '@/components/journal/SiteLogForm';
 import { Button } from '@/components/ui/Button';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonHero } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
 
@@ -52,6 +53,10 @@ import { supabase } from '@/lib/supabase';
  */
 export default function UpdateChantierScreen() {
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — the primary worker-lookup query had no error
+  // capture (today's assignment query is supplementary/optional and
+  // left ungated, matching its existing `.maybeSingle()` treatment).
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [orgId, setOrgId] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -68,6 +73,7 @@ export default function UpdateChantierScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     try {
       const {
         data: { session },
@@ -75,11 +81,15 @@ export default function UpdateChantierScreen() {
       if (!session) return;
       setUserId(session.user.id);
 
-      const { data: worker } = await supabase
+      const { data: worker, error: workerError } = await supabase
         .from('workers')
         .select('id, org_id')
         .eq('user_id', session.user.id)
         .single();
+      if (workerError) {
+        setLoadError(true);
+        return;
+      }
       if (!worker) return;
 
       setOrgId(worker.org_id);
@@ -104,6 +114,14 @@ export default function UpdateChantierScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonHero />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }

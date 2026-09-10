@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
 
@@ -22,6 +23,9 @@ import { supabase } from '@/lib/supabase';
  * that function's header for why a recovery code can't just grant one-time
  * entry the way Supabase's own model works) — the copy on this screen says
  * so plainly before the person commits.
+ *
+ * IMPROVEMENT-PLAN Part A — `key` Icon3D added above the title, same
+ * "this screen had zero icon before" gap as mfa-challenge.tsx above it.
  */
 export default function MfaRecoverScreen() {
   const { next } = useLocalSearchParams<{ next?: string }>();
@@ -69,6 +73,9 @@ export default function MfaRecoverScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      <YStack alignItems="center">
+        <Icon3D name="key" />
+      </YStack>
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Récupérer l'accès
       </Text>

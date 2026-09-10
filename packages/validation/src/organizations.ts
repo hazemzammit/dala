@@ -63,6 +63,50 @@ export const updateOrganizationRibSchema = z.object({
 });
 export type UpdateOrganizationRibInput = z.infer<typeof updateOrganizationRibSchema>;
 
+/**
+ * Org-creation wizard (create-organization.tsx) — a straight union of the
+ * field-level rules already established by updateOrganizationSchema,
+ * updateOrganizationExtendedProfileSchema, and
+ * updateOrganizationLegalFieldsSchema (values copied from those schemas,
+ * not re-invented). Kept as its own schema rather than folded into any of
+ * the three above: those schemas are each consumed by working screens
+ * (organization-settings.tsx's handleSave/handleSaveExtended) tied to a
+ * specific RPC's argument shape, and widening one of them risks breaking
+ * that screen. The wizard validates each step's fields against the
+ * relevant slice of this schema, then still calls the same three existing
+ * RPCs (create_organization_for_current_user, update_organization_profile,
+ * update_organization_extended_profile) exactly as organization-
+ * settings.tsx already does — no RPC signature changes.
+ *
+ * `name` is the only required field, matching organizations.name being the
+ * one NOT NULL column with no system default (see migration 0003/0075).
+ * RIB is deliberately excluded — collected only via organization-
+ * settings.tsx's existing "Ajouter un RIB" sheet, never at creation.
+ */
+export const createOrganizationFullSchema = z.object({
+  name: z.string().min(2, "Nom de l'entreprise requis."),
+  trade_type: z.string().optional(),
+  logo_url: z.string().optional(), // storage path, not a URL — see updateOrganizationSchema's logo_url comment
+  address: z.string().optional(),
+  contact_phone: z.string().optional(),
+  contact_email: z.string().email().optional(),
+  matricule_fiscal: z
+    .string()
+    .regex(/^[a-zA-Z0-9]+$/, 'Format invalide.')
+    .optional(),
+  rc_number: z
+    .string()
+    .regex(/^[a-zA-Z0-9]+$/, 'Format invalide.')
+    .optional(),
+  legal_form: z.enum(['personne_physique', 'sarl', 'suarl', 'sa']).optional(),
+  workforce_size_bracket: z.enum(['1', '2_10', '11_50', '51_plus']).optional(),
+  facebook_url: z.string().url('URL Facebook invalide.').optional().or(z.literal('')),
+  instagram_url: z.string().url('URL Instagram invalide.').optional().or(z.literal('')),
+  website_url: z.string().url('URL invalide.').optional().or(z.literal('')),
+  service_area: z.string().optional(),
+});
+export type CreateOrganizationFullInput = z.infer<typeof createOrganizationFullSchema>;
+
 /** Owner-only fields — kept in a separate schema so a form/API can enforce
  *  the stricter permission boundary explicitly rather than by convention. */
 export const updateOrganizationLegalFieldsSchema = z.object({

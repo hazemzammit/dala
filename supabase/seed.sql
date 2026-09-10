@@ -180,7 +180,7 @@ insert into organizations (
   service_area, verification_status, rib_last4, onboarding_dismissed_at
 ) values
   ('11111111-1111-1111-1111-000000000001', 'Plomberie Ben Ali', 'Plomberie',
-   'org-files/11111111-1111-1111-1111-000000000001/logo/logo.png',
+   '11111111-1111-1111-1111-000000000001/logo/logo.png',
    'Rue Ibn Khaldoun, Ariana', '+21671000001', 'contact@benali-plomberie.tn',
    '1234567A', 'B012345678', 'pro', now() - interval '390 days', '22222222-2222-2222-2222-000000000001',
    now() - interval '400 days', now() - interval '1 days', null, null,
@@ -298,7 +298,7 @@ insert into workers (
   ('44444444-4444-4444-4444-000000000002', '11111111-1111-1111-1111-000000000001',
    'Mohamed Sassi', '+21622111222', 'Plombier', 55.00, null,
    now() - interval '300 days', null, null,
-   'org-files/11111111-1111-1111-1111-000000000001/worker-photo/mohamed.jpg', 'Plombier', current_date - interval '300 days'),
+   '11111111-1111-1111-1111-000000000001/worker-photo/mohamed.jpg', 'Plombier', current_date - interval '300 days'),
   ('44444444-4444-4444-4444-000000000003', '11111111-1111-1111-1111-000000000001',
    'Fedi Jlassi', '+21655333444', 'Aide', 40.00, null,
    now() - interval '90 days', null, null, null, 'Aide plombier', current_date - interval '90 days'),
@@ -336,7 +336,7 @@ insert into projects (
    'Villa Ariana', 'Famille Khelifi', 'Ariana Ville', 150000.00, 'active',
    null, 1, '22222222-2222-2222-2222-000000000001', now() - interval '20 days', now() - interval '1 days',
    current_date - interval '20 days', 'residentiel',
-   'org-files/11111111-1111-1111-1111-000000000001/project-cover/villa-ariana.jpg'),
+   '11111111-1111-1111-1111-000000000001/project-cover/villa-ariana.jpg'),
   ('33333333-3333-3333-3333-000000000002', '11111111-1111-1111-1111-000000000001',
    'Immeuble Sousse', 'Promoteur SCI Yosr', 'Sousse Corniche', 500000.00, 'active',
    null, 1, '22222222-2222-2222-2222-000000000001', now() - interval '60 days', now() - interval '2 days',
@@ -388,7 +388,7 @@ on conflict (project_id, org_id) do nothing;
 insert into vehicles (id, org_id, name, plate, capacity, status, created_at, photo_url, version, deleted_at) values
   ('55555555-5555-5555-5555-000000000001', '11111111-1111-1111-1111-000000000001',
    'Camionnette 1', '123 TUN 4567', 3, 'available', now() - interval '400 days',
-   'org-files/11111111-1111-1111-1111-000000000001/vehicle-photo/camionnette1.jpg', 1, null),
+   '11111111-1111-1111-1111-000000000001/vehicle-photo/camionnette1.jpg', 1, null),
   ('55555555-5555-5555-5555-000000000002', '11111111-1111-1111-1111-000000000001',
    'Camionnette 2', '789 TUN 1234', 2, 'in_use', now() - interval '350 days', null, 1, null),
   ('55555555-5555-5555-5555-000000000003', '11111111-1111-1111-1111-000000000001',
@@ -408,11 +408,11 @@ on conflict do nothing;
 
 insert into vehicle_documents (org_id, vehicle_id, document_type, document_url, expires_at, recorded_by, created_at) values
   ('11111111-1111-1111-1111-000000000001', '55555555-5555-5555-5555-000000000001',
-   'Assurance', 'org-files/11111111-1111-1111-1111-000000000001/vehicle-doc/assurance-camionnette1.pdf', current_date + interval '200 days', '22222222-2222-2222-2222-000000000001', now() - interval '165 days'),
+   'Assurance', '11111111-1111-1111-1111-000000000001/vehicle-doc/assurance-camionnette1.pdf', current_date + interval '200 days', '22222222-2222-2222-2222-000000000001', now() - interval '165 days'),
   ('11111111-1111-1111-1111-000000000001', '55555555-5555-5555-5555-000000000001',
-   'Visite technique', 'org-files/11111111-1111-1111-1111-000000000001/vehicle-doc/visite-camionnette1.pdf', current_date + interval '12 days', '22222222-2222-2222-2222-000000000001', now() - interval '350 days'),
+   'Visite technique', '11111111-1111-1111-1111-000000000001/vehicle-doc/visite-camionnette1.pdf', current_date + interval '12 days', '22222222-2222-2222-2222-000000000001', now() - interval '350 days'),
   ('11111111-1111-1111-1111-000000000001', '55555555-5555-5555-5555-000000000002',
-   'Assurance', 'org-files/11111111-1111-1111-1111-000000000001/vehicle-doc/assurance-camionnette2.pdf', current_date - interval '15 days', '22222222-2222-2222-2222-000000000002', now() - interval '380 days')
+   'Assurance', '11111111-1111-1111-1111-000000000001/vehicle-doc/assurance-camionnette2.pdf', current_date - interval '15 days', '22222222-2222-2222-2222-000000000002', now() - interval '380 days')
 on conflict do nothing;
 
 insert into dispatch_assignments (org_id, project_id, vehicle_id, worker_id, assignment_date, departure_time, confirmation_channel, actual_departure_time, version) values
@@ -467,7 +467,7 @@ insert into advances (org_id, worker_id, amount, reason, status, requested_by, a
 on conflict do nothing;
 
 insert into project_expenses (org_id, project_id, category, amount, description, receipt_photo_url, expense_date, created_by, created_at, deleted_at) values
-  ('11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001', 'materiaux', 4200.00, 'Tuyauterie PVC et raccords', 'org-files/11111111-1111-1111-1111-000000000001/expense-receipt/tuyauterie.jpg', current_date - 10, '22222222-2222-2222-2222-000000000001', now() - interval '10 days', null),
+  ('11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001', 'materiaux', 4200.00, 'Tuyauterie PVC et raccords', '11111111-1111-1111-1111-000000000001/expense-receipt/tuyauterie.jpg', current_date - 10, '22222222-2222-2222-2222-000000000001', now() - interval '10 days', null),
   ('11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001', 'carburant', 300.00, 'Essence camionnette', null, current_date - 5, '22222222-2222-2222-2222-000000000002', now() - interval '5 days', null),
   ('11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000002', 'sous_traitance', 15000.00, 'Sous-traitant maçonnerie', null, current_date - 15, '22222222-2222-2222-2222-000000000001', now() - interval '15 days', null),
   -- Soft-deleted expense (UndoToast / restore testing, migration 0076).
@@ -517,20 +517,20 @@ on conflict do nothing;
 
 insert into site_logs (id, org_id, project_id, photo_url, caption, logged_by, created_at, voice_note_url, note_text, thumbnail_url, location_lat, location_lng, deleted_at) values
   ('88888888-8888-8888-8888-000000000001', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001',
-   'org-files/11111111-1111-1111-1111-000000000001/site-log/photo1.jpg', 'Coulage de la dalle terminé', '22222222-2222-2222-2222-000000000001',
-   now() - interval '6 days', null, null, 'org-files/11111111-1111-1111-1111-000000000001/site-log/thumb1.jpg', 36.862500, 10.195500, null),
+   '11111111-1111-1111-1111-000000000001/site-log/photo1.jpg', 'Coulage de la dalle terminé', '22222222-2222-2222-2222-000000000001',
+   now() - interval '6 days', null, null, '11111111-1111-1111-1111-000000000001/site-log/thumb1.jpg', 36.862500, 10.195500, null),
   ('88888888-8888-8888-8888-000000000002', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001',
    null, 'Note vocale — retard livraison ciment', '22222222-2222-2222-2222-000000000002',
-   now() - interval '4 days', 'org-files/11111111-1111-1111-1111-000000000001/site-log/voice1.m4a', 'Retard livraison ciment, prévoir 2 jours de plus', null, null, null, null),
+   now() - interval '4 days', '11111111-1111-1111-1111-000000000001/site-log/voice1.m4a', 'Retard livraison ciment, prévoir 2 jours de plus', null, null, null, null),
   ('88888888-8888-8888-8888-000000000003', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000002',
-   'org-files/11111111-1111-1111-1111-000000000001/site-log/photo2.jpg', 'Charpente métallique posée', '22222222-2222-2222-2222-000000000001',
+   '11111111-1111-1111-1111-000000000001/site-log/photo2.jpg', 'Charpente métallique posée', '22222222-2222-2222-2222-000000000001',
    now() - interval '10 days', null, null, null, null, null, null),
   -- Soft-deleted (30-day recoverable, migration 0072) journal entry.
   ('88888888-8888-8888-8888-000000000004', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000001',
-   'org-files/11111111-1111-1111-1111-000000000001/site-log/photo3.jpg', 'Doublon supprimé par erreur', '22222222-2222-2222-2222-000000000002',
+   '11111111-1111-1111-1111-000000000001/site-log/photo3.jpg', 'Doublon supprimé par erreur', '22222222-2222-2222-2222-000000000002',
    now() - interval '3 days', null, null, null, null, null, now() - interval '1 days'),
   ('88888888-8888-8888-8888-000000000005', '11111111-1111-1111-1111-000000000003', '33333333-3333-3333-3333-000000000006',
-   'org-files/11111111-1111-1111-1111-000000000003/site-log/photo1.jpg', 'Découpe des panneaux de chêne', '22222222-2222-2222-2222-000000000006',
+   '11111111-1111-1111-1111-000000000003/site-log/photo1.jpg', 'Découpe des panneaux de chêne', '22222222-2222-2222-2222-000000000006',
    now() - interval '5 days', null, null, null, null, null, null)
 on conflict (id) do nothing;
 
@@ -540,11 +540,11 @@ insert into safety_incidents (id, org_id, project_id, description, severity, pho
    now() - interval '15 days', 'Zone plomberie, RDC', 'blessure_legere'),
   ('99999999-9999-9999-9999-000000000002', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000002',
    'Chute d''un échafaudage mal fixé, entorse à la cheville', 'moderate',
-   'org-files/11111111-1111-1111-1111-000000000001/safety/incident2.jpg', '22222222-2222-2222-2222-000000000002',
+   '11111111-1111-1111-1111-000000000001/safety/incident2.jpg', '22222222-2222-2222-2222-000000000002',
    now() - interval '8 days', 'Étage 2, façade nord', 'chute'),
   ('99999999-9999-9999-9999-000000000003', '11111111-1111-1111-1111-000000000001', '33333333-3333-3333-3333-000000000002',
    'Effondrement partiel d''un mur non porteur, un ouvrier hospitalisé', 'severe',
-   'org-files/11111111-1111-1111-1111-000000000001/safety/incident3.jpg', '22222222-2222-2222-2222-000000000001',
+   '11111111-1111-1111-1111-000000000001/safety/incident3.jpg', '22222222-2222-2222-2222-000000000001',
    now() - interval '2 days', 'Rez-de-chaussée, aile est', 'effondrement')
 on conflict (id) do nothing;
 
@@ -557,9 +557,9 @@ on conflict do nothing;
 
 insert into org_insurances (org_id, provider_name, policy_number, document_url, expires_at, created_at, reminder_enabled) values
   ('11111111-1111-1111-1111-000000000001', 'STAR Assurances', 'POL-2024-778812',
-   'org-files/11111111-1111-1111-1111-000000000001/insurance/star-police.pdf', current_date + interval '10 days', now() - interval '355 days', true),
+   '11111111-1111-1111-1111-000000000001/insurance/star-police.pdf', current_date + interval '10 days', now() - interval '355 days', true),
   ('11111111-1111-1111-1111-000000000001', 'GAT Assurances', 'POL-2022-114455',
-   'org-files/11111111-1111-1111-1111-000000000001/insurance/gat-police.pdf', current_date - interval '20 days', now() - interval '720 days', true),
+   '11111111-1111-1111-1111-000000000001/insurance/gat-police.pdf', current_date - interval '20 days', now() - interval '720 days', true),
   ('11111111-1111-1111-1111-000000000003', 'Comar Assurances', 'POL-2023-556677',
    null, current_date + interval '90 days', now() - interval '200 days', false)
 on conflict do nothing;

@@ -241,3 +241,32 @@ migration or file header referenced, not repeated here:
   end-to-end in this environment — see Tier 2.4's note above. Treat this
   as the single highest-priority thing to verify before relying on this
   tier's correctness claims.
+
+## Org-creation-guide/gaps follow-on — organization detail page filled in
+
+Auditing the mobile org-creation wizard work for parallel gaps ("data
+that exists but isn't surfaced anywhere") found that `OrgDetail.tsx`
+(`apps/admin/src/app/(admin)/organizations/[orgId]/OrgDetail.tsx`)
+rendered almost nothing from the row it already fetches via
+`select('*')` — just `name`, `plan`, `trade_type`, and suspended/deleted
+status. None of `legal_form`, `workforce_size_bracket`, `service_area`,
+`matricule_fiscal`, `rc_number`, `verification_status`, or the social/
+website URLs were shown anywhere, even though every one of those columns
+has existed since migration 0075 and the API route already returns them —
+this was a display-only gap, not a data-availability one, so no API/RPC
+change was needed.
+
+Fixed with a second read-only `Card` on the org detail page — same
+`VERIFICATION_LABEL`/legal-form/workforce-bracket label mappings as
+`organization-settings.tsx`/`create-organization.tsx` on mobile, same
+wording on both surfaces rather than a separately-invented admin
+vocabulary. Admin still has no write path for any of these (that stays
+`organization-settings.tsx`'s job on the org's own side) — this is purely
+"let staff actually see what an org has filled in."
+
+`tsc --noEmit` confirmed clean (one pre-existing, unrelated error in
+`tests/*.spec.ts` — a Supabase client type-version mismatch, verified by
+reverting this change and re-running: the same error persists with or
+without it). `eslint` on `OrgDetail.tsx` itself: clean (one pre-existing
+`react-hooks/exhaustive-deps` warning on the file's own `load` callback,
+unrelated to this change).

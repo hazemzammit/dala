@@ -1,6 +1,9 @@
 import type { Icon } from 'phosphor-react-native';
 import { styled, View } from 'tamagui';
 
+import { FAB_DIAMETER, useFabBottomOffset } from '@/lib/fabLayout';
+import { useReducedMotion } from '@/lib/useReducedMotion';
+
 /** Same spring press feedback as Button — the FAB previously had no press
  * state at all (no pressStyle, no scale), which reads as unresponsive
  * given how prominent it is on-screen. */
@@ -34,14 +37,23 @@ interface FABProps {
 }
 
 export function FAB({ icon: IconComponent, onPress, accessibilityLabel }: FABProps) {
+  // Doc 05 §1.7l (Phase 19A) — was a hardcoded `bottom={96}` with no
+  // safe-area awareness; now derived from the same formula/constants any
+  // scrollable content beneath this FAB reserves via
+  // `useFabBottomContentInset()`. See fabLayout.ts.
+  const bottomOffset = useFabBottomOffset();
+  // Doc 05 §1.4b (Phase 19A) — same reduced-motion treatment as
+  // Button/IconButton: static opacity-only press feedback, no transform.
+  const reducedMotion = useReducedMotion();
+
   return (
     <PressableFAB
       position="absolute"
-      bottom={96}
+      bottom={bottomOffset}
       right={20}
-      width={56}
-      height={56}
-      borderRadius={28}
+      width={FAB_DIAMETER}
+      height={FAB_DIAMETER}
+      borderRadius={FAB_DIAMETER / 2}
       backgroundColor="$accent600"
       alignItems="center"
       justifyContent="center"
@@ -52,6 +64,8 @@ export function FAB({ icon: IconComponent, onPress, accessibilityLabel }: FABPro
       shadowOpacity={0.15}
       shadowRadius={10}
       shadowOffset={{ width: 0, height: 4 }}
+      animation={reducedMotion ? null : 'press'}
+      pressStyle={reducedMotion ? { opacity: 0.7 } : { scale: 0.92 }}
       // @ts-expect-error — `elevation` is RN's Android shadow prop; Tamagui's View
       // style types don't declare it, but it's still forwarded to the native View
       // at runtime, so this keeps the Android shadow rather than dropping it.

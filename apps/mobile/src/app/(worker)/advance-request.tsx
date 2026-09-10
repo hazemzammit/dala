@@ -7,7 +7,9 @@ import { RefreshControl, ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonHero } from '@/components/ui/Skeleton';
 import { database } from '@/db';
@@ -46,11 +48,13 @@ import { supabase } from '@/lib/supabase';
  * needed for this to remain accurate offline.
  *
  * Doc 03 §4.4 also describes a push notification on contractor approval
- * updating the balance live. That needs a server-side trigger dispatching
- * through expo-notifications' push service when `advances.status` flips —
- * infrastructure that doesn't exist yet for any screen in this app, not
- * something to bolt on as a one-off for this screen. Deferred; noted in
- * the delivery guide.
+ * updating the balance live. Audit fix 3a (migration 0087) added the
+ * server-side trigger this needed — `notify_advance_decision()` fires on
+ * `advances.status` flipping to approved/rejected and pushes
+ * `requested_by` via the same `send_expo_push()` helper Phase 9's
+ * dispatch/materials/safety triggers already use, tagged
+ * `{ type: 'advance', id }` so NotificationRouter.tsx routes a tap back
+ * to this screen.
  *
  * Phase 13 fix: `gross` below now reads `attendance_effective` (migration
  * 0036) instead of raw `attendance_records`. Before this, every row for
@@ -63,6 +67,10 @@ import { supabase } from '@/lib/supabase';
  */
 export default function AdvanceRequestScreen() {
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — none of this screen's queries had error capture;
+  // a failure silently left gross/advances at 0, indistinguishable from
+  // a genuinely new worker with no attendance yet.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [gross, setGross] = useState(0);
   const [advancesReceived, setAdvancesReceived] = useState(0);
@@ -82,22 +90,30 @@ export default function AdvanceRequestScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: workerRow } = await supabase
+      const { data: workerRow, error: workerError } = await supabase
         .from('workers')
         .select('id, org_id, daily_rate')
         .eq('user_id', session.user.id)
         .single();
+      if (workerError) {
+        setLoadError(true);
+        return;
+      }
       if (!workerRow) return;
       setWorker({ id: workerRow.id, orgId: workerRow.org_id, userId: session.user.id });
 
       const cycleStart = cycleStartISO();
-      const [{ data: attendance }, { data: advances }] = await Promise.all([
+      const [
+        { data: attendance, error: attendanceError },
+        { data: advances, error: advancesError },
+      ] = await Promise.all([
         supabase
           .from('attendance_effective')
           .select('status')
@@ -110,6 +126,10 @@ export default function AdvanceRequestScreen() {
           .eq('status', 'approved')
           .gte('created_at', cycleStart),
       ]);
+      if (attendanceError || advancesError) {
+        setLoadError(true);
+        return;
+      }
 
       const dayValue = (status: string) =>
         status === 'half_day' ? 0.5 : status === 'present' ? 1 : 0;
@@ -192,6 +212,14 @@ export default function AdvanceRequestScreen() {
     );
   }
 
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
+      </YStack>
+    );
+  }
+
   if (submitted) {
     return (
       <YStack
@@ -201,12 +229,14 @@ export default function AdvanceRequestScreen() {
         justifyContent="center"
         padding="$4"
       >
+        <Icon3D name="hand-coins" />
         <Text
           fontFamily="$display"
           fontSize={20}
           fontWeight="600"
           textAlign="center"
           marginBottom="$2"
+          marginTop="$3"
         >
           Demande envoyée
         </Text>

@@ -1,12 +1,10 @@
 'use client';
 
+import { Button, Card, FormField } from '@dala/ui-web';
 import { signUpSchema } from '@dala/validation';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { FormField } from '@/components/ui/FormField';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { createClient } from '@/lib/supabase/client';
 

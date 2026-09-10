@@ -1,16 +1,41 @@
 'use client';
 
+import {
+  Button,
+  Card,
+  ConfirmTypingDialog,
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  StatusBadge,
+} from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
-import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
-import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { NotesPanel } from '@/components/ui/NotesPanel';
-import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 const RESTORE_WINDOW_DAYS = 30;
+
+// Mirrors apps/mobile's own organization-settings.tsx / create-organization.tsx
+// label mappings exactly — same wording on both surfaces for the same
+// underlying enum values, not a separately-invented admin vocabulary.
+const VERIFICATION_LABEL: Record<string, string> = {
+  unverified: 'Non vérifiée',
+  pending: 'Vérification en cours',
+  verified: 'Vérifiée',
+};
+const LEGAL_FORM_LABEL: Record<string, string> = {
+  personne_physique: 'Personne physique',
+  sarl: 'SARL',
+  suarl: 'SUARL',
+  sa: 'SA',
+};
+const WORKFORCE_BRACKET_LABEL: Record<string, string> = {
+  '1': '1',
+  '2_10': '2–10',
+  '11_50': '11–50',
+  '51_plus': '51+',
+};
 
 interface Member {
   user_id: string;
@@ -28,15 +53,29 @@ export function OrgDetail({ orgId }: { orgId: string }) {
 
   const [org, setOrg] = useState<any>(null);
   const [members, setMembers] = useState<Member[]>([]);
+  // Phase 20 (§1.7a) — `load()` already checked res.ok but did nothing
+  // on failure, so `org` stayed null forever and the screen showed
+  // "Chargement…" permanently on a real failure — indistinguishable
+  // from still loading, with no retry.
+  const [loadError, setLoadError] = useState(false);
   const [impersonateTarget, setImpersonateTarget] = useState<Member | null>(null);
   const [restoring, setRestoring] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   async function load() {
-    const res = await fetch(`/api/admin/organizations/${orgId}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    setOrg(data.organization);
-    setMembers(data.members ?? []);
+    setLoadError(false);
+    try {
+      const res = await fetch(`/api/admin/organizations/${orgId}`);
+      if (!res.ok) {
+        setLoadError(true);
+        return;
+      }
+      const data = await res.json();
+      setOrg(data.organization);
+      setMembers(data.members ?? []);
+    } catch {
+      setLoadError(true);
+    }
   }
 
   useEffect(() => {
@@ -82,6 +121,31 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     }
   }
 
+  // Audit fix 3b (Option B) — approve/reject the org's own verification
+  // request. Same shape as restoreOrg above: no reason/confirmName check
+  // (per the plan, typed confirmation is reserved for destructive
+  // actions — approving or rejecting a self-serve request isn't one),
+  // POST to the same mutation route, reload on success.
+  async function verifyOrgAction(action: 'verify_org' | 'reject_org_verification') {
+    setVerifying(true);
+    try {
+      const res = await fetch(`/api/admin/organizations/${orgId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action }),
+      });
+      if (res.ok) {
+        await load();
+      } else {
+        const data = await res.json().catch(() => null);
+        alert(data?.error ?? 'Impossible de mettre à jour la vérification.');
+      }
+    } finally {
+      setVerifying(false);
+    }
+  }
+
+  if (loadError) return <ErrorState onRetry={() => void load()} />;
   if (!org) return <p className="text-sm text-neutral-500">Chargement…</p>;
 
   // Client-side only for the button's disabled state — restore_organization()
@@ -173,6 +237,151 @@ export function OrgDetail({ orgId }: { orgId: string }) {
               {new Date(org.created_at).toLocaleDateString('fr-FR')}
             </dd>
           </div>
+        </dl>
+      </Card>
+
+      {/* Org-creation-guide/gaps follow-on — these columns have existed
+          since migration 0075 and this component's own /api/admin/
+          organizations/[orgId] route already fetches them via
+          select('*'), but nothing here ever rendered them. Read-only:
+          admin has no write path for any of these (that's organization-
+          settings.tsx's job on the org's own side), this is purely
+          "let staff actually see what the org has filled in." */}
+      <Card className="p-6">
+        <h2 className="font-display mb-4 text-base font-semibold text-neutral-900">
+          Profil de l&apos;entreprise
+        </h2>
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Vérification
+            </dt>
+            <dd className="mt-1 flex items-center gap-3">
+              <StatusBadge
+                variant={
+                  org.verification_status === 'verified'
+                    ? 'success'
+                    : org.verification_status === 'pending'
+                      ? 'warning'
+                      : 'neutral'
+                }
+              >
+                {VERIFICATION_LABEL[org.verification_status as string] ?? 'Non vérifiée'}
+              </StatusBadge>
+              {/* Audit fix 3b (Option B) — only actionable once the org
+                  has actually requested it (verification_status =
+                  'pending', via request_org_verification, 0089); an
+                  unverified org with no pending request has nothing for
+                  an admin to approve or reject yet. */}
+              {org.verification_status === 'pending' && (
+                <>
+                  <Button
+                    variant="secondary"
+                    onClick={() => verifyOrgAction('verify_org')}
+                    loading={verifying}
+                    className="px-2.5 py-1 text-xs"
+                  >
+                    Approuver
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => verifyOrgAction('reject_org_verification')}
+                    loading={verifying}
+                    className="px-2.5 py-1 text-xs"
+                  >
+                    Refuser
+                  </Button>
+                </>
+              )}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Forme juridique
+            </dt>
+            <dd className="mt-1 text-neutral-900">
+              {LEGAL_FORM_LABEL[org.legal_form as string] ?? '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Taille de l&apos;équipe
+            </dt>
+            <dd className="mt-1 text-neutral-900">
+              {WORKFORCE_BRACKET_LABEL[org.workforce_size_bracket as string] ?? '—'}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Matricule fiscal
+            </dt>
+            <dd className="mt-1 text-neutral-900">{org.matricule_fiscal ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Registre de commerce
+            </dt>
+            <dd className="mt-1 text-neutral-900">{org.rc_number ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Adresse
+            </dt>
+            <dd className="mt-1 text-neutral-900">{org.address ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Zone d&apos;intervention
+            </dt>
+            <dd className="mt-1 text-neutral-900">{org.service_area ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              Téléphone / e-mail
+            </dt>
+            <dd className="mt-1 text-neutral-900">
+              {org.contact_phone ?? '—'} {org.contact_email ? `· ${org.contact_email}` : ''}
+            </dd>
+          </div>
+          {(org.facebook_url || org.instagram_url || org.website_url) && (
+            <div className="col-span-2 sm:col-span-4">
+              <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+                Liens publics
+              </dt>
+              <dd className="mt-1 flex flex-wrap gap-x-4 text-neutral-900">
+                {org.facebook_url && (
+                  <a
+                    href={org.facebook_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-600 hover:underline"
+                  >
+                    Facebook
+                  </a>
+                )}
+                {org.instagram_url && (
+                  <a
+                    href={org.instagram_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-600 hover:underline"
+                  >
+                    Instagram
+                  </a>
+                )}
+                {org.website_url && (
+                  <a
+                    href={org.website_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-accent-600 hover:underline"
+                  >
+                    Site web
+                  </a>
+                )}
+              </dd>
+            </div>
+          )}
         </dl>
       </Card>
 

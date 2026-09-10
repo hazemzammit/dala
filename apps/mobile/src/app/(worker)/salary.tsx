@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { ErrorState } from '@/components/ui/ErrorState';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -58,6 +59,10 @@ interface DayRow {
 
 export default function WorkerSalaryScreen() {
   const [loading, setLoading] = useState(true);
+  // Phase 20 (§1.7a) — none of these queries had error capture; a
+  // failure previously left dailyRate/totalDays at 0, indistinguishable
+  // from a genuinely-empty cycle.
+  const [loadError, setLoadError] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [dailyRate, setDailyRate] = useState(0);
   const [days, setDays] = useState<DayRow[]>([]);
@@ -76,22 +81,31 @@ export default function WorkerSalaryScreen() {
   async function load(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
     else setLoading(true);
+    setLoadError(false);
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) return;
 
-      const { data: worker } = await supabase
+      const { data: worker, error: workerError } = await supabase
         .from('workers')
         .select('id, org_id, daily_rate')
         .eq('user_id', session.user.id)
         .single();
+      if (workerError) {
+        setLoadError(true);
+        return;
+      }
       if (!worker) return;
 
       setDailyRate(worker.daily_rate ?? 0);
 
-      const [{ data: attendance }, { data: advances }, { data: cycles }] = await Promise.all([
+      const [
+        { data: attendance, error: attendanceError },
+        { data: advances, error: advancesError },
+        { data: cycles, error: cyclesError },
+      ] = await Promise.all([
         supabase
           .from('attendance_effective')
           .select('record_date, status')
@@ -111,6 +125,10 @@ export default function WorkerSalaryScreen() {
           .eq('cycle_start', cycleStart)
           .maybeSingle(),
       ]);
+      if (attendanceError || advancesError || cyclesError) {
+        setLoadError(true);
+        return;
+      }
 
       const statusByDate: Record<string, AttendanceStatus> = {};
       (attendance ?? []).forEach((r) => {
@@ -140,6 +158,14 @@ export default function WorkerSalaryScreen() {
     return (
       <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonList rows={4} />
+      </YStack>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <YStack flex={1} backgroundColor="$neutral25">
+        <ErrorState onRetry={() => void load()} />
       </YStack>
     );
   }
