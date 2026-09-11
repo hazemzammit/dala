@@ -14,7 +14,6 @@
 // and import that instead — do this before it becomes a real blocker.
 const { color, radius, spacing } = require('../design-tokens/src/index.ts');
 
-
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   theme: {
@@ -25,6 +24,8 @@ module.exports = {
         success: color.status.success,
         warning: color.status.warning,
         danger: color.status.danger,
+        successButton: color.status.successButton,
+        categorical: color.categorical,
       },
       borderRadius: {
         control: `${radius.control}px`,

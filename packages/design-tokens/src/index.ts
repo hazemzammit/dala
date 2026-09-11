@@ -41,6 +41,19 @@ export const color = {
     danger: '#C0433D', // muted brick red — Refusé, overdue, destructive actions
     // info deliberately reuses accent-500 — never introduce a second cool color
     warningTint: '#FDF3DC', // tinted warning banner background (Doc 05 §1.7k migration) — replaces the untokenized #FEF3D8 found in dispatch.tsx:1230
+    // Admin UI/UX overhaul pass — WCAG AA contrast fix for solid-fill buttons.
+    // `success` (#1F9254) measures 3.96:1 against white — fails AA (4.5:1) for
+    // the white label text carried by a filled Button variant. Darkened ~8% to
+    // #1C864D, which measures 4.60:1 against white — clears AA with a small
+    // margin, smallest change that works. Scoped to `successButton` rather than
+    // redefining `success` itself because `status.success` is consumed as
+    // colored text / badge-tint in 25+ files across both apps (StatusBadge,
+    // StatCard, Avatar, contractor screens) — a different, already-passing
+    // contrast pairing (colored text on a light background) that a blanket
+    // redefinition would risk disturbing for a problem specific to one
+    // component's one variant. Same audited-not-eyeballed method as the
+    // dark-mode success/danger adjustments in `color.dark` above. (4.60:1 vs white)
+    successButton: '#1C864D',
   },
   /**
    * UI/UX pass (Chantiers/Avances audit) — non-status, categorical meaning

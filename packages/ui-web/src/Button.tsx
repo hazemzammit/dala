@@ -30,10 +30,10 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variantClasses: Record<ButtonVariant, string> = {
-  primary: 'bg-accent-600 text-white hover:bg-accent-700 active:bg-accent-800',
+  primary: 'bg-accent-700 text-white hover:bg-accent-800 active:bg-accent-900',
   secondary:
     'bg-neutral-0 text-neutral-900 border border-neutral-300 hover:bg-neutral-100 active:bg-neutral-200',
-  text: 'bg-transparent text-accent-600 hover:text-accent-700 px-0',
+  text: 'bg-transparent text-accent-700 hover:text-accent-800 px-0',
   // Admin-only in practice (Web never passes these) — every destructive
   // admin action (suspend, delete, execute raw SQL) needs a visually
   // distinct confirm button.
@@ -41,7 +41,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   // Admin-only in practice — used only by the Database Explorer's
   // "approve and execute" action, the one place a green confirm reads
   // more correctly than accent teal.
-  success: 'bg-success text-white hover:opacity-90 active:opacity-80',
+  success: 'bg-successButton text-white hover:opacity-90 active:opacity-80',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
