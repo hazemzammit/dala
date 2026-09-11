@@ -2,13 +2,16 @@
 
 import {
   Button,
-  Card,
   ConfirmTypingDialog,
   DataTable,
   type DataTableColumn,
+  DetailHeader,
   ErrorState,
+  IconActionButton,
+  SectionCard,
   StatusBadge,
 } from '@dala/ui-web';
+import { BuildingsIcon, UserSwitchIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
 import { NotesPanel } from '@/components/ui/NotesPanel';
@@ -35,6 +38,11 @@ const WORKFORCE_BRACKET_LABEL: Record<string, string> = {
   '2_10': '2–10',
   '11_50': '11–50',
   '51_plus': '51+',
+};
+const ROLE_LABEL: Record<string, string> = {
+  owner: 'Propriétaire',
+  manager: 'Gestionnaire',
+  viewer: 'Lecteur',
 };
 
 interface Member {
@@ -160,7 +168,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     {
       key: 'role',
       header: 'Rôle',
-      render: (m) => <StatusBadge variant="neutral">{m.role}</StatusBadge>,
+      render: (m) => <StatusBadge variant="neutral">{ROLE_LABEL[m.role] ?? m.role}</StatusBadge>,
     },
     {
       key: 'joined_at',
@@ -169,26 +177,44 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     },
     {
       key: 'actions',
-      header: '',
+      header: 'Actions',
       align: 'right',
       render: (m) => (
-        <button
+        <IconActionButton
+          icon={UserSwitchIcon}
+          label="Impersonate"
+          tone="accent"
           onClick={() => setImpersonateTarget(m)}
-          className="text-accent-600 text-xs font-medium hover:underline"
-        >
-          Impersonate
-        </button>
+        />
       ),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-neutral-900">{org.name}</h1>
-      </div>
+      <DetailHeader
+        backHref="/organizations"
+        backLabel="Organisations"
+        icon={BuildingsIcon}
+        avatarUrl={org.logo_signed_url}
+        title={org.name}
+        status={
+          org.deleted_at ? (
+            <StatusBadge variant="danger">Supprimée (récupérable)</StatusBadge>
+          ) : org.suspended_at ? (
+            <StatusBadge variant="warning">Suspendue</StatusBadge>
+          ) : (
+            <StatusBadge variant="success">Active</StatusBadge>
+          )
+        }
+        meta={[
+          { label: 'Plan', value: org.plan },
+          { label: "Type d'activité", value: org.trade_type ?? 'Non renseigné' },
+          { label: 'Créée le', value: new Date(org.created_at).toLocaleDateString('fr-FR') },
+        ]}
+      />
 
-      <Card className="p-6">
+      <SectionCard icon={BuildingsIcon} title="Informations générales">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
@@ -207,25 +233,16 @@ export function OrgDetail({ orgId }: { orgId: string }) {
               Statut
             </dt>
             <dd className="mt-1 flex items-center gap-3">
-              {org.deleted_at ? (
-                <>
-                  <StatusBadge variant="danger">Supprimée (récupérable)</StatusBadge>
-                  {isSuperAdmin && (
-                    <Button
-                      variant="secondary"
-                      onClick={restoreOrg}
-                      disabled={!withinRestoreWindow}
-                      loading={restoring}
-                      className="px-2.5 py-1 text-xs"
-                    >
-                      Restaurer
-                    </Button>
-                  )}
-                </>
-              ) : org.suspended_at ? (
-                <StatusBadge variant="warning">Suspendue</StatusBadge>
-              ) : (
-                <StatusBadge variant="success">Active</StatusBadge>
+              {org.deleted_at && isSuperAdmin && (
+                <Button
+                  variant="secondary"
+                  onClick={restoreOrg}
+                  disabled={!withinRestoreWindow}
+                  loading={restoring}
+                  className="px-2.5 py-1 text-xs"
+                >
+                  Restaurer
+                </Button>
               )}
             </dd>
           </div>
@@ -238,7 +255,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </dd>
           </div>
         </dl>
-      </Card>
+      </SectionCard>
 
       {/* Org-creation-guide/gaps follow-on — these columns have existed
           since migration 0075 and this component's own /api/admin/
@@ -247,10 +264,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
           admin has no write path for any of these (that's organization-
           settings.tsx's job on the org's own side), this is purely
           "let staff actually see what the org has filled in." */}
-      <Card className="p-6">
-        <h2 className="font-display mb-4 text-base font-semibold text-neutral-900">
-          Profil de l&apos;entreprise
-        </h2>
+      <SectionCard icon={BuildingsIcon} title="Profil de l'entreprise">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
             <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
@@ -383,12 +397,11 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </div>
           )}
         </dl>
-      </Card>
+      </SectionCard>
 
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">Membres</h2>
+      <SectionCard icon={UserSwitchIcon} title="Membres">
         <DataTable columns={columns} rows={members} getRowId={(m) => m.user_id} />
-      </div>
+      </SectionCard>
 
       {/* Admin remediation Tier 4.8 */}
       <NotesPanel targetType="org" targetId={orgId} />

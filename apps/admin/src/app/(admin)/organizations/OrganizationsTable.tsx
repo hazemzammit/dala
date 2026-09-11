@@ -4,11 +4,23 @@ import {
   ConfirmTypingDialog,
   DataTable,
   type DataTableColumn,
+  EntityCard,
   EmptyState,
   ErrorState,
-  StatusBadge,
+  FilterBar,
+  IconActionButton,
+  PlanBadge,
+  TableSkeleton,
+  ViewToggle,
 } from '@dala/ui-web';
-import { BuildingsIcon } from '@phosphor-icons/react';
+import {
+  BuildingsIcon,
+  CheckIcon,
+  DownloadSimpleIcon,
+  PauseCircleIcon,
+  TrashIcon,
+  XIcon,
+} from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
@@ -60,6 +72,8 @@ export function OrganizationsTable() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [q, setQ] = useState('');
+  const [planFilter, setPlanFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   // Audit fix 3b (Option B) — the admin approval queue tab. A plain
   // client-side toggle on top of the existing search/pagination state,
   // same shape as `q` — flips ?verificationPending=1 on the list route
@@ -107,6 +121,8 @@ export function OrganizationsTable() {
     setQ(value);
     setPage(1); // Tier 4.1's own pattern: any filter change resets to page 1.
   }
+
+  const visibleOrgs = planFilter === 'all' ? orgs : orgs.filter((org) => org.plan === planFilter);
 
   // Admin remediation Tier 4.3 — the two safest bulk actions only (see
   // this file's own bulk route header for why suspend/soft-delete aren't
@@ -237,7 +253,7 @@ export function OrganizationsTable() {
       key: 'plan',
       header: 'Plan',
       sortValue: (r) => r.plan,
-      render: (r) => <StatusBadge variant="info">{r.plan}</StatusBadge>,
+      render: (r) => <PlanBadge plan={r.plan} />,
     },
     {
       key: 'member_count',
@@ -281,59 +297,120 @@ export function OrganizationsTable() {
       : []),
     {
       key: 'actions',
-      header: '',
+      header: 'Actions',
       align: 'right',
       render: (r) => (
         <div className="flex justify-end gap-2">
           {verificationQueueOnly && canSuspend && (
             <>
-              <button
+              <IconActionButton
+                icon={CheckIcon}
+                label="Approuver"
+                tone="accent"
                 onClick={() => runVerificationAction(r, 'verify_org')}
                 disabled={bulkBusy}
-                className="text-success text-xs font-medium hover:underline disabled:opacity-60"
-              >
-                Approuver
-              </button>
-              <button
+              ></IconActionButton>
+              <IconActionButton
+                icon={XIcon}
+                label="Refuser"
+                tone="danger"
                 onClick={() => runVerificationAction(r, 'reject_org_verification')}
                 disabled={bulkBusy}
-                className="text-danger text-xs font-medium hover:underline disabled:opacity-60"
-              >
-                Refuser
-              </button>
+              ></IconActionButton>
             </>
           )}
           {canSuspend && (
-            <button
+            <IconActionButton
+              icon={PauseCircleIcon}
+              label="Suspendre"
+              tone="warning"
               onClick={() => setPendingAction({ org: r, action: 'suspend' })}
-              className="text-warning text-xs font-medium hover:underline"
-            >
-              Suspendre
-            </button>
+            />
           )}
           {canSoftDelete && (
-            <button
+            <IconActionButton
+              icon={TrashIcon}
+              label="Supprimer"
+              tone="danger"
               onClick={() => setPendingAction({ org: r, action: 'soft_delete' })}
-              className="text-danger text-xs font-medium hover:underline"
-            >
-              Supprimer
-            </button>
+            />
           )}
-          <a
+          <IconActionButton
+            icon={DownloadSimpleIcon}
+            label="Exporter"
+            tone="accent"
             href={`/api/admin/organizations/${r.id}/export?format=json`}
-            className="text-accent-600 text-xs font-medium hover:underline"
-          >
-            Exporter
-          </a>
+          />
         </div>
       ),
     },
   ];
 
+  function renderOrgActions(org: OrgRow) {
+    return (
+      <>
+        {verificationQueueOnly && canSuspend && (
+          <>
+            <IconActionButton
+              icon={CheckIcon}
+              label="Approuver"
+              tone="accent"
+              onClick={() => runVerificationAction(org, 'verify_org')}
+              disabled={bulkBusy}
+            />
+            <IconActionButton
+              icon={XIcon}
+              label="Refuser"
+              tone="danger"
+              onClick={() => runVerificationAction(org, 'reject_org_verification')}
+              disabled={bulkBusy}
+            />
+          </>
+        )}
+        {canSuspend && (
+          <IconActionButton
+            icon={PauseCircleIcon}
+            label="Suspendre"
+            tone="warning"
+            onClick={() => setPendingAction({ org, action: 'suspend' })}
+          />
+        )}
+        {canSoftDelete && (
+          <IconActionButton
+            icon={TrashIcon}
+            label="Supprimer"
+            tone="danger"
+            onClick={() => setPendingAction({ org, action: 'soft_delete' })}
+          />
+        )}
+        <IconActionButton
+          icon={DownloadSimpleIcon}
+          label="Exporter"
+          tone="accent"
+          href={`/api/admin/organizations/${org.id}/export?format=json`}
+        />
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="mb-4 flex items-center justify-between gap-4">
+      <FilterBar trailing={<ViewToggle value={viewMode} onChange={setViewMode} />}>
         <SearchInput onChange={handleSearchChange} placeholder="Rechercher par nom…" />
+        <label className="flex items-center gap-2 text-sm text-neutral-600">
+          <span className="sr-only">Plan</span>
+          <select
+            aria-label="Plan"
+            value={planFilter}
+            onChange={(event) => setPlanFilter(event.target.value)}
+            className="h-9 rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+          >
+            <option value="all">Tous les plans</option>
+            <option value="free">Gratuit</option>
+            <option value="pro">Pro</option>
+            <option value="business">Entreprise</option>
+          </select>
+        </label>
         {/* Audit fix 3b (Option B) — toggles the same list between "all
             orgs" and "pending verification requests only", rather than a
             separate route/screen for what's still the same table and
@@ -348,16 +425,34 @@ export function OrganizationsTable() {
         >
           {verificationQueueOnly ? 'Toutes les organisations' : 'File de vérification'}
         </button>
-      </div>
+      </FilterBar>
 
       {loading ? (
-        <p className="text-sm text-neutral-500">Chargement…</p>
+        <TableSkeleton />
       ) : loadError ? (
         <ErrorState onRetry={() => void load()} />
+      ) : viewMode === 'card' ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {visibleOrgs.map((org) => (
+            <EntityCard
+              key={org.id}
+              href={`/organizations/${org.id}`}
+              title={org.name}
+              subtitle={org.trade_type ?? 'Type non renseigné'}
+              badges={<PlanBadge plan={org.plan} />}
+              fields={[
+                { label: 'Membres', value: org.member_count },
+                { label: 'Stockage', value: formatBytes(org.storage_used_bytes ?? 0) },
+                { label: 'Créée le', value: new Date(org.created_at).toLocaleDateString('fr-FR') },
+              ]}
+              actions={renderOrgActions(org)}
+            />
+          ))}
+        </div>
       ) : (
         <DataTable
           columns={columns}
-          rows={orgs}
+          rows={visibleOrgs}
           getRowId={(r) => r.id}
           selectable
           // Phase 19B item 3 — see UsersTable.tsx's identical comment;
