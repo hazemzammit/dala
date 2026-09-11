@@ -28,12 +28,23 @@ export async function GET(_request: Request, { params }: { params: { orgId: stri
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   if (!organization) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
+  let logoSignedUrl: string | null = null;
+  if (organization.logo_url) {
+    const { data: signed } = await supabase.storage
+      .from('org-files')
+      .createSignedUrl(organization.logo_url, 3600);
+    logoSignedUrl = signed?.signedUrl ?? null;
+  }
+
   const { data: members } = await supabase
     .from('organization_members')
     .select('user_id, role, joined_at, profiles(full_name)')
     .eq('org_id', params.orgId);
 
-  return NextResponse.json({ organization, members: members ?? [] });
+  return NextResponse.json({
+    organization: { ...organization, logo_signed_url: logoSignedUrl },
+    members: members ?? [],
+  });
 }
 
 type OrgAction =
