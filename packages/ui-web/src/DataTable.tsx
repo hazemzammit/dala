@@ -4,6 +4,7 @@ import { CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Card } from './Card';
+import { Pagination } from './Pagination';
 
 /**
  * packages/ui-web/src/DataTable.tsx
@@ -228,38 +229,7 @@ export function DataTable<T>({
         </table>
       </Card>
 
-      {pagination && (
-        <div className="mt-3 flex items-center justify-between text-sm text-neutral-500">
-          <span>
-            {pagination.total === 0
-              ? '0 résultat'
-              : `${(pagination.page - 1) * pagination.pageSize + 1}–${Math.min(
-                  pagination.page * pagination.pageSize,
-                  pagination.total,
-                )} sur ${pagination.total}`}
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => pagination.onPageChange(pagination.page - 1)}
-              disabled={pagination.page <= 1}
-              className="rounded-control border border-neutral-300 px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Précédent
-            </button>
-            <span className="text-xs">
-              Page {pagination.page}/
-              {Math.max(1, Math.ceil(pagination.total / pagination.pageSize))}
-            </span>
-            <button
-              onClick={() => pagination.onPageChange(pagination.page + 1)}
-              disabled={pagination.page * pagination.pageSize >= pagination.total}
-              className="rounded-control border border-neutral-300 px-2.5 py-1 text-xs disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              Suivant
-            </button>
-          </div>
-        </div>
-      )}
+      {pagination && <Pagination {...pagination} />}
     </div>
   );
 }
