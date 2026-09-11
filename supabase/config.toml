@@ -15,6 +15,17 @@ major_version = 15
 enabled = true
 port = 54323
 
+# export-org-data performs its own Authorization check internally (a forwarded
+# owner/manager JWT, or a service-level key for the trusted internal call from
+# apps/admin's export routes — either the exact legacy service-role JWT, or a
+# new-format `sb_secret_` key the function validates against Auth's admin
+# endpoint) — it never relied on the gateway's JWT verification anyway, which
+# is why this override exists: the local gateway's verify_jwt rejects a
+# `sb_secret_` Bearer value (it isn't a JWT) before the function even runs.
+# Same per-function override shape as the functions above.
+[functions.export-org-data]
+verify_jwt = false
+
 [auth]
 enabled = true
 site_url = "http://localhost:3000"

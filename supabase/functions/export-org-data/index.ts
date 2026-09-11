@@ -42,6 +42,16 @@
 // skips the owner/manager membership check (a platform admin has
 // cross-tenant access by design, Doc 04 §4.3 intro) but still runs the
 // same free-tier gate below.
+//
+// API-keys update: the trusted-call check compares against the runtime's own
+// SUPABASE_SERVICE_ROLE_KEY env var, which (local CLI and CI runtime) holds
+// the legacy JWT — while apps/admin's .env.local (written by CI, or set up
+// against a CLI configured with new-format API keys) carries the `sb_secret_`
+// service key. Rather than assuming both are interchangeable, a presented
+// sb_secret_ key is accepted only after it validates against Auth's admin
+// endpoint — which answers 200 for a service-level key and 401 for every
+// other credential shape (anon key, user JWT, publishable key) — so the
+// trust boundary stays exactly "service-level key or nothing".
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
@@ -84,7 +94,17 @@ Deno.serve(
       ctx.orgId = org_id;
 
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const isTrustedAdminCall = authHeader === `Bearer ${serviceRoleKey}`;
+      // Exact legacy-JWT match, unchanged. Plus: a new-format `sb_secret_`
+      // service key can't be compared by value (the runtime env above still
+      // holds the legacy JWT), so validate it instead — see isValidSecretKey.
+      // Anon keys / user JWTs / publishable keys fail both branches and fall
+      // through to the unchanged membership check below.
+      const presented = authHeader.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length)
+        : null;
+      const isTrustedAdminCall =
+        authHeader === `Bearer ${serviceRoleKey}` ||
+        (presented?.startsWith('sb_secret_') === true && (await isValidSecretKey(presented)));
 
       const admin = createClient(Deno.env.get('SUPABASE_URL')!, serviceRoleKey);
 
@@ -172,6 +192,23 @@ Deno.serve(
     }
   }),
 );
+
+// Validate a new-format `sb_secret_` API key. It isn't a JWT, so there is
+// nothing to decode or signature-check locally — instead probe Auth's admin
+// endpoint with it: that endpoint requires a service-level key and answers
+// 401 for every other credential shape (anon key, user JWT, publishable
+// key), so a 2xx here is proof enough that the presented key is a service
+// key the local Supabase itself issued/accepts.
+async function isValidSecretKey(key: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${Deno.env.get('SUPABASE_URL')!}/auth/v1/admin/users?per_page=1`, {
+      headers: { Authorization: `Bearer ${key}`, apikey: key },
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
 
 function toCsvSection(tableName: string, rows: unknown[]): string {
   if (rows.length === 0) return `== ${tableName} ==\n(aucune ligne)`;
