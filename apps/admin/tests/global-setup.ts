@@ -18,7 +18,6 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { config as loadEnv } from 'dotenv';
@@ -27,7 +26,6 @@ import { Pool } from 'pg';
 
 import { encryptTotpSecretWithPool } from '../src/lib/crypto/totp-secret-core';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: path.resolve(__dirname, '../.env.local') });
 
 const FIXTURES_PATH = path.resolve(__dirname, '.e2e-fixtures.json');

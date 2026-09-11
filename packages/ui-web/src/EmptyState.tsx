@@ -2,8 +2,15 @@
 
 import type { Icon } from '@phosphor-icons/react';
 import Link from 'next/link';
+import type { ComponentType, ReactNode } from 'react';
 
 import { Button } from './Button';
+
+const CompatibleLink = Link as unknown as ComponentType<{
+  href: string;
+  className?: string;
+  children?: ReactNode;
+}>;
 
 /**
  * packages/ui-web/src/EmptyState.tsx
@@ -66,9 +73,9 @@ export function EmptyState({
       {description && <p className="mt-1.5 max-w-sm text-sm text-neutral-500">{description}</p>}
 
       {actionLabel && actionHref && (
-        <Link href={actionHref} className="mt-6">
+        <CompatibleLink href={actionHref} className="mt-6">
           <Button>{actionLabel}</Button>
-        </Link>
+        </CompatibleLink>
       )}
 
       {actionLabel && onAction && !actionHref && (

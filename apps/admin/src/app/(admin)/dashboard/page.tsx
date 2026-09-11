@@ -1,4 +1,15 @@
-import { StatCard } from '@dala/ui-web';
+import { IconStatCard, PageHero } from '@dala/ui-web';
+import {
+  BuildingsIcon,
+  CheckCircleIcon,
+  ClipboardTextIcon,
+  CoinsIcon,
+  GaugeIcon,
+  HardDrivesIcon,
+  HardHatIcon,
+  ReceiptIcon,
+  UsersThreeIcon,
+} from '@phosphor-icons/react/ssr';
 
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
@@ -91,16 +102,60 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Métriques</h1>
+      <PageHero
+        icon={GaugeIcon}
+        title="Métriques"
+        description="Vue d'ensemble de la plateforme : organisations, utilisateurs, activité et facturation."
+      />
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard label="Organisations totales" value={orgCount ?? 0} />
-        <StatCard label="Organisations actives" value={activeOrgCount ?? 0} />
-        <StatCard label="Utilisateurs totaux" value={userCount ?? 0} />
-        <StatCard label="MRR" value={`${(mrrMillimes / 1000).toFixed(3)} TND`} />
-        <StatCard label="Projets" value={projectCount ?? 0} />
-        <StatCard label="Journaux de chantier" value={siteLogCount ?? 0} />
-        <StatCard label="Dépenses enregistrées" value={expenseCount ?? 0} />
-        <StatCard label="Stockage utilisé" value={`${totalStorageGb} Go`} />
+        <IconStatCard
+          icon={BuildingsIcon}
+          tone="accent"
+          label="Organisations totales"
+          value={orgCount ?? 0}
+        />
+        <IconStatCard
+          icon={CheckCircleIcon}
+          tone="success"
+          label="Organisations actives"
+          value={activeOrgCount ?? 0}
+        />
+        <IconStatCard
+          icon={UsersThreeIcon}
+          tone="categoricalBlue"
+          label="Utilisateurs totaux"
+          value={userCount ?? 0}
+        />
+        <IconStatCard
+          icon={CoinsIcon}
+          tone="categoricalViolet"
+          label="MRR"
+          value={`${(mrrMillimes / 1000).toFixed(3)} TND`}
+        />
+        <IconStatCard
+          icon={HardHatIcon}
+          tone="categoricalAmber"
+          label="Projets"
+          value={projectCount ?? 0}
+        />
+        <IconStatCard
+          icon={ClipboardTextIcon}
+          tone="accent"
+          label="Journaux de chantier"
+          value={siteLogCount ?? 0}
+        />
+        <IconStatCard
+          icon={ReceiptIcon}
+          tone="warning"
+          label="Dépenses enregistrées"
+          value={expenseCount ?? 0}
+        />
+        <IconStatCard
+          icon={HardDrivesIcon}
+          tone="neutral"
+          label="Stockage utilisé"
+          value={`${totalStorageGb} Go`}
+        />
       </div>
       <p className="mt-6 text-sm text-neutral-500">
         DAU/MAU et taux d'acceptation des invitations nécessitent une source d'événements

@@ -134,7 +134,7 @@ export function Sidebar() {
       className={`bg-neutral-0 flex h-screen shrink-0 flex-col border-e border-neutral-100 transition-[width] duration-200 ease-in-out ${widthClass}`}
     >
       {/* Header — Real logo */}
-      <div className="flex h-[72px] items-center justify-between border-b border-neutral-100 px-4">
+      <div className="relative flex h-[72px] items-center justify-between border-b border-neutral-100 px-4">
         {collapsed ? (
           <div className="mx-auto flex w-full items-center justify-center">
             <Image
@@ -161,7 +161,7 @@ export function Sidebar() {
           title={collapsed ? 'Développer le menu' : 'Réduire le menu'}
           className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 ${
             collapsed
-              ? 'absolute -right-3 rounded-full border border-neutral-200 bg-white shadow-sm'
+              ? 'absolute right-[-12px] top-1/2 -translate-y-1/2 rounded-full border border-neutral-200 bg-white shadow-sm'
               : ''
           }`}
           style={collapsed ? { zIndex: 10 } : {}}

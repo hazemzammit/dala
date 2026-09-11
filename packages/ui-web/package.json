@@ -12,15 +12,16 @@
     "@dala/design-tokens": "workspace:*"
   },
   "peerDependencies": {
+    "@phosphor-icons/react": "^2.1.7",
     "next": "14.2.15",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "@phosphor-icons/react": "^2.1.7"
+    "react-dom": "^18.3.1"
   },
   "devDependencies": {
     "@phosphor-icons/react": "^2.1.7",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
+    "next": "14.2.15",
     "typescript": "^5.6.3"
   }
 }
