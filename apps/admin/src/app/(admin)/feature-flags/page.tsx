@@ -1,3 +1,6 @@
+import { PageHero } from '@dala/ui-web';
+import { FlagIcon } from '@phosphor-icons/react/ssr';
+
 import { FeatureFlagsTable } from './FeatureFlagsTable';
 
 /**
@@ -5,15 +8,19 @@ import { FeatureFlagsTable } from './FeatureFlagsTable';
  * see migration 0068's header for the scope decision. Explicitly not the
  * free-tier billing caps (migration 0044) — this is for experimental/
  * rollout features.
+ *
+ * Phase 5 (plan §5.12) — bare <h1> + <p> becomes a PageHero
+ * (icon FlagIcon, same title "Feature flags", existing description
+ * moved into `description` verbatim).
  */
 export default function FeatureFlagsPage() {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Feature flags</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        Activation par défaut et surcharges par organisation. Distinct des plafonds de l'offre
-        gratuite (facturation).
-      </p>
+      <PageHero
+        icon={FlagIcon}
+        title="Feature flags"
+        description="Activation par défaut et surcharges par organisation. Distinct des plafonds de l'offre gratuite (facturation)."
+      />
       <div className="mt-6">
         <FeatureFlagsTable />
       </div>

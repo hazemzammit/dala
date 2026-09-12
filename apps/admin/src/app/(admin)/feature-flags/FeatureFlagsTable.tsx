@@ -1,6 +1,14 @@
 'use client';
 
-import { Button, Card, ErrorState, FormField } from '@dala/ui-web';
+import {
+  Button,
+  ErrorState,
+  FormField,
+  IconActionButton,
+  SectionCard,
+  TableSkeleton,
+} from '@dala/ui-web';
+import { TrashIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -208,14 +216,17 @@ export function FeatureFlagsTable() {
     }
   }
 
-  if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  // Phase 5 (§5.12) — same loading treatment as Billing/Storage/Users.
+  if (loading) return <TableSkeleton />;
   if (loadError) return <ErrorState onRetry={() => void load()} />;
 
   return (
     <div className="space-y-4">
       {canEdit && (
-        <Card className="p-6">
-          <h3 className="font-display text-base font-semibold text-neutral-900">Nouveau flag</h3>
+        // Phase 5 (§5.12) — create-form Card becomes a tone-less SectionCard
+        // (Level-1 surface per Phase 4.6): title moves from the inner <h3>
+        // into the SectionCard title, everything else unchanged.
+        <SectionCard title="Nouveau flag">
           <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <FormField
               label="Clé (snake_case)"
@@ -246,18 +257,23 @@ export function FeatureFlagsTable() {
               Créer
             </Button>
           </div>
-        </Card>
+        </SectionCard>
       )}
 
       {flags.length === 0 ? (
         <p className="text-sm text-neutral-500">Aucun feature flag pour le moment.</p>
       ) : (
         flags.map((flag) => (
-          <Card key={flag.key} className="p-6">
+          // Phase 5 (§5.12) — per-flag Card becomes a tone-less SectionCard:
+          // the mono key moves from the inner header into the SectionCard
+          // title; "Par défaut" checkbox, expander, and override caption
+          // unchanged. Only the per-flag Supprimer converts to an icon
+          // button (label verbatim); the override-row Retirer stays a text
+          // button (different action, neutral treatment, untouched).
+          <SectionCard key={flag.key} title={flag.key}>
             <div className="flex items-start justify-between">
               <div>
-                <p className="font-mono text-sm font-semibold text-neutral-900">{flag.key}</p>
-                <p className="mt-1 text-sm text-neutral-500">{flag.description}</p>
+                <p className="text-sm text-neutral-500">{flag.description}</p>
               </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-xs text-neutral-500">
@@ -270,12 +286,13 @@ export function FeatureFlagsTable() {
                   Par défaut
                 </label>
                 {canEdit && (
-                  <button
+                  <IconActionButton
+                    icon={TrashIcon}
+                    label="Supprimer"
+                    tone="danger"
+                    size="sm"
                     onClick={() => deleteFlag(flag.key)}
-                    className="text-danger text-xs font-medium hover:underline"
-                  >
-                    Supprimer
-                  </button>
+                  />
                 )}
               </div>
             </div>
@@ -290,7 +307,7 @@ export function FeatureFlagsTable() {
             </button>
 
             {expandedKey === flag.key && <OverridesPanel flagKey={flag.key} canEdit={canEdit} />}
-          </Card>
+          </SectionCard>
         ))
       )}
     </div>
