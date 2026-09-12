@@ -3,9 +3,16 @@
  * TOTP setup on first login"). Only reachable when step1 returned
  * `needsSetup: true` (i.e. the challenge cookie's purpose is 'totp_setup').
  *
- * GET  — generates a new secret, returns the otpauth:// URI to render as a
- *        QR code / copyable string, and re-signs the challenge cookie to
- *        carry that secret (nothing is persisted to the DB yet).
+ * GET  — returns the pending secret, which is now MINTED ONCE by
+ *        login/step1/route.ts and carried in the signed challenge cookie
+ *        (see that file's comment for why minting here was racy: React
+ *        StrictMode double-fires the client mount effect, and a concurrent
+ *        pair of minting GETs re-signed the cookie with two different
+ *        secrets, so the admin's scanned code could not match the cookie's
+ *        at POST time). This handler only ever *reads* it; the fallback
+ *        mint below exists solely for challenge cookies created before
+ *        step1 started carrying the secret, and is a non-issue on any
+ *        fresh first-login flow.
  * POST — verifies a code against the pending secret from the cookie; only
  *        on success is `platform_admins.totp_secret`/`totp_enabled` written
  *        and a real admin_sessions row created.
@@ -51,21 +58,23 @@ export async function GET() {
     return NextResponse.json({ error: 'Compte introuvable.' }, { status: 404 });
   }
 
-  const secret = generateTotpSecret();
-  const uri = buildTotpUri(secret, admin.full_name as string);
+  const secret = challenge.pendingSecret ?? generateTotpSecret();
+  if (!challenge.pendingSecret) {
+    const newToken = await signChallengeToken({
+      adminId: challenge.adminId,
+      purpose: 'totp_setup',
+      pendingSecret: secret,
+    });
+    cookies().set(CHALLENGE_COOKIE, newToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 5,
+    });
+  }
 
-  const newToken = await signChallengeToken({
-    adminId: challenge.adminId,
-    purpose: 'totp_setup',
-    pendingSecret: secret,
-  });
-  cookies().set(CHALLENGE_COOKIE, newToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 5,
-  });
+  const uri = buildTotpUri(secret, admin.full_name as string);
 
   return NextResponse.json({ secret, uri });
 }

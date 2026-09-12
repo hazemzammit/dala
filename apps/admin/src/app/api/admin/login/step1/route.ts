@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server';
 import { CHALLENGE_COOKIE, signChallengeToken } from '@/lib/admin-session';
 import { getClientIp } from '@/lib/get-client-ip';
 import { getAdminSupabaseClient, getAuthOnlySupabaseClient } from '@/lib/supabase/admin-client';
+import { generateTotpSecret } from '@/lib/totp';
 
 const GENERIC_ERROR = 'Identifiants invalides.';
 
@@ -66,9 +67,24 @@ export async function POST(request: Request) {
   }
 
   const needsSetup = !admin.totp_enabled;
+  // Mint the first-login TOTP secret HERE, atomically with the challenge
+  // cookie — not in the /totp-setup GET handler. The GET fires multiple
+  // times (React StrictMode double-mounts the client effect, and any second
+  // client sharing the URL adds more), and each GET that *mints* re-signs
+  // the cookie it just read before the previous GET's write lands — so a
+  // concurrent pair of GETs produces two different secrets and the admin's
+  // scanned code no longer matches the cookie's at POST time ("Code
+  // invalide.", no code of ours ever wrong). Minting once here guarantees
+  // every GET returns the identical secret. Same trust boundary as before
+  // (a signed cookie already rides from step1; the pending secret just
+  // joins it instead of being invented later by the first GET). Persisted
+  // to platform_admins.totp_secret only when verification proves the admin
+  // scanned it.
+  const pendingSecret = needsSetup ? generateTotpSecret() : undefined;
   const token = await signChallengeToken({
     adminId: admin.id as string,
     purpose: needsSetup ? 'totp_setup' : 'totp',
+    pendingSecret,
   });
 
   cookies().set(CHALLENGE_COOKIE, token, {
