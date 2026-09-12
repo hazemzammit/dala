@@ -1,6 +1,13 @@
 'use client';
 
-import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
+import {
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  IconActionButton,
+  StatusBadge,
+} from '@dala/ui-web';
+import { SignOutIcon } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -134,13 +141,14 @@ export function SessionsTable() {
       header: '',
       align: 'right',
       render: (s) => (
-        <button
-          onClick={() => revoke(s)}
+        <IconActionButton
+          icon={SignOutIcon}
+          label="Révoquer"
+          tone="danger"
+          size="sm"
           disabled={revokingId === s.id}
-          className="text-danger text-xs font-medium hover:underline disabled:opacity-60"
-        >
-          Révoquer
-        </button>
+          onClick={() => revoke(s)}
+        />
       ),
     },
   ];

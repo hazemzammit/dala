@@ -1,3 +1,6 @@
+import { PageHero } from '@dala/ui-web';
+import { MonitorIcon } from '@phosphor-icons/react/ssr';
+
 import { SessionsTable } from './SessionsTable';
 
 /**
@@ -7,14 +10,20 @@ import { SessionsTable } from './SessionsTable';
  * one just for this would be more UI surface than a single new sidebar
  * screen, consistent with how App Versions (Tier 2.5) became its own
  * screen for the same reason.
- */
+ *
+ * Phase 5 (§5.15, minimal) — bare <h1> + <p> becomes a PageHero with the
+ * route's MonitorIcon. The page's existing description is preserved
+ * verbatim as the PageHero description prop. The table below is restyled
+ * per the same section (revoke action → IconActionButton). This file only
+ * owns the hero. */
 export default function AdminSessionsPage() {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Sessions admin</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        Vos sessions actives. Un Super Admin voit également celles des autres admins.
-      </p>
+      <PageHero
+        icon={MonitorIcon}
+        title="Sessions admin"
+        description="Vos sessions actives. Un Super Admin voit également celles des autres admins."
+      />
       <div className="mt-6">
         <SessionsTable />
       </div>
