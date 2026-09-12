@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, ErrorState, FormField } from '@dala/ui-web';
+import { Button, ErrorState, FormField, SectionCard } from '@dala/ui-web';
 import { WarningIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
@@ -60,12 +60,13 @@ function PlatformCard({
     }
   }
 
+  // Phase 5 (plan §5.11) — the per-platform Card becomes a tone-less
+  // SectionCard (Level-1 surface per Phase 4.6): the platform label moves
+  // from the inner <h3> into the SectionCard title, everything else
+  // (fields, kill-release warning, error, Enregistrer button) unchanged.
   return (
-    <Card className="p-6">
-      <h3 className="font-display text-base font-semibold text-neutral-900">
-        {PLATFORM_LABELS[version.platform]}
-      </h3>
-      <p className="mt-1 text-xs text-neutral-500">
+    <SectionCard title={PLATFORM_LABELS[version.platform]}>
+      <p className="text-xs text-neutral-500">
         Mis à jour le {new Date(version.updated_at).toLocaleString('fr-FR')}
       </p>
 
@@ -116,7 +117,7 @@ function PlatformCard({
           </Button>
         </div>
       )}
-    </Card>
+    </SectionCard>
   );
 }
 
