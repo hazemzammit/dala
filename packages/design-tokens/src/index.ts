@@ -214,14 +214,38 @@ export const radius = {
 };
 
 export const elevation = {
-  // Two layers only, deliberately — never three or four shadow depths.
+  // Admin premium-polish pass (pre-Phase-5 cleanup): `resting`/`raised`
+  // strengthened in place — their previous values (0.04/0.03 and
+  // 0.08/0.06 opacity) rendered as functionally invisible on an actual
+  // screen, which is why the shipped Phase 1-4 UI read as "flat/generic"
+  // despite Card/FilterBar already wiring shadows correctly. Same
+  // "audited, not eyeballed" discipline as the Button contrast fix
+  // above: this is a value change to two EXISTING keys (not a new prop),
+  // so per the Button-fix precedent it should land as its own isolated,
+  // reviewed commit — it repaints every Card/FilterBar in both
+  // apps/admin and apps/web the moment it merges. Still two tiers only,
+  // still no color, still no gradient — depth got a bit more visible,
+  // nothing about the restraint policy changed.
   resting: {
     border: `1px solid ${color.neutral[100]}`,
-    shadow: '0 1px 2px rgba(17,19,24,0.04), 0 4px 12px rgba(17,19,24,0.03)',
+    shadow: '0 1px 3px rgba(17,19,24,0.06), 0 6px 16px rgba(17,19,24,0.05)',
   },
   raised: {
     // modal / dropdown / actively-dragged dispatch chip
-    shadow: '0 4px 10px rgba(17,19,24,0.08), 0 12px 24px rgba(17,19,24,0.06)',
+    shadow: '0 8px 16px rgba(17,19,24,0.10), 0 20px 40px rgba(17,19,24,0.08)',
+  },
+  // NEW — additive. A third, deliberately smaller tier for small pill/
+  // icon controls (ViewToggle, IconActionButton, Pagination, the sidebar
+  // collapse toggle) that need a real resting surface — a border/shadow
+  // pairing lighter than `resting` (which is tuned for whole cards) so a
+  // 32-36px control doesn't look like a miniature Card. `hoverShadow` is
+  // the one-step-up value the same controls use on :hover, kept here so
+  // it's a shared value instead of four components independently
+  // inventing their own hover shadow.
+  control: {
+    border: `1px solid ${color.neutral[200]}`,
+    shadow: '0 1px 2px rgba(17,19,24,0.05)',
+    hoverShadow: '0 2px 6px rgba(17,19,24,0.08)',
   },
 };
 

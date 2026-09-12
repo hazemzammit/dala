@@ -14,6 +14,11 @@ import type { ReactNode } from 'react';
  * <select>, toggle chips, etc. as children.
  *
  * `trailing` — optional slot flush to the right edge (ViewToggle lives here).
+ *
+ * Premium-polish pass (pre-Phase-5 cleanup): shadow strengthened to match
+ * Card's updated `elevation.resting` value, and vertical padding bumped
+ * (py-3 → py-3.5) — same "give it room to breathe" direction as the rest
+ * of this pass.
  */
 
 interface FilterBarProps {
@@ -23,7 +28,7 @@ interface FilterBarProps {
 
 export function FilterBar({ children, trailing }: FilterBarProps) {
   return (
-    <div className="rounded-card bg-neutral-0 flex flex-wrap items-center gap-3 border border-neutral-100 px-4 py-3 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+    <div className="rounded-card bg-neutral-0 flex flex-wrap items-center gap-3 border border-neutral-100 px-4 py-3.5 shadow-[0_1px_3px_rgba(17,19,24,0.06),0_6px_16px_rgba(17,19,24,0.05)]">
       <div className="flex flex-1 flex-wrap items-center gap-3">{children}</div>
       {trailing && <div className="shrink-0">{trailing}</div>}
     </div>

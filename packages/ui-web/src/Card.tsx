@@ -15,6 +15,13 @@
  *                   Used on clickable cards (IconStatCard, EntityCard).
  *   `tone`        — optional 3px logical-start (RTL-safe) accent border.
  *                   Used for section-level emphasis (SectionCard, warnings).
+ *
+ * Premium-polish pass (pre-Phase-5 cleanup): shadow values below now read
+ * directly from `elevation.resting`/`elevation.raised` in
+ * @dala/design-tokens (strengthened there — see that file's comment for
+ * why) instead of an independently-hardcoded, weaker pair. Interactive
+ * hover lift bumped from -translate-y-0.5 to -translate-y-1 to actually
+ * register as a lift on screen.
  */
 type CardTone = 'accent' | 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -45,10 +52,10 @@ export function Card({
       className={[
         'rounded-card bg-neutral-0 border border-neutral-100',
         raised
-          ? 'shadow-[0_4px_10px_rgba(17,19,24,0.08),0_12px_24px_rgba(17,19,24,0.06)]'
-          : 'shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]',
+          ? 'shadow-[0_8px_16px_rgba(17,19,24,0.10),0_20px_40px_rgba(17,19,24,0.08)]'
+          : 'shadow-[0_1px_3px_rgba(17,19,24,0.06),0_6px_16px_rgba(17,19,24,0.05)]',
         interactive
-          ? 'cursor-pointer transition-all duration-150 ease-out hover:-translate-y-0.5 hover:shadow-[0_4px_10px_rgba(17,19,24,0.08),0_12px_24px_rgba(17,19,24,0.06)]'
+          ? 'cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_8px_16px_rgba(17,19,24,0.10),0_20px_40px_rgba(17,19,24,0.08)]'
           : '',
         tone ? toneClasses[tone] : '',
         className,
