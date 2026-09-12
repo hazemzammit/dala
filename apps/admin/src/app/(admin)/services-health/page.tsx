@@ -1,3 +1,6 @@
+import { PageHero, SectionCard } from '@dala/ui-web';
+import { PulseIcon } from '@phosphor-icons/react/ssr';
+
 import { EmailDeliverabilityTable } from './EmailDeliverabilityTable';
 import { InfraStatusGrid } from './InfraStatusGrid';
 import { InvocationLogTable } from './InvocationLogTable';
@@ -21,39 +24,33 @@ import { ScheduledJobsTable } from './ScheduledJobsTable';
  *     Resend's webhook (resend-webhook Edge Function). Delivered/opened/
  *     clicked events are logged but not shown here — see
  *     EmailDeliverabilityTable's own header for why.
+ *
+ * Phase 5 (plan §5.10) — bare <h1> becomes a PageHero (icon PulseIcon,
+ * same title "Santé des services", no description — none exists today
+ * and none is invented); each bare <h2> wrapper becomes a tone-less
+ * SectionCard with the same title verbatim (Level-1 surface per Phase 4.6).
+ * No icon prop on the SectionCards — the plan names titles only.
  */
 export default function ServicesHealthPage() {
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Santé des services</h1>
+      <PageHero icon={PulseIcon} title="Santé des services" />
 
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">
-          Infrastructure
-        </h2>
+      <SectionCard title="Infrastructure">
         <InfraStatusGrid />
-      </div>
+      </SectionCard>
 
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">
-          Jobs planifiés
-        </h2>
+      <SectionCard title="Jobs planifiés">
         <ScheduledJobsTable />
-      </div>
+      </SectionCard>
 
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">
-          Journal des invocations (Edge Functions)
-        </h2>
+      <SectionCard title="Journal des invocations (Edge Functions)">
         <InvocationLogTable />
-      </div>
+      </SectionCard>
 
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">
-          Délivrabilité des emails (rebonds &amp; plaintes)
-        </h2>
+      <SectionCard title="Délivrabilité des emails (rebonds & plaintes)">
         <EmailDeliverabilityTable />
-      </div>
+      </SectionCard>
     </div>
   );
 }

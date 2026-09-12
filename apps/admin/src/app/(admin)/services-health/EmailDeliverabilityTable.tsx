@@ -1,6 +1,12 @@
 'use client';
 
-import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
+import {
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  StatusBadge,
+  TableSkeleton,
+} from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 interface EmailEvent {
@@ -77,7 +83,8 @@ export function EmailDeliverabilityTable() {
     },
   ];
 
-  if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  // Phase 5 (§5.10) — same loading treatment as Billing/Storage/Users.
+  if (loading) return <TableSkeleton />;
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   if (events.length === 0) {

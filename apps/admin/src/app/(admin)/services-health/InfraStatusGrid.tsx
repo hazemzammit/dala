@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, ErrorState, StatusBadge } from '@dala/ui-web';
+import { Card, ErrorState, Skeleton, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 interface HealthCheck {
@@ -60,7 +60,26 @@ export function InfraStatusGrid() {
       .finally(() => setLoading(false));
   }, [reloadKey]);
 
-  if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  // Phase 5 (§5.10) — card grid keeps its shape while loading: shared
+  // Skeleton bars inside the existing grid + Card structure (plan §2.15
+  // "a couple of Skeleton bars for smaller sections"). No new component.
+  if (loading) {
+    return (
+      <div
+        className="grid grid-cols-2 gap-4 sm:grid-cols-4"
+        aria-busy="true"
+        aria-label="Chargement…"
+      >
+        {Array.from({ length: 6 }).map((_, i) => (
+          <Card key={i} className="p-4">
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="mt-2 h-6 w-1/2 rounded-full" />
+            <Skeleton className="mt-2 h-3 w-3/4" />
+          </Card>
+        ))}
+      </div>
+    );
+  }
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return (
@@ -80,7 +99,9 @@ export function InfraStatusGrid() {
               {!check ? (
                 <StatusBadge variant="neutral">Jamais vérifié</StatusBadge>
               ) : isStale ? (
-                <StatusBadge variant="warning">Données obsolètes</StatusBadge>
+                /* Phase 5 (§5.10) — stale data escalates past plain warning
+                   via the shared warningStrong tier (§5.9); text unchanged. */
+                <StatusBadge variant="warningStrong">Données obsolètes</StatusBadge>
               ) : check.status === 'up' ? (
                 <StatusBadge variant="success">Opérationnel</StatusBadge>
               ) : (

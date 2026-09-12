@@ -1,7 +1,14 @@
 'use client';
 
 import type { EdgeFunctionInvocation } from '@dala/shared-types';
-import { Button, DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
+import {
+  Button,
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  StatusBadge,
+  TableSkeleton,
+} from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 const PAGE_SIZE = 50;
@@ -137,7 +144,7 @@ export function InvocationLogTable() {
       </div>
 
       {loading ? (
-        <p className="text-sm text-neutral-500">Chargement…</p>
+        <TableSkeleton />
       ) : loadError ? (
         <ErrorState onRetry={() => void load()} />
       ) : (

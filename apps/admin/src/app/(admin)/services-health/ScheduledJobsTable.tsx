@@ -1,7 +1,13 @@
 'use client';
 
 import type { ScheduledJobRun } from '@dala/shared-types';
-import { DataTable, type DataTableColumn, ErrorState, StatusBadge } from '@dala/ui-web';
+import {
+  DataTable,
+  type DataTableColumn,
+  ErrorState,
+  StatusBadge,
+  TableSkeleton,
+} from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 interface JobStatus {
@@ -85,7 +91,10 @@ export function ScheduledJobsTable() {
     },
   ];
 
-  if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  // Phase 5 (§5.10) — same loading treatment as Billing/Storage/Users.
+  // ("2 échecs consécutifs" danger pill below is intentionally untouched:
+  // it counts consecutive failures of one job, not affected services.)
+  if (loading) return <TableSkeleton />;
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return <DataTable columns={columns} rows={jobs} getRowId={(j) => j.job_name} />;
