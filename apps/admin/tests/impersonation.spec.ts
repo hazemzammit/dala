@@ -35,10 +35,15 @@ test.describe('Impersonation (Doc 04 §4.3.3a)', () => {
     await loginAsAdmin(page, fixtures.adminA);
     await page.goto(`/organizations/${fixtures.orgId}`);
 
-    // Step 1 — trigger + mandatory reason.
+    // Step 1 — trigger + mandatory reason. Target the worker row explicitly:
+    // both members (owner "e2e-org-owner" and worker "e2e-target-worker")
+    // carry an Impersonate button, and `.first()` would pick the
+    // alphabetically-first owner row — but the confirm-value fill below
+    // expects the worker's email, so the dialog mismatch would keep
+    // "Démarrer" disabled. Match the row that renders the target worker.
     await page
       .locator('tr', { hasText: 'Impersonate' })
-      .first()
+      .filter({ has: page.locator('text=' + fixtures.targetWorker.email) })
       .getByRole('button', { name: 'Impersonate' })
       .click();
     const reason = 'E2E test — verifying impersonation scope and audit tagging';
@@ -55,7 +60,14 @@ test.describe('Impersonation (Doc 04 §4.3.3a)', () => {
       context.waitForEvent('page'),
       page.getByRole('button', { name: 'Démarrer' }).click(),
     ]);
-    expect(popup.url()).toContain('/auth/v1/verify'); // Supabase Auth's magic-link verification endpoint
+    // The popup may already have been redirected by Supabase's verify
+    // endpoint before this assertion runs — the whole point of the link is
+    // an immediate sign-in redirect to apps/web, so the window between the
+    // popup event and the 302-to-fragment redirect can be sub-millisecond.
+    // Either state proves the magic-link hand-off: the raw /auth/v1/verify
+    // URL, or the verified redirect carrying the target's session tokens in
+    // the fragment (type=magiclink, issuer = local Supabase Auth).
+    expect(popup.url()).toMatch(/auth\/v1\/verify|#access_token=.*type=magiclink/); // Supabase Auth's magic-link verification
 
     // §4.3.3a step 4 — persistent banner on the admin's own tab.
     await expect(page.getByText('Mode impersonation actif')).toBeVisible();
@@ -112,10 +124,9 @@ test.describe('Impersonation (Doc 04 §4.3.3a)', () => {
     const fixtures = loadFixtures();
     await loginAsAdmin(page, fixtures.adminA);
     await page.goto(`/organizations/${fixtures.orgId}`);
-
     await page
       .locator('tr', { hasText: 'Impersonate' })
-      .first()
+      .filter({ has: page.locator('text=' + fixtures.targetWorker.email) })
       .getByRole('button', { name: 'Impersonate' })
       .click();
     await page.getByLabel(/Motif/).fill('First impersonation for the nesting-forbidden test');
