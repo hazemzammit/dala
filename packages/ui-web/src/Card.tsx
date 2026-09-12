@@ -22,6 +22,12 @@
  * why) instead of an independently-hardcoded, weaker pair. Interactive
  * hover lift bumped from -translate-y-0.5 to -translate-y-1 to actually
  * register as a lift on screen.
+ *
+ * Phase 4.6 (premium-ux-system-guide.md §8 — motion): the interactive
+ * hover lift is kept (§8 reserves lift for primary CTAs, interactive
+ * Cards, and floating pill controls) but is now wrapped in `motion-safe:`
+ * so `prefers-reduced-motion` users still get the shadow/border hover
+ * signal without the movement. Shadow/transition values unchanged.
  */
 type CardTone = 'accent' | 'success' | 'warning' | 'danger' | 'neutral';
 
@@ -55,7 +61,7 @@ export function Card({
           ? 'shadow-[0_8px_16px_rgba(17,19,24,0.10),0_20px_40px_rgba(17,19,24,0.08)]'
           : 'shadow-[0_1px_3px_rgba(17,19,24,0.06),0_6px_16px_rgba(17,19,24,0.05)]',
         interactive
-          ? 'cursor-pointer transition-all duration-200 ease-out hover:-translate-y-1 hover:shadow-[0_8px_16px_rgba(17,19,24,0.10),0_20px_40px_rgba(17,19,24,0.08)]'
+          ? 'cursor-pointer transition-all duration-200 ease-out hover:shadow-[0_8px_16px_rgba(17,19,24,0.10),0_20px_40px_rgba(17,19,24,0.08)] motion-safe:hover:-translate-y-1'
           : '',
         tone ? toneClasses[tone] : '',
         className,

@@ -26,6 +26,13 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
  * + small shadow surface at rest (via elevation.control), and hover
  * shifts border/background into the tone color instead of introducing
  * one for the first time. Sizes bumped 32px/28px → 36px/32px.
+ *
+ * Phase 4.6 (premium-ux-system-guide.md §8 — motion): hover lift
+ * (`hover:-translate-y-px`) removed — small controls get their hover
+ * signal from the background/border/shadow shift alone; lift is reserved
+ * for primary CTAs, interactive Cards, and floating pill controls. The
+ * matching `disabled:hover:translate-y-0` reset went with it. Hover
+ * shadow deepening (`elevation.control.hoverShadow`) is unchanged.
  */
 
 type IconActionTone = 'accent' | 'warning' | 'danger' | 'neutral';
@@ -74,10 +81,10 @@ export function IconActionButton({
     className: [
       'inline-flex items-center justify-center rounded-lg border border-neutral-200 bg-neutral-0',
       'shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150',
-      'hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]',
+      'hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]',
       sizeClasses[size],
       toneClasses[tone],
-      'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-[0_1px_2px_rgba(17,19,24,0.05)]',
+      'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-[0_1px_2px_rgba(17,19,24,0.05)]',
       className,
     ]
       .filter(Boolean)
