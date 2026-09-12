@@ -2,14 +2,16 @@
 
 import {
   Button,
-  Card,
   ConfirmTypingDialog,
   DataTable,
   type DataTableColumn,
   ErrorState,
   FormField,
+  IconActionButton,
+  SectionCard,
   StatusBadge,
 } from '@dala/ui-web';
+import { KeyIcon } from '@phosphor-icons/react/ssr';
 import { useEffect, useState } from 'react';
 
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -110,7 +112,11 @@ export function AdminUsersTable() {
     {
       key: 'role',
       header: 'Rôle',
-      render: (a) => <StatusBadge variant="info">{ROLE_LABELS[a.role]}</StatusBadge>,
+      render: (a) => {
+        const variant: 'violet' | 'info' | 'neutral' =
+          a.role === 'super_admin' ? 'violet' : a.role === 'admin' ? 'info' : 'neutral';
+        return <StatusBadge variant={variant}>{ROLE_LABELS[a.role]}</StatusBadge>;
+      },
     },
     {
       key: 'totp',
@@ -140,12 +146,13 @@ export function AdminUsersTable() {
       align: 'right',
       render: (a) =>
         isSuperAdmin && a.totp_enabled && a.id !== session?.admin.id ? (
-          <button
+          <IconActionButton
+            icon={KeyIcon}
+            label="Réinitialiser 2FA"
+            tone="warning"
+            size="sm"
             onClick={() => setResetTarget(a)}
-            className="text-danger text-xs font-medium hover:underline"
-          >
-            Réinitialiser 2FA
-          </button>
+          />
         ) : null,
     },
   ];
@@ -159,11 +166,8 @@ export function AdminUsersTable() {
       )}
 
       {isSuperAdmin && (
-        <Card className="max-w-md p-6">
+        <SectionCard title="Inviter un admin">
           <form onSubmit={invite} className="space-y-4">
-            <h2 className="font-display text-base font-semibold text-neutral-900">
-              Inviter un admin
-            </h2>
             <FormField
               label="Email"
               type="email"
@@ -194,7 +198,7 @@ export function AdminUsersTable() {
               Envoyer l'invitation
             </Button>
           </form>
-        </Card>
+        </SectionCard>
       )}
 
       {resetTarget && (

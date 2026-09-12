@@ -9,7 +9,8 @@
  * for row-level status." Doc 05 §3.5 — "Status as colored pill-badges
  * (Payé/En attente/Refusé), never colored table-row backgrounds."
  */
-type StatusVariant = 'success' | 'warning' | 'warningStrong' | 'danger' | 'neutral' | 'info';
+type StatusVariant =
+  'success' | 'warning' | 'warningStrong' | 'danger' | 'neutral' | 'info' | 'violet';
 
 const variantClasses: Record<StatusVariant, string> = {
   success: 'bg-success/10 text-success',
@@ -25,6 +26,10 @@ const variantClasses: Record<StatusVariant, string> = {
   // comment: "never introduce a second cool color."
   info: 'bg-accent-50 text-accent-600',
   neutral: 'bg-neutral-100 text-neutral-500',
+  // Phase 5 (§5.14) — Super Admin role pill. Categorical violet
+  // (design-tokens categorical.violet, #7B5FCE) keeps the highest-privilege
+  // role visually distinct from Admin (accent) and Support (neutral).
+  violet: 'bg-categorical-violet/10 text-categorical-violet',
 };
 
 const dotClasses: Record<StatusVariant, string> = {
@@ -34,6 +39,7 @@ const dotClasses: Record<StatusVariant, string> = {
   danger: 'bg-danger',
   info: 'bg-accent-600',
   neutral: 'bg-neutral-500',
+  violet: 'bg-categorical-violet',
 };
 
 interface StatusBadgeProps {
