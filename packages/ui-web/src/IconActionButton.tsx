@@ -18,20 +18,28 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
  *
  * `href` — when set, renders an <a> element instead of <button>.
  *          Same visual treatment; use for links that were plain <a> before.
+ *
+ * Premium-polish pass (pre-Phase-5 cleanup): previously this had NO
+ * resting-state chrome at all — no border, no background, color only on
+ * hover — so a row of these read as plain icons, not buttons, until you
+ * moused over them. Now every control gets a real bg-neutral-0 + border
+ * + small shadow surface at rest (via elevation.control), and hover
+ * shifts border/background into the tone color instead of introducing
+ * one for the first time. Sizes bumped 32px/28px → 36px/32px.
  */
 
 type IconActionTone = 'accent' | 'warning' | 'danger' | 'neutral';
 
 const toneClasses: Record<IconActionTone, string> = {
-  accent: 'text-accent-700 hover:bg-accent-50',
-  warning: 'text-warning hover:bg-warning/10',
-  danger: 'text-danger hover:bg-danger/10',
-  neutral: 'text-neutral-500 hover:bg-neutral-100',
+  accent: 'text-accent-700 hover:border-accent-200 hover:bg-accent-50',
+  warning: 'text-warning hover:border-warning/30 hover:bg-warning/10',
+  danger: 'text-danger hover:border-danger/30 hover:bg-danger/10',
+  neutral: 'text-neutral-500 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900',
 };
 
 const sizeClasses = {
-  sm: 'h-7 w-7',
-  md: 'h-8 w-8',
+  sm: 'h-8 w-8',
+  md: 'h-9 w-9',
 };
 
 type IconSize = 'sm' | 'md';
@@ -64,10 +72,12 @@ export function IconActionButton({
     'aria-label': label,
     title: label,
     className: [
-      'inline-flex items-center justify-center rounded-lg transition-colors',
+      'inline-flex items-center justify-center rounded-lg border border-neutral-200 bg-neutral-0',
+      'shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150',
+      'hover:-translate-y-px hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]',
       sizeClasses[size],
       toneClasses[tone],
-      'disabled:cursor-not-allowed disabled:opacity-60',
+      'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0 disabled:hover:shadow-[0_1px_2px_rgba(17,19,24,0.05)]',
       className,
     ]
       .filter(Boolean)
@@ -76,7 +86,7 @@ export function IconActionButton({
 
   const inner = (
     <>
-      <IconComponent size={size === 'sm' ? 14 : 16} weight="bold" aria-hidden="true" />
+      <IconComponent size={size === 'sm' ? 15 : 17} weight="bold" aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </>
   );

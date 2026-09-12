@@ -1,3 +1,5 @@
+import { PageHero } from '@dala/ui-web';
+import { UsersThreeIcon } from '@phosphor-icons/react/ssr';
 import { Suspense } from 'react';
 
 import { UsersTable } from './UsersTable';
@@ -5,7 +7,11 @@ import { UsersTable } from './UsersTable';
 export default function UsersPage() {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Utilisateurs</h1>
+      <PageHero
+        icon={UsersThreeIcon}
+        title="Utilisateurs"
+        description="Comptes contractants et ouvriers, toutes organisations confondues."
+      />
       <div className="mt-6">
         {/* Admin remediation Tier 4.4 — UsersTable now calls
             useSearchParams() (to read GlobalSearch's `?q=` deep link),

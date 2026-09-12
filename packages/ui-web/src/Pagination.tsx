@@ -19,6 +19,13 @@ import { ArrowLeftIcon, ArrowRightIcon } from '@phosphor-icons/react';
  *
  * The prev/next buttons use icon-only visuals but keep the text as
  * sr-only + aria-label so all four assertions above keep resolving.
+ *
+ * Premium-polish pass (pre-Phase-5 cleanup): previously this was just
+ * text + two bare bordered squares floating on the page background — no
+ * containing surface at all, so it read as unstyled scaffolding rather
+ * than a real control. Now the whole thing sits in one pill-shaped bar
+ * (same border/shadow language as IconActionButton/ViewToggle), with the
+ * page indicator promoted to the visual center of that bar.
  */
 
 export interface PaginationProps {
@@ -38,23 +45,26 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
       ? '0 résultat'
       : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} sur ${total}`;
 
-  return (
-    <div className="mt-3 flex items-center justify-between text-sm text-neutral-500">
-      <span>{rangeText}</span>
+  const navButtonClasses =
+    'inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-all duration-150 hover:-translate-y-px hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-neutral-200 disabled:hover:bg-transparent disabled:hover:text-neutral-600';
 
-      <div className="flex items-center gap-1">
+  return (
+    <div className="bg-neutral-0 mt-4 flex items-center justify-between gap-3 rounded-full border border-neutral-200 px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.05)]">
+      <span className="pl-2 text-sm text-neutral-500">{rangeText}</span>
+
+      <div className="flex items-center gap-2">
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={!hasPrev}
           aria-label="Précédent"
           title="Précédent"
-          className="rounded-control inline-flex h-8 w-8 items-center justify-center border border-neutral-300 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className={navButtonClasses}
         >
           <ArrowLeftIcon size={14} aria-hidden="true" />
           <span className="sr-only">Précédent</span>
         </button>
 
-        <span className="min-w-[80px] text-center text-xs">
+        <span className="min-w-[68px] text-center text-xs font-medium text-neutral-900">
           Page {page}/{totalPages}
         </span>
 
@@ -63,7 +73,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
           disabled={!hasNext}
           aria-label="Suivant"
           title="Suivant"
-          className="rounded-control inline-flex h-8 w-8 items-center justify-center border border-neutral-300 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60"
+          className={navButtonClasses}
         >
           <ArrowRightIcon size={14} aria-hidden="true" />
           <span className="sr-only">Suivant</span>

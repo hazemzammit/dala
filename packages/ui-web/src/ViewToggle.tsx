@@ -12,6 +12,13 @@ import { SquaresFourIcon, TableIcon } from '@phosphor-icons/react';
  *   - The parent MUST always initialize `value` to 'table' on a fresh load.
  *   - This component is purely controlled; it never manages its own default.
  *     The caller (e.g. OrganizationsTable) is responsible for the default.
+ *
+ * Premium-polish pass (pre-Phase-5 cleanup) — rebuilt as an iOS/macOS-style
+ * segmented control: a neutral-100 "track" holding a floating white pill
+ * that carries the active option (bg-neutral-0 + small shadow), rather
+ * than the previous flat two-button pair with no resting surface at all
+ * (which is why it read as unstyled). Same accessible-name/aria-pressed
+ * contract as before — nothing test-relevant changed.
  */
 
 interface ViewToggleProps {
@@ -19,43 +26,39 @@ interface ViewToggleProps {
   onChange: (v: 'table' | 'card') => void;
 }
 
+const OPTIONS = [
+  { value: 'table' as const, label: 'Vue tableau', icon: TableIcon },
+  { value: 'card' as const, label: 'Vue carte', icon: SquaresFourIcon },
+];
+
 export function ViewToggle({ value, onChange }: ViewToggleProps) {
   return (
     <div
       role="group"
       aria-label="Mode d'affichage"
-      className="rounded-control bg-neutral-0 inline-flex border border-neutral-300"
+      className="inline-flex items-center gap-0.5 rounded-full bg-neutral-100 p-1"
     >
-      <button
-        type="button"
-        onClick={() => onChange('table')}
-        aria-pressed={value === 'table'}
-        aria-label="Vue tableau"
-        title="Vue tableau"
-        className={[
-          'rounded-s-control inline-flex h-8 w-8 items-center justify-center transition-colors',
-          value === 'table'
-            ? 'bg-accent-50 text-accent-700'
-            : 'text-neutral-500 hover:bg-neutral-100',
-        ].join(' ')}
-      >
-        <TableIcon size={16} aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        onClick={() => onChange('card')}
-        aria-pressed={value === 'card'}
-        aria-label="Vue carte"
-        title="Vue carte"
-        className={[
-          'rounded-e-control inline-flex h-8 w-8 items-center justify-center transition-colors',
-          value === 'card'
-            ? 'bg-accent-50 text-accent-700'
-            : 'text-neutral-500 hover:bg-neutral-100',
-        ].join(' ')}
-      >
-        <SquaresFourIcon size={16} aria-hidden="true" />
-      </button>
+      {OPTIONS.map(({ value: v, label, icon: IconComponent }) => {
+        const active = value === v;
+        return (
+          <button
+            key={v}
+            type="button"
+            onClick={() => onChange(v)}
+            aria-pressed={active}
+            aria-label={label}
+            title={label}
+            className={[
+              'inline-flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150',
+              active
+                ? 'bg-neutral-0 text-accent-700 shadow-[0_1px_3px_rgba(17,19,24,0.12)]'
+                : 'text-neutral-500 hover:text-neutral-900',
+            ].join(' ')}
+          >
+            <IconComponent size={16} weight={active ? 'bold' : 'regular'} aria-hidden="true" />
+          </button>
+        );
+      })}
     </div>
   );
 }

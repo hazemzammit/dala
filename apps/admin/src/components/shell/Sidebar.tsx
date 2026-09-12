@@ -133,8 +133,18 @@ export function Sidebar() {
     <aside
       className={`bg-neutral-0 flex h-screen shrink-0 flex-col border-e border-neutral-100 transition-[width] duration-200 ease-in-out ${widthClass}`}
     >
-      {/* Header — Real logo */}
-      <div className="relative flex h-[72px] items-center justify-between border-b border-neutral-100 px-4">
+      {/*
+        Header — Real logo.
+        Premium-polish pass (pre-Phase-5 cleanup): the collapse toggle
+        previously only got a real button surface (border/bg/shadow) in
+        the collapsed state — expanded, it was a bare 32px gray chevron
+        with no chrome, which is why it read as "too small"/unfinished.
+        It's now a single, always-floating circular handle (same
+        border+shadow language as the other controls in this pass),
+        positioned on the sidebar's edge in both states, matching the
+        collapse-handle pattern used by Notion/macOS Finder.
+      */}
+      <div className="relative flex h-[72px] items-center border-b border-neutral-100 px-4">
         {collapsed ? (
           <div className="mx-auto flex w-full items-center justify-center">
             <Image
@@ -159,14 +169,13 @@ export function Sidebar() {
           onClick={() => setCollapsed(!collapsed)}
           aria-label={collapsed ? 'Développer le menu' : 'Réduire le menu'}
           title={collapsed ? 'Développer le menu' : 'Réduire le menu'}
-          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-neutral-400 hover:bg-neutral-100 hover:text-neutral-900 ${
-            collapsed
-              ? 'absolute right-[-12px] top-1/2 -translate-y-1/2 rounded-full border border-neutral-200 bg-white shadow-sm'
-              : ''
-          }`}
-          style={collapsed ? { zIndex: 10 } : {}}
+          className="bg-neutral-0 hover:border-accent-200 hover:text-accent-700 absolute right-[-14px] top-[34px] z-10 flex h-7 w-7 items-center justify-center rounded-full border border-neutral-200 text-neutral-500 shadow-[0_2px_6px_rgba(17,19,24,0.10)] transition-colors"
         >
-          {collapsed ? <CaretRightIcon size={14} weight="bold" /> : <CaretLeftIcon size={16} />}
+          {collapsed ? (
+            <CaretRightIcon size={13} weight="bold" />
+          ) : (
+            <CaretLeftIcon size={13} weight="bold" />
+          )}
         </button>
       </div>
 
