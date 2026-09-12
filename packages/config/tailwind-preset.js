@@ -25,6 +25,7 @@ module.exports = {
         warning: color.status.warning,
         danger: color.status.danger,
         successButton: color.status.successButton,
+        warningStrong: color.status.warningStrong,
         categorical: color.categorical,
       },
       borderRadius: {

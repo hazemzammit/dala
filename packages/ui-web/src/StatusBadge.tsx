@@ -9,11 +9,17 @@
  * for row-level status." Doc 05 §3.5 — "Status as colored pill-badges
  * (Payé/En attente/Refusé), never colored table-row backgrounds."
  */
-type StatusVariant = 'success' | 'warning' | 'danger' | 'neutral' | 'info';
+type StatusVariant = 'success' | 'warning' | 'warningStrong' | 'danger' | 'neutral' | 'info';
 
 const variantClasses: Record<StatusVariant, string> = {
   success: 'bg-success/10 text-success',
   warning: 'bg-warning/10 text-warning',
+  // Phase 5 (§5.9) — escalation step between `warning` and `danger`
+  // (storage quota ≥ 950 Mo tier). Same pill anatomy, stronger amber
+  // token (status.warningStrong, 5.42:1 vs white). Keeps the three quota
+  // tiers visually distinct per premium-ux §18 ("don't compress
+  // critical/over_limit into fewer visual states").
+  warningStrong: 'bg-warningStrong/10 text-warningStrong',
   danger: 'bg-danger/10 text-danger',
   // info deliberately reuses accent — see packages/design-tokens' own
   // comment: "never introduce a second cool color."
@@ -24,6 +30,7 @@ const variantClasses: Record<StatusVariant, string> = {
 const dotClasses: Record<StatusVariant, string> = {
   success: 'bg-success',
   warning: 'bg-warning',
+  warningStrong: 'bg-warningStrong',
   danger: 'bg-danger',
   info: 'bg-accent-600',
   neutral: 'bg-neutral-500',

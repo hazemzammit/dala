@@ -21,11 +21,11 @@ import { useAdminSession } from '@/lib/use-admin-session';
 // show "Pas de seuil défini" rather than a fabricated limit.
 const OVERAGE_LABELS: Record<
   OrgStorageUsage['overage_status'],
-  { label: string; variant: 'success' | 'warning' | 'danger' | 'neutral' }
+  { label: string; variant: 'success' | 'warning' | 'warningStrong' | 'danger' | 'neutral' }
 > = {
   ok: { label: 'Sous le seuil', variant: 'success' },
   warning: { label: '≥ 800 Mo — bannière/e-mail', variant: 'warning' },
-  critical: { label: '≥ 950 Mo — upload mis en file', variant: 'warning' },
+  critical: { label: '≥ 950 Mo — upload mis en file', variant: 'warningStrong' },
   over_limit: { label: '≥ 1 Go — lecture seule', variant: 'danger' },
   no_limit_defined: { label: 'Pas de seuil défini', variant: 'neutral' },
 };

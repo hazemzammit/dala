@@ -54,6 +54,15 @@ export const color = {
     // component's one variant. Same audited-not-eyeballed method as the
     // dark-mode success/danger adjustments in `color.dark` above. (4.60:1 vs white)
     successButton: '#1C864D',
+    // Phase 5 (§5.9) — storage 950 Mo tier needs a step *between* `warning`
+    // (#C08A1E, ~3.0:1 on white) and `danger`: a deeper burnt-amber that
+    // reads as warning-escalation, never red. Measured the same
+    // audited-not-eyeballed way as `successButton`: #9A5B00 → luminance
+    // 0.144 → 5.42:1 against white — clears AA (4.5:1) for the text-xs
+    // badge label with margin (the ~10% tint background these badges sit
+    // on approximates white). Consumed via StatusBadge's `warningStrong`
+    // variant; mirrored as a Tailwind name in packages/config's preset.
+    warningStrong: '#9A5B00',
   },
   /**
    * UI/UX pass (Chantiers/Avances audit) — non-status, categorical meaning
