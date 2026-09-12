@@ -9,11 +9,13 @@ import {
   EmptyState,
   ErrorState,
   StatusBadge,
+  TableSkeleton,
 } from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { formatStorage } from '@/lib/format';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 // Doc 00 §0.3 item 7 — free-tier storage-overage policy, labels shown next
@@ -29,13 +31,6 @@ const OVERAGE_LABELS: Record<
   over_limit: { label: '≥ 1 Go — lecture seule', variant: 'danger' },
   no_limit_defined: { label: 'Pas de seuil défini', variant: 'neutral' },
 };
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 Mo';
-  const mb = bytes / (1024 * 1024);
-  if (mb < 1024) return `${mb.toFixed(1)} Mo`;
-  return `${(mb / 1024).toFixed(2)} Go`;
-}
 
 export function StorageUsageTable() {
   // Doc 04 §4.3.8 / §4.3 intro — the cleanup action is a data-deleting
@@ -86,7 +81,7 @@ export function StorageUsageTable() {
         return;
       }
       setCleanupResult(
-        `${data.deletedCount} fichier(s) orphelin(s) supprimé(s) — ${formatBytes(data.freedBytes)} libéré(s).`,
+        `${data.deletedCount} fichier(s) orphelin(s) supprimé(s) — ${formatStorage(data.freedBytes)} libéré(s).`,
       );
       // Refresh the table so the freed storage reflects immediately.
       const refreshed = await fetch('/api/admin/storage');
@@ -132,7 +127,7 @@ export function StorageUsageTable() {
       header: 'Stockage utilisé',
       align: 'right',
       sortValue: (r) => r.total_bytes,
-      render: (r) => formatBytes(r.total_bytes),
+      render: (r) => formatStorage(r.total_bytes),
     },
     {
       key: 'org_status',
@@ -164,8 +159,14 @@ export function StorageUsageTable() {
     );
   }
 
+  // Phase 5 (§5.9) — one-off "Chargement…" paragraph → TableSkeleton, the
+  // same loading treatment OrganizationsTable/UsersTable/BillingTable use.
   if (loading) {
-    return <p className="mt-6 text-sm text-neutral-500">Chargement…</p>;
+    return (
+      <div className="mt-6">
+        <TableSkeleton />
+      </div>
+    );
   }
 
   return (
@@ -175,7 +176,7 @@ export function StorageUsageTable() {
           <p className="text-sm text-neutral-500">
             {totals.orgCount} organisation{totals.orgCount === 1 ? '' : 's'} ·{' '}
             {totals.totalFiles.toLocaleString('fr-FR')} fichier{totals.totalFiles === 1 ? '' : 's'}{' '}
-            · {formatBytes(totals.totalBytes)} au total
+            · {formatStorage(totals.totalBytes)} au total
           </p>
         )}
         {canCleanup && (

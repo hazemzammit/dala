@@ -1,3 +1,6 @@
+import { PageHero } from '@dala/ui-web';
+import { HardDrivesIcon } from '@phosphor-icons/react/ssr';
+
 import { StorageUsageTable } from './StorageUsageTable';
 
 /**
@@ -15,19 +18,21 @@ import { StorageUsageTable } from './StorageUsageTable';
  * against those thresholds. 'pro'/'business' orgs show "Pas de seuil
  * défini" since no numeric limit exists for those plans anywhere in Doc
  * 00/03 — this screen doesn't invent one.
+ *
+ * Phase 5 (plan §5.9) — the bare <h1> + <p> becomes a PageHero (icon
+ * HardDrivesIcon, same title "Surveillance du stockage"); the existing
+ * threshold-explainer paragraph moves into `description` verbatim (the
+ * two inline <code> tags are dropped — PageHero's description is a
+ * string prop — the text is unchanged).
  */
 export default function StorageMonitorPage() {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">
-        Surveillance du stockage
-      </h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        Utilisation réelle par organisation, calculée à partir de{' '}
-        <code className="rounded bg-neutral-50 px-1 py-0.5 text-[13px]">storage.objects</code>{' '}
-        (bucket <code className="rounded bg-neutral-50 px-1 py-0.5 text-[13px]">org-files</code>).
-        Seuils de dépassement (Doc 00 §0.3, plan gratuit uniquement) : 800 Mo, 950 Mo, 1 Go.
-      </p>
+      <PageHero
+        icon={HardDrivesIcon}
+        title="Surveillance du stockage"
+        description="Utilisation réelle par organisation, calculée à partir de storage.objects (bucket org-files). Seuils de dépassement (Doc 00 §0.3, plan gratuit uniquement) : 800 Mo, 950 Mo, 1 Go."
+      />
       <StorageUsageTable />
     </div>
   );
