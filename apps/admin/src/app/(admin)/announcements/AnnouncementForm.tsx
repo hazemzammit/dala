@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, FormField } from '@dala/ui-web';
+import { Button, FormField, SectionCard } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 type TargetType = 'all_users' | 'owners_only' | 'by_plan' | 'by_trade_type' | 'inactive_30d';
@@ -73,8 +73,13 @@ export function AnnouncementForm({ onPublished }: { onPublished: () => void }) {
 
   const needsTargetValue = targetType === 'by_plan' || targetType === 'by_trade_type';
 
+  // Phase 5 (plan §5.13) — compose-form Card becomes a tone-less
+  // SectionCard (Level-1 surface per Phase 4.6) titled "Nouvelle annonce"
+  // (the guide's intended heading for this card — no such title exists in
+  // the code today, so this names rather than renames). All form controls,
+  // labels, estimate box, error, and submit behavior unchanged.
   return (
-    <Card className="p-6">
+    <SectionCard title="Nouvelle annonce">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <label className="text-sm font-medium text-neutral-900">Message</label>
@@ -148,6 +153,6 @@ export function AnnouncementForm({ onPublished }: { onPublished: () => void }) {
           {scheduledFor ? 'Programmer' : 'Publier'}
         </Button>
       </form>
-    </Card>
+    </SectionCard>
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
 import type { Announcement } from '@dala/shared-types';
-import { DataTable, type DataTableColumn, EmptyState, ErrorState, StatusBadge } from '@dala/ui-web';
+import { DataTable, type DataTableColumn, EmptyState, ErrorState, StatusBadge, TableSkeleton } from '@dala/ui-web';
 import { MegaphoneIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
@@ -76,7 +76,10 @@ export function AnnouncementsList({ refreshKey }: { refreshKey: number }) {
     },
   ];
 
-  if (loading) return <p className="text-sm text-neutral-500">Chargement…</p>;
+  // Phase 5 (§5.13) — same loading treatment as Billing/Storage/Users.
+  // History stays a DataTable (the plan's EntityCard conversion is
+  // explicitly optional; the 5-column operational structure is kept).
+  if (loading) return <TableSkeleton />;
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
   return (

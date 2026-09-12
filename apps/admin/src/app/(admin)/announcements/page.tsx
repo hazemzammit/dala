@@ -1,5 +1,7 @@
 'use client';
 
+import { PageHero, SectionCard } from '@dala/ui-web';
+import { MegaphoneIcon } from '@phosphor-icons/react/ssr';
 import { useState } from 'react';
 
 import { AnnouncementForm } from './AnnouncementForm';
@@ -15,18 +17,22 @@ import { AnnouncementsList } from './AnnouncementsList';
  * 0030) but no rendered UI here — that's apps/web's / apps/mobile's own
  * screen to build against it, not apps/admin's. Email channel selection is
  * still authoring-intent only; no Resend send is wired for it yet.
+ *
+ * Phase 5 (plan §5.13) — bare <h1> becomes a PageHero (icon MegaphoneIcon,
+ * same title "Annonces", no description — none exists today and none is
+ * invented); the bare <h2> "Historique" wrapper becomes a tone-less
+ * SectionCard with the same title verbatim (Level-1 surface per Phase 4.6).
  */
 export default function AnnouncementsPage() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   return (
     <div className="space-y-6">
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Annonces</h1>
+      <PageHero icon={MegaphoneIcon} title="Annonces" />
       <AnnouncementForm onPublished={() => setRefreshKey((k) => k + 1)} />
-      <div>
-        <h2 className="font-display mb-3 text-base font-semibold text-neutral-900">Historique</h2>
+      <SectionCard title="Historique">
         <AnnouncementsList refreshKey={refreshKey} />
-      </div>
+      </SectionCard>
     </div>
   );
 }
