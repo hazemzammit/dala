@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation';
 
 import { ImpersonationBanner } from '@/components/shell/ImpersonationBanner';
 import { Sidebar } from '@/components/shell/Sidebar';
+import { Topbar } from '@/components/shell/Topbar';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
 
 /**
@@ -19,6 +20,7 @@ export default async function AdminShellLayout({ children }: { children: React.R
     <div className="bg-neutral-25 flex h-screen">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
+        <Topbar />
         <ImpersonationBanner />
         <main className="flex-1 overflow-y-auto p-8">{children}</main>
       </div>

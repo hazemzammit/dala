@@ -102,7 +102,7 @@ export function GlobalSearch() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="rounded-control hover:bg-neutral-25 flex items-center gap-2 border border-neutral-200 px-3 py-1.5 text-sm text-neutral-500"
+        className="rounded-control bg-neutral-0 flex items-center gap-2 border border-neutral-200 px-3.5 py-2 text-sm text-neutral-500 shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150 hover:-translate-y-px hover:border-neutral-300 hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]"
       >
         <MagnifyingGlassIcon size={15} />
         Rechercher
