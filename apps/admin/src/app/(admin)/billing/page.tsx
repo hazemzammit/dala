@@ -1,3 +1,6 @@
+import { PageHero } from '@dala/ui-web';
+import { ReceiptIcon } from '@phosphor-icons/react/ssr';
+
 import { BillingTable } from './BillingTable';
 
 /**
@@ -23,16 +26,19 @@ import { BillingTable } from './BillingTable';
  *   - Time-series MRR trend / churn-over-time — subscription_status only
  *     just started accumulating real history as of this phase, so
  *     there's no meaningful trend to chart yet.
+ *
+ * Phase 5 (plan §5.8) — the bare <h1> + <p> becomes a PageHero (icon
+ * ReceiptIcon, same title "Facturation"); the existing description
+ * paragraph is moved into `description` verbatim.
  */
 export default function BillingPage() {
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-neutral-900">Facturation</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        MRR, abonnements par organisation, et actions manuelles (prolongation, remise, paiement hors
-        Konnect, annulation). L'intégration réelle avec Konnect reste dans les Edge Functions — cet
-        écran ne fait qu'afficher et ajuster l'état déjà enregistré.
-      </p>
+      <PageHero
+        icon={ReceiptIcon}
+        title="Facturation"
+        description="MRR, abonnements par organisation, et actions manuelles (prolongation, remise, paiement hors Konnect, annulation). L'intégration réelle avec Konnect reste dans les Edge Functions — cet écran ne fait qu'afficher et ajuster l'état déjà enregistré."
+      />
       <BillingTable />
     </div>
   );

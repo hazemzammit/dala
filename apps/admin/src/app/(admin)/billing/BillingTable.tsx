@@ -7,6 +7,7 @@ import {
   EmptyState,
   ErrorState,
   StatusBadge,
+  TableSkeleton,
 } from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
@@ -228,8 +229,14 @@ export function BillingTable() {
     );
   }
 
+  // Phase 5 (§5.8) — one-off "Chargement…" paragraph → TableSkeleton, the
+  // same loading treatment OrganizationsTable/UsersTable already use.
   if (loading) {
-    return <p className="mt-6 text-sm text-neutral-500">Chargement…</p>;
+    return (
+      <div className="mt-6">
+        <TableSkeleton />
+      </div>
+    );
   }
 
   return (
