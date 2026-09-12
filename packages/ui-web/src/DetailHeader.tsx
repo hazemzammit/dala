@@ -139,7 +139,7 @@ export function DetailHeader({
             <dl className="mt-2 flex flex-wrap gap-x-5 gap-y-1">
               {meta.map((f) => (
                 <div key={f.label} className="flex items-center gap-1.5">
-                  <dt className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-400">
+                  <dt className="text-[11px] font-semibold tracking-[0.04em] text-neutral-400">
                     {f.label}
                   </dt>
                   <dd className="text-xs text-neutral-700">{f.value}</dd>

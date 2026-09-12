@@ -50,15 +50,11 @@ export function UserDetail({ userId }: { userId: string }) {
       <Card className="p-6">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Email
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Email</dt>
             <dd className="mt-1 text-neutral-900">{user.email ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Statut
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Statut</dt>
             <dd className="mt-1">
               {user.suspended_at ? (
                 <StatusBadge variant="warning">Suspendu</StatusBadge>

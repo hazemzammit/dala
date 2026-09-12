@@ -49,7 +49,7 @@ export function EntityCard({ title, subtitle, badges, fields, actions, href }: E
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-neutral-100 pt-3">
           {fields.map((f) => (
             <div key={f.label}>
-              <dt className="text-[11px] font-semibold uppercase tracking-[0.04em] text-neutral-400">
+              <dt className="text-[11px] font-semibold tracking-[0.04em] text-neutral-400">
                 {f.label}
               </dt>
               <dd className="mt-0.5 text-xs text-neutral-900">{f.value}</dd>

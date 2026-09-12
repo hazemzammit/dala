@@ -92,9 +92,7 @@ export function IconStatCard({
       </div>
 
       {/* Label */}
-      <p className="mt-3 text-[13px] font-semibold uppercase tracking-[0.04em] text-neutral-500">
-        {label}
-      </p>
+      <p className="mt-3 text-[13px] font-semibold tracking-[0.04em] text-neutral-500">{label}</p>
 
       {/* Value */}
       <p className="font-display mt-1 text-[36px] font-semibold tabular-nums leading-[1.15] text-neutral-900">

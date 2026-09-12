@@ -217,21 +217,17 @@ export function OrgDetail({ orgId }: { orgId: string }) {
       <SectionCard icon={BuildingsIcon} title="Informations générales">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Plan
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Plan</dt>
             <dd className="mt-1 text-neutral-900">{org.plan}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Type d'activité
             </dt>
             <dd className="mt-1 text-neutral-900">{org.trade_type ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Statut
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Statut</dt>
             <dd className="mt-1 flex items-center gap-3">
               {org.deleted_at && isSuperAdmin && (
                 <Button
@@ -247,9 +243,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Créée le
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Créée le</dt>
             <dd className="mt-1 text-neutral-900">
               {new Date(org.created_at).toLocaleDateString('fr-FR')}
             </dd>
@@ -267,7 +261,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
       <SectionCard icon={BuildingsIcon} title="Profil de l'entreprise">
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Vérification
             </dt>
             <dd className="mt-1 flex items-center gap-3">
@@ -310,7 +304,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Forme juridique
             </dt>
             <dd className="mt-1 text-neutral-900">
@@ -318,7 +312,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Taille de l&apos;équipe
             </dt>
             <dd className="mt-1 text-neutral-900">
@@ -326,31 +320,29 @@ export function OrgDetail({ orgId }: { orgId: string }) {
             </dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Matricule fiscal
             </dt>
             <dd className="mt-1 text-neutral-900">{org.matricule_fiscal ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Registre de commerce
             </dt>
             <dd className="mt-1 text-neutral-900">{org.rc_number ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
-              Adresse
-            </dt>
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Adresse</dt>
             <dd className="mt-1 text-neutral-900">{org.address ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Zone d&apos;intervention
             </dt>
             <dd className="mt-1 text-neutral-900">{org.service_area ?? '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
               Téléphone / e-mail
             </dt>
             <dd className="mt-1 text-neutral-900">
@@ -359,7 +351,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
           </div>
           {(org.facebook_url || org.instagram_url || org.website_url) && (
             <div className="col-span-2 sm:col-span-4">
-              <dt className="text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500">
+              <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">
                 Liens publics
               </dt>
               <dd className="mt-1 flex flex-wrap gap-x-4 text-neutral-900">

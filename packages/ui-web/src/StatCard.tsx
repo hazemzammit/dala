@@ -48,9 +48,7 @@ export function StatCard({ label, value, delta, loading, empty, emptyMessage }: 
 
   return (
     <Card className="p-6">
-      <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-neutral-500">
-        {label}
-      </p>
+      <p className="text-[13px] font-semibold tracking-[0.04em] text-neutral-500">{label}</p>
       <div className="mt-1 flex items-baseline gap-2">
         <span className="font-display text-[36px] font-semibold tabular-nums leading-[1.15] text-neutral-900">
           {value}
