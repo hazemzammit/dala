@@ -211,6 +211,19 @@ export const radius = {
   control: 12, // buttons, inputs, chips
   card: 16,
   sheet: 22, // modals / bottom sheets / large hero cards (20–24px range)
+  // Phase 4.6 (premium-ux-system-guide.md §1) — web-side radius vocabulary,
+  // added additively below the existing mobile-oriented numeric keys (no
+  // existing key renamed/removed/changed). Values per the guide verbatim.
+  // Tailwind can't read JS objects at build time (same limitation
+  // `elevation` works around; guide §1's [DECISION]: no Tailwind plugin) —
+  // these act as the documented source of truth, mirrored as literal
+  // Tailwind classes per component.
+  xs: '6px', // checkboxes, tiny chips
+  sm: '8px', // inputs, small buttons
+  md: '12px', // IconActionButton, ViewToggle pill segments
+  lg: '16px', // Card, FilterBar (existing rounded-card)
+  xl: '24px', // DetailHeader, PageHero (existing rounded-[24px])
+  full: '9999px',
 };
 
 export const elevation = {
@@ -398,6 +411,15 @@ export const motion = {
   microInteractionMs: 135,
   dragLiftScale: 1.03,
   dragRejectReturnMs: 200,
+  // Phase 4.6 (premium-ux-system-guide.md §1) — web-side motion vocabulary,
+  // added additively alongside the existing mobile/Reanimated numeric keys
+  // (no existing key renamed/removed/changed). Values per the guide
+  // verbatim: two durations (fast 150ms, panel 220ms) + one decelerate
+  // easing. Documented source of truth, mirrored as literal Tailwind
+  // utilities per component (motion-safe-prefixed per §8).
+  fast: '150ms',
+  panel: '220ms',
+  easing: 'cubic-bezier(0.2, 0, 0, 1)',
 };
 
 /**
@@ -413,3 +435,36 @@ export const motion = {
  */
 export const RTL_CONVENTION_NOTE =
   'Use logical properties (marginStart/End, ms-/me-) everywhere. Never marginLeft/Right or ml-/mr-.';
+
+/**
+ * Phase 4.6 (premium-ux-system-guide.md §1) — the web admin's typographic
+ * hierarchy and spacing scale, added additively. These sit alongside — not
+ * replace — the existing mobile-first `typography`/`spacing` exports above:
+ * `typography` is the Tamagui/mobile scale (numeric px + font families),
+ * while `type`/`space` are the web hierarchy per the guide verbatim (string
+ * px / line-height / tracking). Named `type`/`space` exactly as the guide
+ * specifies (`typography`/`spacing` were already taken by the mobile
+ * scales). Like `radius`/`motion` above, Tailwind can't read JS objects at
+ * build time (guide §1's [DECISION]: no Tailwind plugin, out of scope for
+ * a design pass) — components mirror these as literal Tailwind classes with
+ * this file as the documented source of truth.
+ */
+export const type = {
+  pageTitle: { size: '28px', line: '1.2', weight: 600, tracking: '-0.01em' },
+  pageSubtitle: { size: '14px', line: '1.45', weight: 400, tracking: '0' },
+  sectionTitle: { size: '17px', line: '1.3', weight: 600, tracking: '0' },
+  body: { size: '14.5px', line: '1.5', weight: 400, tracking: '0' },
+  secondary: { size: '13px', line: '1.4', weight: 400, tracking: '0' },
+  meta: { size: '12px', line: '1.3', weight: 500, tracking: '0.02em' },
+  // StatCard/IconStatCard's 36px tabular-nums hero number is untouched —
+  // it's a separate, already-tuned scale, not part of this hierarchy.
+};
+
+export const space = {
+  xs: '4px',
+  sm: '8px',
+  md: '12px',
+  lg: '16px',
+  xl: '24px',
+  xxl: '32px',
+};
