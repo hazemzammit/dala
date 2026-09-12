@@ -33,6 +33,10 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
  * for primary CTAs, interactive Cards, and floating pill controls. The
  * matching `disabled:hover:translate-y-0` reset went with it. Hover
  * shadow deepening (`elevation.control.hoverShadow`) is unchanged.
+ *
+ * Phase 4.6 (premium-ux-system-guide.md §14 — icon sizes): md icon
+ * bumped 17px → 18px ("18px buttons/nav"). sm stays 15 — that's the
+ * inline/table tier, which §14 pins separately.
  */
 
 type IconActionTone = 'accent' | 'warning' | 'danger' | 'neutral';
@@ -93,7 +97,7 @@ export function IconActionButton({
 
   const inner = (
     <>
-      <IconComponent size={size === 'sm' ? 15 : 17} weight="bold" aria-hidden="true" />
+      <IconComponent size={size === 'sm' ? 15 : 18} weight="bold" aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </>
   );

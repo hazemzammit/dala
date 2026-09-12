@@ -181,9 +181,12 @@ export function Sidebar() {
 
       {/* Nav items grouped */}
       <nav className={`flex-1 overflow-y-auto py-4 ${collapsed ? 'px-2' : 'px-3'}`}>
-        <div className="flex flex-col gap-6">
+        {/* §3: mt-6 between groups (guide-literal mechanism); gap-1 inside
+            each group is unchanged. No flat space-y-1 exists to replace —
+            the pre-4.6 code used gap-6, which rendered the same 24px. */}
+        <div className="flex flex-col">
           {NAV_GROUPS.map((group, i) => (
-            <div key={i} className="flex flex-col gap-1">
+            <div key={i} className={`flex flex-col gap-1 ${i > 0 ? 'mt-6' : ''}`}>
               {collapsed ? (
                 <div className="mx-auto mb-2 mt-1 h-px w-6 bg-neutral-200" aria-hidden="true" />
               ) : (
