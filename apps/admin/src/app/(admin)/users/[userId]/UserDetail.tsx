@@ -1,6 +1,7 @@
 'use client';
 
-import { Card, ErrorState, StatusBadge } from '@dala/ui-web';
+import { DetailHeader, ErrorState, StatusBadge } from '@dala/ui-web';
+import { UsersThreeIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
 
 import { NotesPanel } from '@/components/ui/NotesPanel';
@@ -19,6 +20,18 @@ interface UserSummary {
  * header for the scope cut this follows). Just enough header context
  * (name/email/status) to make the notes panel below it meaningful, not a
  * full user-detail page.
+ *
+ * Phase 5 (plan §5.5) — the bare <h1> + <Card> field grid becomes a
+ * DetailHeader (backHref "/users", initials circle — users have no logo
+ * field, and DetailHeader already derives initials from the title). Only
+ * the fields this page's GET actually returns surface here (email as
+ * header meta, status as the header badge — verified against
+ * api/admin/users/[userId]/route.ts: it selects id/full_name/suspended_at
+ * and joins email; nothing invented). NotesPanel stays exactly as-is per
+ * §0.2 — deliberately NOT wrapped in a SectionCard: it renders its own
+ * "Notes internes" heading, and a second copy from a SectionCard title
+ * would fail admin-notes.spec.ts's getByText under Playwright strict
+ * mode (ruling: keep NotesPanel untouched, per §0.2/§5.3).
  */
 export function UserDetail({ userId }: { userId: string }) {
   const [user, setUser] = useState<UserSummary | null>(null);
@@ -43,29 +56,23 @@ export function UserDetail({ userId }: { userId: string }) {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-neutral-900">{user.full_name}</h1>
-      </div>
+      <DetailHeader
+        backHref="/users"
+        backLabel="Utilisateurs"
+        icon={UsersThreeIcon}
+        title={user.full_name}
+        status={
+          user.suspended_at ? (
+            <StatusBadge variant="warning">Suspendu</StatusBadge>
+          ) : (
+            <StatusBadge variant="success">Actif</StatusBadge>
+          )
+        }
+        meta={[{ label: 'Email', value: user.email ?? '—' }]}
+      />
 
-      <Card className="p-6">
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-4">
-          <div>
-            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Email</dt>
-            <dd className="mt-1 text-neutral-900">{user.email ?? '—'}</dd>
-          </div>
-          <div>
-            <dt className="text-xs font-semibold tracking-[0.04em] text-neutral-500">Statut</dt>
-            <dd className="mt-1">
-              {user.suspended_at ? (
-                <StatusBadge variant="warning">Suspendu</StatusBadge>
-              ) : (
-                <StatusBadge variant="success">Actif</StatusBadge>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </Card>
-
+      {/* NotesPanel stays exactly as-is (admin-local, §0.2) — no SectionCard
+          wrap; see the file header for the strict-mode reason. */}
       <NotesPanel targetType="user" targetId={userId} />
     </div>
   );

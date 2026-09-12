@@ -5,10 +5,22 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  EntityCard,
   ErrorState,
+  FilterBar,
+  IconActionButton,
   StatusBadge,
+  TableSkeleton,
+  ViewToggle,
 } from '@dala/ui-web';
-import { UsersThreeIcon } from '@phosphor-icons/react';
+import {
+  PauseCircleIcon,
+  PasswordIcon,
+  PlayCircleIcon,
+  SignOutIcon,
+  TrashIcon,
+  UsersThreeIcon,
+} from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -57,6 +69,12 @@ export function UsersTable() {
   const [q, setQ] = useState(initialQ);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  // Phase 5 (§5.4) — same FilterBar pattern as OrganizationsTable: a
+  // client-side "Statut" filter over the already-fetched page (§0.8 —
+  // no backend change) plus the table/card ViewToggle. 'table' stays the
+  // fresh-load default (§0.5 default-state rule).
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
 
   async function load() {
     setLoading(true);
@@ -88,6 +106,13 @@ export function UsersTable() {
     setQ(value);
     setPage(1);
   }
+
+  // Same shape as OrganizationsTable's planFilter derivation: client-side
+  // only, no page reset — it narrows the rows already fetched on this page.
+  const visibleUsers =
+    statusFilter === 'all'
+      ? users
+      : users.filter((u) => (statusFilter === 'active' ? !u.suspended_at : !!u.suspended_at));
 
   // Admin remediation Tier 4.3 — bulk suspend/unsuspend, the plan's own
   // "safest starting point" for this screen. Two separate actions rather
@@ -181,61 +206,120 @@ export function UsersTable() {
     },
     {
       key: 'actions',
-      header: '',
+      header: 'Actions',
       align: 'right',
-      render: (u) => (
-        <div className="flex justify-end gap-3">
-          <button
-            onClick={() => action(u, 'reset_password')}
-            className="text-accent-600 text-xs font-medium hover:underline"
-          >
-            Réinitialiser
-          </button>
-          {canMutate && (
-            <>
-              <button
-                onClick={() => action(u, 'revoke_sessions')}
-                className="text-accent-600 text-xs font-medium hover:underline"
-              >
-                Révoquer les sessions
-              </button>
-              <button
-                onClick={() => action(u, u.suspended_at ? 'unsuspend' : 'suspend')}
-                className="text-warning text-xs font-medium hover:underline"
-              >
-                {u.suspended_at ? 'Réactiver' : 'Suspendre'}
-              </button>
-              <button
-                onClick={() => setDeleteTarget(u)}
-                className="text-danger text-xs font-medium hover:underline"
-              >
-                Supprimer
-              </button>
-            </>
-          )}
-        </div>
-      ),
+      // Phase 5 (§5.4) — text action links → IconActionButton (§2.8). The
+      // `label` prop is the old button's visible text VERBATIM (it becomes
+      // both aria-label and title), so every accessible name resolves
+      // exactly as before — including "Réinitialiser" exactly, which the
+      // suite pins with an exact:true assertion. Role gating is unchanged:
+      // Réinitialiser renders for every role (Support's only allowed user
+      // action), the rest stay behind the same canMutate check that hid
+      // the old text buttons.
+      render: (u) => <div className="flex justify-end gap-2">{renderUserActions(u)}</div>,
     },
   ];
 
+  // Shared by the table's actions column and the EntityCard actions slot —
+  // one source of truth so the two views can never drift apart.
+  function renderUserActions(user: UserRow) {
+    return (
+      <>
+        <IconActionButton
+          icon={PasswordIcon}
+          label="Réinitialiser"
+          tone="accent"
+          onClick={() => action(user, 'reset_password')}
+        />
+        {canMutate && (
+          <>
+            <IconActionButton
+              icon={SignOutIcon}
+              label="Révoquer les sessions"
+              tone="accent"
+              onClick={() => action(user, 'revoke_sessions')}
+            />
+            <IconActionButton
+              icon={user.suspended_at ? PlayCircleIcon : PauseCircleIcon}
+              label={user.suspended_at ? 'Réactiver' : 'Suspendre'}
+              tone="warning"
+              onClick={() => action(user, user.suspended_at ? 'unsuspend' : 'suspend')}
+            />
+            <IconActionButton
+              icon={TrashIcon}
+              label="Supprimer"
+              tone="danger"
+              onClick={() => setDeleteTarget(user)}
+            />
+          </>
+        )}
+      </>
+    );
+  }
+
   return (
     <>
-      <div className="mb-4">
+      <FilterBar trailing={<ViewToggle value={viewMode} onChange={setViewMode} />}>
         <SearchInput
           onChange={handleSearchChange}
           placeholder="Rechercher par nom, email, téléphone…"
           initialValue={initialQ}
         />
-      </div>
+        <label className="flex items-center gap-2 text-sm text-neutral-600">
+          <span className="sr-only">Statut</span>
+          <select
+            aria-label="Statut"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="h-9 rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
+          >
+            <option value="all">Tous</option>
+            <option value="active">Actif</option>
+            <option value="suspended">Suspendu</option>
+          </select>
+        </label>
+      </FilterBar>
 
       {loading ? (
-        <p className="text-sm text-neutral-500">Chargement…</p>
+        <TableSkeleton />
       ) : loadError ? (
         <ErrorState onRetry={() => void load()} />
+      ) : viewMode === 'card' ? (
+        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+          {visibleUsers.map((user) => (
+            <EntityCard
+              key={user.id}
+              href={`/users/${user.id}`}
+              title={user.full_name}
+              subtitle={user.email ?? 'Email non renseigné'}
+              badges={
+                user.suspended_at ? (
+                  <StatusBadge variant="warning">Suspendu</StatusBadge>
+                ) : (
+                  <StatusBadge variant="success">Actif</StatusBadge>
+                )
+              }
+              fields={[
+                { label: 'Téléphone', value: user.phone ?? '—' },
+                {
+                  label: 'Organisation(s)',
+                  value: user.organizations.map((o) => `${o.name} (${o.role})`).join(', ') || '—',
+                },
+                {
+                  label: 'Dernière connexion',
+                  value: user.last_login_at
+                    ? new Date(user.last_login_at).toLocaleDateString('fr-FR')
+                    : '—',
+                },
+              ]}
+              actions={renderUserActions(user)}
+            />
+          ))}
+        </div>
       ) : (
         <DataTable
           columns={columns}
-          rows={users}
+          rows={visibleUsers}
           getRowId={(u) => u.id}
           // Doc 04 §4.3 intro — unlike Organizations (where Support can
           // still bulk-export, a read-only action), Users has no bulk
