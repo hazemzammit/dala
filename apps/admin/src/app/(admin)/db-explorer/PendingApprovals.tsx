@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, ErrorState } from '@dala/ui-web';
+import { Button, ErrorState, SectionCard } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -73,44 +73,43 @@ export function PendingApprovals() {
 
   if (loadError) {
     return (
-      <Card className="border-warning p-6">
+      <SectionCard title="Demandes d'approbation en attente" tone="warning">
         <ErrorState onRetry={() => void load()} />
-      </Card>
+      </SectionCard>
     );
   }
 
   if (requests.length === 0) return null;
 
   return (
-    <Card className="border-warning space-y-3 p-6">
-      <h2 className="font-display text-base font-semibold text-neutral-900">
-        Demandes d'approbation en attente
-      </h2>
-      {requests.map((r) => (
-        <div key={r.id} className="rounded-control border border-neutral-100 p-4">
-          <p className="text-xs text-neutral-500">
-            Demandé par {r.requested_by_name} · {new Date(r.created_at).toLocaleString('fr-FR')}
-          </p>
-          <pre className="bg-neutral-25 mt-2 whitespace-pre-wrap break-all rounded p-2 font-mono text-xs text-neutral-900">
-            {r.sql_statement}
-          </pre>
-          <p className="mt-2 text-sm text-neutral-900">Motif : {r.reason}</p>
-          {r.canApprove ? (
-            <div className="mt-3 flex gap-2">
-              <Button variant="success" onClick={() => decide(r.id, 'approve')}>
-                Approuver et exécuter
-              </Button>
-              <Button variant="danger" onClick={() => decide(r.id, 'reject')}>
-                Rejeter
-              </Button>
-            </div>
-          ) : (
-            <p className="mt-3 text-xs text-neutral-500">
-              Vous avez soumis cette demande — un autre admin doit l'approuver.
+    <SectionCard title="Demandes d'approbation en attente" tone="warning">
+      <div className="space-y-3">
+        {requests.map((r) => (
+          <div key={r.id} className="rounded-control border border-neutral-100 p-4">
+            <p className="text-xs text-neutral-500">
+              Demandé par {r.requested_by_name} · {new Date(r.created_at).toLocaleString('fr-FR')}
             </p>
-          )}
-        </div>
-      ))}
-    </Card>
+            <pre className="bg-neutral-25 mt-2 whitespace-pre-wrap break-all rounded p-2 font-mono text-xs text-neutral-900">
+              {r.sql_statement}
+            </pre>
+            <p className="mt-2 text-sm text-neutral-900">Motif : {r.reason}</p>
+            {r.canApprove ? (
+              <div className="mt-3 flex gap-2">
+                <Button variant="success" onClick={() => decide(r.id, 'approve')}>
+                  Approuver et exécuter
+                </Button>
+                <Button variant="danger" onClick={() => decide(r.id, 'reject')}>
+                  Rejeter
+                </Button>
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-neutral-500">
+                Vous avez soumis cette demande — un autre admin doit l'approuver.
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
+    </SectionCard>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card } from '@dala/ui-web';
+import { Button, Card, SectionCard } from '@dala/ui-web';
 import { useId, useState } from 'react';
 
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -69,88 +69,92 @@ export function QueryEditor() {
   }
 
   return (
-    <Card className="space-y-4 p-6">
-      <textarea
-        value={sql}
-        onChange={(e) => setSql(e.target.value)}
-        rows={6}
-        placeholder="select * from organizations limit 20"
-        className="rounded-control focus:border-accent-600 w-full border border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none"
-      />
+    <SectionCard title="Requêtes">
+      <div className="space-y-4">
+        <textarea
+          value={sql}
+          onChange={(e) => setSql(e.target.value)}
+          rows={6}
+          placeholder="select * from organizations limit 20"
+          className="rounded-control focus:border-accent-600 w-full border border-neutral-300 px-3 py-2.5 font-mono text-sm outline-none"
+        />
 
-      <div className="flex items-center gap-3">
-        {canWrite && (
-          <label className="flex items-center gap-1.5 text-sm text-neutral-900">
-            <input
-              type="checkbox"
-              checked={dangerZone}
-              onChange={(e) => setDangerZone(e.target.checked)}
+        <Card tone="warning" className="p-4">
+          <div className="flex items-center gap-3">
+            {canWrite && (
+              <label className="flex items-center gap-1.5 text-sm text-neutral-900">
+                <input
+                  type="checkbox"
+                  checked={dangerZone}
+                  onChange={(e) => setDangerZone(e.target.checked)}
+                />
+                Zone dangereuse (INSERT / UPDATE / DELETE)
+              </label>
+            )}
+            <Button
+              variant={dangerZone ? 'danger' : 'primary'}
+              onClick={run}
+              loading={loading}
+              disabled={!sql.trim() || (dangerZone && reason.trim().length < 10)}
+            >
+              {dangerZone ? 'Exécuter (zone dangereuse)' : 'Exécuter'}
+            </Button>
+          </div>
+        </Card>
+
+        {dangerZone && (
+          <div>
+            <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
+              Motif (10 caractères minimum)
+            </label>
+            <textarea
+              id={reasonId}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              className="rounded-control focus:border-accent-600 mt-1 w-full border border-neutral-300 px-3 py-2.5 text-sm outline-none"
             />
-            Zone dangereuse (INSERT / UPDATE / DELETE)
-          </label>
+            <p className="mt-1 text-xs text-neutral-500">
+              Journalisé dans le journal d'audit. Si votre équipe compte 2+ admins, un second admin
+              devra approuver avant exécution.
+            </p>
+          </div>
         )}
-        <Button
-          variant={dangerZone ? 'danger' : 'primary'}
-          onClick={run}
-          loading={loading}
-          disabled={!sql.trim() || (dangerZone && reason.trim().length < 10)}
-        >
-          {dangerZone ? 'Exécuter (zone dangereuse)' : 'Exécuter'}
-        </Button>
-      </div>
 
-      {dangerZone && (
-        <div>
-          <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
-            Motif (10 caractères minimum)
-          </label>
-          <textarea
-            id={reasonId}
-            value={reason}
-            onChange={(e) => setReason(e.target.value)}
-            rows={2}
-            className="rounded-control focus:border-accent-600 mt-1 w-full border border-neutral-300 px-3 py-2.5 text-sm outline-none"
-          />
-          <p className="mt-1 text-xs text-neutral-500">
-            Journalisé dans le journal d'audit. Si votre équipe compte 2+ admins, un second admin
-            devra approuver avant exécution.
-          </p>
-        </div>
-      )}
+        {error && <p className="text-danger text-sm">{error}</p>}
+        {message && <p className="text-success text-sm">{message}</p>}
 
-      {error && <p className="text-danger text-sm">{error}</p>}
-      {message && <p className="text-success text-sm">{message}</p>}
-
-      {result && (
-        <div className="rounded-control overflow-auto border border-neutral-100">
-          <table className="w-full border-collapse text-left text-sm">
-            <thead>
-              <tr className="bg-neutral-25 border-b border-neutral-100">
-                {result.fields.map((f) => (
-                  <th
-                    key={f}
-                    className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500"
-                  >
-                    {f}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {result.rows.map((row, i) => (
-                <tr key={i} className="border-b border-neutral-100 last:border-0">
+        {result && (
+          <div className="rounded-control overflow-auto border border-neutral-100">
+            <table className="w-full border-collapse text-left text-sm">
+              <thead>
+                <tr className="bg-neutral-25 border-b border-neutral-100">
                   {result.fields.map((f) => (
-                    <td key={f} className="px-3 py-2 text-neutral-900">
-                      {String(row[f] ?? '—')}
-                    </td>
+                    <th
+                      key={f}
+                      className="px-3 py-2 text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500"
+                    >
+                      {f}
+                    </th>
                   ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="p-2 text-xs text-neutral-500">{result.rowCount} ligne(s)</p>
-        </div>
-      )}
-    </Card>
+              </thead>
+              <tbody>
+                {result.rows.map((row, i) => (
+                  <tr key={i} className="border-b border-neutral-100 last:border-0">
+                    {result.fields.map((f) => (
+                      <td key={f} className="px-3 py-2 text-neutral-900">
+                        {String(row[f] ?? '—')}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="p-2 text-xs text-neutral-500">{result.rowCount} ligne(s)</p>
+          </div>
+        )}
+      </div>
+    </SectionCard>
   );
 }
