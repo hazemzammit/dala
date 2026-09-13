@@ -289,7 +289,7 @@ export function ViewToggle({ value, onChange }: ViewToggleProps) {
             aria-label={label}
             title={label}
             className={[
-              'inline-flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150',
+              'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
               active
                 ? 'bg-neutral-0 text-accent-700 shadow-[0_1px_3px_rgba(17,19,24,0.12)]'
                 : 'text-neutral-500 hover:text-neutral-900',
@@ -349,7 +349,7 @@ const toneClasses: Record<IconActionTone, string> = {
 };
 
 const sizeClasses = {
-  sm: 'h-8 w-8',
+  sm: 'h-10 w-10',
   md: 'h-9 w-9',
 };
 
@@ -471,7 +471,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
       : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} sur ${total}`;
 
   const navButtonClasses =
-    'inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-all duration-150 hover:-translate-y-px hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-neutral-200 disabled:hover:bg-transparent disabled:hover:text-neutral-600';
+    'inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-all duration-150 hover:-translate-y-px hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-neutral-200 disabled:hover:bg-transparent disabled:hover:text-neutral-600';
 
   return (
     <div className="bg-neutral-0 mt-4 flex items-center justify-between gap-3 rounded-full border border-neutral-200 px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.05)]">
@@ -538,7 +538,7 @@ in the file (`NAV_GROUPS`, `AdminNavItem`, footer) is unchanged:
         alt="Dala"
         width={32}
         height={32}
-        className="h-8 w-8 object-contain"
+        className="h-10 w-10 object-contain"
       />
     </div>
   ) : (
@@ -686,7 +686,7 @@ export function Topbar() {
       <div className="flex items-center gap-3">
         {data && (
           <div className="flex items-center gap-2.5 pr-1">
-            <div className="rounded-control bg-accent-100 text-accent-700 flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold">
+            <div className="rounded-control bg-accent-100 text-accent-700 flex h-10 w-10 shrink-0 items-center justify-center text-xs font-semibold">
               {data.admin.full_name.charAt(0).toUpperCase()}
             </div>
             <div className="hidden leading-tight sm:block">
