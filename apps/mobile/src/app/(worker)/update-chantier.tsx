@@ -8,6 +8,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { SiteLogForm } from '@/components/journal/SiteLogForm';
 import { Button } from '@/components/ui/Button';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SkeletonHero } from '@/components/ui/Skeleton';
 import { supabase } from '@/lib/supabase';
 
@@ -173,9 +174,12 @@ export default function UpdateChantierScreen() {
           </Text>
         </XStack>
 
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-          Envoyer un update
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$1">
+          <Icon3D name="camera-photo" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Envoyer un update
+          </Text>
+        </XStack>
         <Text color="$neutral500" fontSize={13} marginBottom="$4">
           {projectName ? `Pour ${projectName}` : "Aucun chantier assigné aujourd'hui"}
         </Text>

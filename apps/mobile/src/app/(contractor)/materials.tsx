@@ -27,6 +27,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
@@ -519,9 +520,12 @@ export default function MaterialsScreen() {
         }
       >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$1">
-          <Text fontFamily="$display" fontSize={23} fontWeight="600">
-            Matériaux
-          </Text>
+          <XStack alignItems="center" gap="$2">
+            <Icon3D name="toolbox" size={40} />
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Matériaux
+            </Text>
+          </XStack>
           {pendingCount > 0 && (
             <StatusBadge variant="neutral">{`${pendingCount} en attente`}</StatusBadge>
           )}

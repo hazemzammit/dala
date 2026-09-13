@@ -11,6 +11,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -270,9 +271,12 @@ export default function MaterialRequestScreen() {
           </Text>
         </XStack>
 
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-          Demander du matériel
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$1">
+          <Icon3D name="package-check" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Demander du matériel
+          </Text>
+        </XStack>
         <Text color="$neutral500" fontSize={13} marginBottom="$4">
           {projectName ? `Pour ${projectName}` : "Aucun chantier assigné aujourd'hui"}
         </Text>

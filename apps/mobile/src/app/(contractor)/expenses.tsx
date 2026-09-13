@@ -15,7 +15,7 @@ import {
   PlusIcon,
   TrashIcon,
 } from 'phosphor-react-native';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, View, XStack, YStack } from 'tamagui';
 
@@ -26,6 +26,7 @@ import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
@@ -40,7 +41,7 @@ import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 import { useFabBottomContentInset } from '@/lib/fabLayout';
 import { haptics } from '@/lib/haptics';
 import { processPhoto } from '@/lib/photoPipeline';
-import { uploadOrgFile } from '@/lib/storage';
+import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { useTokenColor } from '@/lib/useTokenColor';
 
@@ -151,6 +152,21 @@ export default function ExpensesScreen() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [expenses, setExpenses] = useState<ProjectExpense[]>([]);
+  // Bug fix: every expense row has a `receipt_photo_url`, but nothing on
+  // this screen ever turned that path into a viewable signed URL or
+  // rendered it anywhere — the receipt photo was uploaded successfully on
+  // save and then effectively vanished. Batched the same way
+  // team.tsx/vehicles.tsx already mint signed URLs for a list of photos.
+  const [receiptUrlByPath, setReceiptUrlByPath] = useState<Record<string, string>>({});
+  useEffect(() => {
+    void getSignedUrlMap(expenses.map((e) => e.receipt_photo_url ?? null)).then(
+      setReceiptUrlByPath,
+    );
+  }, [expenses]);
+  // Detail modal — tapping a row now opens this instead of doing nothing,
+  // per the request to see an expense's full details (including its
+  // receipt photo) rather than just the summary line in the list.
+  const [detailExpense, setDetailExpense] = useState<ProjectExpense | null>(null);
 
   const [sheetOpen, setSheetOpen] = useState(false);
   const [category, setCategory] = useState<ExpenseCategory>('materiaux');
@@ -494,14 +510,18 @@ export default function ExpensesScreen() {
             >
               <ArrowLeftIcon size={20} />
             </XStack>
+            <Icon3D name="upload-file" size={28} />
             <Text fontFamily="$display" fontSize={23} fontWeight="600">
               Dépenses
             </Text>
           </XStack>
         ) : (
-          <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-            Dépenses
-          </Text>
+          <XStack alignItems="center" gap="$2" marginBottom="$4">
+            <Icon3D name="upload-file" size={40} />
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Dépenses
+            </Text>
+          </XStack>
         )}
 
         {!deepLinkProjectId && (
@@ -643,6 +663,7 @@ export default function ExpensesScreen() {
                         {Number(e.amount).toFixed(0)} TND
                       </NumericText>
                     }
+                    onPress={() => setDetailExpense(e)}
                   />
                 </SwipeableRow>
               ))
@@ -758,6 +779,61 @@ export default function ExpensesScreen() {
             Enregistrer
           </Button>
         </YStack>
+      </Sheet>
+
+      {/* Detail modal — shows the full expense, including its receipt
+          photo (previously uploaded but never displayed anywhere). */}
+      <Sheet
+        visible={!!detailExpense}
+        onClose={() => setDetailExpense(null)}
+        title={detailExpense ? CATEGORY_LABEL[detailExpense.category] : ''}
+      >
+        {detailExpense && (
+          <YStack gap="$3">
+            <XStack justifyContent="space-between" alignItems="center">
+              <Text color="$neutral500" fontSize={14}>
+                Montant
+              </Text>
+              <NumericText fontSize={20} fontWeight="700">
+                {Number(detailExpense.amount).toFixed(0)} TND
+              </NumericText>
+            </XStack>
+            <XStack justifyContent="space-between" alignItems="center">
+              <Text color="$neutral500" fontSize={14}>
+                Date
+              </Text>
+              <Text fontSize={14}>{detailExpense.expense_date}</Text>
+            </XStack>
+            {detailExpense.description && (
+              <YStack gap="$1">
+                <Text color="$neutral500" fontSize={14}>
+                  Description
+                </Text>
+                <Text fontSize={14}>{detailExpense.description}</Text>
+              </YStack>
+            )}
+            <YStack gap="$1.5">
+              <Text color="$neutral500" fontSize={14}>
+                Reçu
+              </Text>
+              {detailExpense.receipt_photo_url &&
+              receiptUrlByPath[detailExpense.receipt_photo_url] ? (
+                <Image
+                  src={receiptUrlByPath[detailExpense.receipt_photo_url]}
+                  width="100%"
+                  height={240}
+                  borderRadius={12}
+                  resizeMode="contain"
+                  backgroundColor="$neutral25"
+                />
+              ) : (
+                <Text color="$neutral400" fontSize={14}>
+                  Aucun reçu joint.
+                </Text>
+              )}
+            </YStack>
+          </YStack>
+        )}
       </Sheet>
 
       {/* Phase 11 §9.2 — undo-toast for the delete flow above. */}

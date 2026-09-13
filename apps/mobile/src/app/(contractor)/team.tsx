@@ -425,7 +425,7 @@ export default function TeamScreen() {
       >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$3">
           <XStack alignItems="center" gap="$2">
-            <Icon3D name="safety-helmet" size={28} />
+            <Icon3D name="safety-helmet" size={40} />
             <Text fontFamily="$display" fontSize={23} fontWeight="600">
               Équipe
             </Text>

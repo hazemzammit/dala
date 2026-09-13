@@ -7,6 +7,7 @@ import { Text, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonCardList } from '@/components/ui/Skeleton';
 import { listOwnedOrganizations, type MyOrgSummary } from '@/lib/myOrgs';
@@ -127,9 +128,12 @@ export default function VueEnsembleScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-          Vue d&apos;ensemble
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$1">
+          <Icon3D name="city" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Vue d&apos;ensemble
+          </Text>
+        </XStack>
         <Text fontSize={13.5} color="$neutral500" marginBottom="$4">
           {rollups.length} entreprises que vous possédez
         </Text>

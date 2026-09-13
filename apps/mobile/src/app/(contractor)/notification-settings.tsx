@@ -5,6 +5,7 @@ import { useCallback, useState } from 'react';
 import { ScrollView } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useToast } from '@/components/ui/Toast';
 import { Toggle } from '@/components/ui/Toggle';
@@ -158,6 +159,7 @@ export default function NotificationSettingsScreen() {
         <Text fontFamily="$display" fontSize={18} fontWeight="600">
           Notifications
         </Text>
+        <Icon3D name="bell-alert" size={28} />
       </XStack>
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>

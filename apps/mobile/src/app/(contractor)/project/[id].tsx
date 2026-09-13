@@ -13,12 +13,13 @@ import {
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { ScrollView } from 'react-native';
-import { Text, XStack, YStack } from 'tamagui';
+import { Image, Text, XStack, YStack } from 'tamagui';
 
 import { ErrorState } from '@/components/ui/ErrorState';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
+import { getSignedUrl } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
 import { useTokenColor } from '@/lib/useTokenColor';
 
@@ -99,6 +100,11 @@ export default function ProjectHubScreen() {
   const [project, setProject] = useState<Project | null>(null);
   const [isLead, setIsLead] = useState(false);
   const [leadOrgName, setLeadOrgName] = useState<string | null>(null);
+  // Bug fix: this screen fetched `project.cover_photo_url` via its own
+  // `select('*')` all along but never rendered it anywhere — a real gap,
+  // not a design choice (Chantiers' list card and the dashboard carousel
+  // both show it; the detail page silently didn't).
+  const [coverSignedUrl, setCoverSignedUrl] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -126,6 +132,7 @@ export default function ProjectHubScreen() {
       return;
     }
     setProject(data as Project);
+    setCoverSignedUrl(data.cover_photo_url ? await getSignedUrl(data.cover_photo_url) : null);
 
     const lead = activeOrgId != null && data.lead_org_id === activeOrgId;
     setIsLead(lead);
@@ -146,7 +153,7 @@ export default function ProjectHubScreen() {
 
   if (loading) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+      <YStack flex={1} backgroundColor="$neutral25">
         <SkeletonList rows={4} />
       </YStack>
     );
@@ -154,7 +161,7 @@ export default function ProjectHubScreen() {
 
   if (loadError) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56}>
+      <YStack flex={1} backgroundColor="$neutral25">
         <ErrorState onRetry={() => void load()} />
       </YStack>
     );
@@ -162,8 +169,8 @@ export default function ProjectHubScreen() {
 
   if (!project) {
     return (
-      <YStack flex={1} backgroundColor="$neutral25" paddingTop={56} paddingHorizontal="$4">
-        <XStack alignItems="center" gap="$3" marginBottom="$4">
+      <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
+        <XStack alignItems="center" gap="$3" marginTop="$4" marginBottom="$4">
           <XStack
             onPress={() => router.back()}
             accessibilityRole="button"
@@ -187,7 +194,16 @@ export default function ProjectHubScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25">
-      <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 60 }}>
+      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 60 }}>
+        {coverSignedUrl && (
+          <Image
+            src={coverSignedUrl}
+            width="100%"
+            height={160}
+            borderRadius={12}
+            marginBottom="$4"
+          />
+        )}
         <XStack alignItems="center" gap="$3" marginBottom="$4">
           <XStack
             onPress={() => router.back()}

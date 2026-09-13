@@ -31,6 +31,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
 import { Grid } from '@/components/ui/Grid';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { Popover } from '@/components/ui/Popover';
 import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
@@ -399,16 +400,19 @@ export default function ProjectsScreen() {
         : undefined;
 
     return (
-      <YStack key={project.id} gap="$2">
-        {project.cover_photo_url && cardPhotoUrlByPath[project.cover_photo_url] && (
-          <Image
-            src={cardPhotoUrlByPath[project.cover_photo_url]}
-            width="100%"
-            height={100}
-            borderRadius={10}
-          />
-        )}
+      // Bug fix: the cover photo used to render as a sibling ABOVE
+      // ListCard (inside this plain, unstyled YStack) instead of inside
+      // the card's own bordered/rounded surface — it floated free of the
+      // card chrome and, at the narrower width of the 2-column grid view,
+      // its fixed 100px height dominated the card. ListCard's coverImage
+      // slot now handles sizing and containment consistently.
+      <YStack key={project.id}>
         <ListCard
+          coverImage={
+            project.cover_photo_url && cardPhotoUrlByPath[project.cover_photo_url] ? (
+              <Image src={cardPhotoUrlByPath[project.cover_photo_url]} width="100%" height={100} />
+            ) : undefined
+          }
           icon={typeMeta.icon}
           iconTint={chipTint}
           title={project.name}
@@ -638,9 +642,12 @@ export default function ProjectsScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3" gap="$3">
-        <Text fontFamily="$display" fontSize={23} fontWeight="600">
-          Chantiers
-        </Text>
+        <XStack alignItems="center" gap="$2">
+          <Icon3D name="blueprint" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Chantiers
+          </Text>
+        </XStack>
 
         {/* UI/UX pass — search field and filter button now share one
             component (SearchFilterBar) with a single height source
@@ -757,7 +764,7 @@ export default function ProjectsScreen() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={BuildingsIcon}
-          icon3d="info"
+          icon3d="construction-site"
           title={
             projects.length === 0 ? 'Aucun chantier pour le moment' : 'Aucun chantier ne correspond'
           }

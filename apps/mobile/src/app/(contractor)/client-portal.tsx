@@ -21,6 +21,7 @@ import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
@@ -371,9 +372,12 @@ export default function ClientPortalScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-          Portail client
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$1">
+          <Icon3D name="link-chain" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Portail client
+          </Text>
+        </XStack>
         <Text color="$neutral500" fontSize={13} marginBottom="$4">
           Partagez un accès en lecture seule à vos clients, par chantier
         </Text>

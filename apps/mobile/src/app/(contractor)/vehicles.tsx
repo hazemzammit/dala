@@ -24,6 +24,7 @@ import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { PlateInput } from '@/components/ui/PlateInput';
 import { SearchFilterBar } from '@/components/ui/SearchFilterBar';
@@ -498,9 +499,12 @@ export default function VehiclesScreen() {
         }
         ListHeaderComponent={
           <YStack marginBottom="$4" gap="$3">
-            <Text fontFamily="$display" fontSize={23} fontWeight="600">
-              Véhicules
-            </Text>
+            <XStack alignItems="center" gap="$2">
+              <Icon3D name="pickup-truck" size={40} />
+              <Text fontFamily="$display" fontSize={23} fontWeight="600">
+                Véhicules
+              </Text>
+            </XStack>
             {/* Phase 11 §9.1 — search_all-backed search bar. See file
                 header for why this screen calls the RPC instead of
                 filtering client-side. UI/UX pass: now on SearchFilterBar
@@ -546,6 +550,7 @@ export default function VehiclesScreen() {
                     width={44}
                     height={44}
                     borderRadius={11}
+                    resizeMode="cover"
                   />
                 ) : (
                   <View
@@ -619,6 +624,7 @@ export default function VehiclesScreen() {
                   width={72}
                   height={72}
                   borderRadius={12}
+                  resizeMode="cover"
                 />
                 <Button
                   variant="secondary"

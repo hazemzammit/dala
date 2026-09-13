@@ -16,6 +16,7 @@ import { CriticalMetricHero } from '@/components/ui/CriticalMetricHero';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { ProgressRing } from '@/components/ui/Progress';
@@ -468,9 +469,12 @@ export default function AdvancesScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-          Avances & paie
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$1">
+          <Icon3D name="hand-coins" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Avances & paie
+          </Text>
+        </XStack>
         <Text color="$neutral500" fontSize={13} marginBottom="$4">
           Cycle du {cycleStart} au {cycleEnd}
         </Text>

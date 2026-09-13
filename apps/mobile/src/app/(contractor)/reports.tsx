@@ -10,6 +10,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { getActiveOrgId } from '@/lib/activeOrg';
@@ -258,9 +259,12 @@ export default function ReportsScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
-      <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$1">
-        Rapports
-      </Text>
+      <XStack alignItems="center" gap="$2" marginBottom="$1">
+        <Icon3D name="pdf-document" size={40} />
+        <Text fontFamily="$display" fontSize={23} fontWeight="600">
+          Rapports
+        </Text>
+      </XStack>
       <Text fontSize={14} color="$neutral500" marginBottom="$4">
         Générez un rapport pour une période donnée, prêt à partager par WhatsApp ou e-mail.
       </Text>

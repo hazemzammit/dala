@@ -8,6 +8,7 @@ import { Text, View, XStack, YStack } from 'tamagui';
 
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -209,9 +210,12 @@ export default function PortfolioScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3">
-        <Text fontFamily="$display" fontSize={23} fontWeight="600">
-          Portefeuille
-        </Text>
+        <XStack alignItems="center" gap="$2">
+          <Icon3D name="apartment-building" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Portefeuille
+          </Text>
+        </XStack>
         <Text fontSize={13} color="$neutral500" marginTop="$1">
           Budget et activité de tous vos chantiers.
         </Text>

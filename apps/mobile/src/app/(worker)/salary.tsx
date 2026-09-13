@@ -9,6 +9,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { NumericText } from '@/components/ui/NumericText';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
@@ -198,9 +199,12 @@ export default function WorkerSalaryScreen() {
         }
       >
         <XStack justifyContent="space-between" alignItems="center" marginBottom="$1">
-          <Text fontFamily="$display" fontSize={23} fontWeight="600">
-            Mon salaire
-          </Text>
+          <XStack alignItems="center" gap="$2">
+            <Icon3D name="wallet-cash" size={40} />
+            <Text fontFamily="$display" fontSize={23} fontWeight="600">
+              Mon salaire
+            </Text>
+          </XStack>
           <StatusBadge variant={paid ? 'success' : 'neutral'}>
             {paid ? 'Payé' : 'En attente'}
           </StatusBadge>

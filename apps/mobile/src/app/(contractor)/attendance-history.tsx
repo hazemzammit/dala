@@ -22,7 +22,7 @@ export default function AttendanceHistoryScreen() {
       <XStack
         alignItems="center"
         gap="$3"
-        paddingTop={56}
+        paddingTop="$4"
         paddingHorizontal="$4"
         paddingBottom="$3"
       >

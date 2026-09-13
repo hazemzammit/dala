@@ -72,7 +72,7 @@ export default function WorkerSettingsScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25" padding="$4">
       <XStack alignItems="center" gap="$2" marginBottom="$4">
-        <Icon3D name="settings-gear" size={28} />
+        <Icon3D name="settings-gear" size={40} />
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Réglages
         </Text>

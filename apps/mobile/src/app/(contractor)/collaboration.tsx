@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Sheet } from '@/components/ui/Sheet';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -389,9 +390,12 @@ export default function CollaborationScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-          Collaboration
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$4">
+          <Icon3D name="share" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Collaboration
+          </Text>
+        </XStack>
 
         {ledProjects.length > 0 && (
           <YStack gap="$3" marginBottom="$5">

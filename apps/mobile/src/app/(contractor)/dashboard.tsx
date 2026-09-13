@@ -919,15 +919,25 @@ export default function DashboardScreen() {
                         marginBottom="$1"
                       />
                     ) : (
+                      // Bug fix: this fallback used to be a small 36x36 icon
+                      // badge sitting where the 90px-tall cover photo goes for
+                      // every other card. Since the carousel lays cards out
+                      // side by side at a fixed width, a 36px-tall card next
+                      // to a 90px-tall one made the row look broken/uneven.
+                      // Matching the same full-width, 90px footprint here —
+                      // just with a tinted placeholder instead of a photo —
+                      // keeps every card the same height regardless of
+                      // whether that project has a cover photo.
                       <View
-                        width={36}
-                        height={36}
+                        width="100%"
+                        height={90}
                         borderRadius={10}
+                        marginBottom="$1"
                         alignItems="center"
                         justifyContent="center"
                         backgroundColor={toRgba(typeTint, 0.14)}
                       >
-                        <TypeIcon size={18} weight="fill" color={typeTint} />
+                        <TypeIcon size={28} weight="fill" color={typeTint} />
                       </View>
                     )}
                     <Text fontSize={15} fontWeight="600" numberOfLines={1}>

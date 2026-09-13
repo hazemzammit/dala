@@ -249,9 +249,12 @@ export default function BillingScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-          Facturation
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$4">
+          <Icon3D name="invoice" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Facturation
+          </Text>
+        </XStack>
 
         {org.subscription_status === 'past_due' && (
           <YStack

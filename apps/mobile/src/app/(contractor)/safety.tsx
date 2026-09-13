@@ -23,6 +23,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { ListCard } from '@/components/ui/ListCard';
 import { NumericText } from '@/components/ui/NumericText';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -407,9 +408,12 @@ export default function SafetyScreen() {
           />
         }
       >
-        <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$4">
-          Sécurité & assurance
-        </Text>
+        <XStack alignItems="center" gap="$2" marginBottom="$4">
+          <Icon3D name="safety-vest" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Sécurité & assurance
+          </Text>
+        </XStack>
 
         <YStack marginBottom="$4">
           <SegmentedControl

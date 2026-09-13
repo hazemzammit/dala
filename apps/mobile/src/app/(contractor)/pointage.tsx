@@ -18,6 +18,7 @@ import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Select } from '@/components/ui/Select';
 import { SkeletonList } from '@/components/ui/Skeleton';
@@ -223,8 +224,25 @@ export default function PointageScreen() {
       void getActiveOrgId().then((id) => {
         setOrgId(id);
         setOrgChecked(true);
+        // Bug fix: resetting hasSeededRef alone doesn't guarantee the
+        // seeding effect below re-runs — that effect is keyed on
+        // `attendanceQuery.data`, and if the query's cached data already
+        // has the post-save reference by the time this screen refocuses
+        // (e.g. handleSave's invalidateQueries finished its background
+        // refetch while this screen was unfocused, which is the common
+        // case — the invalidation fires right away, well before a user
+        // manually navigates back), the effect's dependency never
+        // changes, so it never re-fires, and `statuses` silently keeps
+        // showing whatever it held before — looking exactly like "the
+        // pointage I just did wasn't saved" even though it was.
+        // Explicitly refetching by key here (rather than via
+        // `attendanceQuery.refetch`, whose identity isn't guaranteed
+        // stable enough to close over safely) guarantees a real network
+        // read on every focus, using the just-resolved `id` and `date`
+        // (both in this callback's deps, so neither goes stale).
+        if (id) void queryClient.refetchQueries({ queryKey: ['attendance', id, date] });
       });
-    }, []),
+    }, [queryClient, date]),
   );
 
   // A different date is a genuinely different data set — reseed from a
@@ -449,6 +467,7 @@ export default function PointageScreen() {
           <YStack>
             <XStack justifyContent="space-between" alignItems="center" marginBottom="$1">
               <XStack alignItems="center" gap="$2">
+                <Icon3D name="alarm-clock-red" size={40} />
                 <Text fontFamily="$display" fontSize={23} fontWeight="600">
                   Pointage
                 </Text>

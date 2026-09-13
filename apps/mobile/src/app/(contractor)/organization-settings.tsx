@@ -11,7 +11,6 @@ import {
   ArrowLeftIcon,
   BuildingsIcon,
   CameraIcon,
-  CheckCircleIcon,
   EnvelopeIcon,
   MapPinIcon,
   PhoneIcon,
@@ -23,6 +22,7 @@ import { Image, Text, View, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { FormField } from '@/components/ui/FormField';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { PermissionLock } from '@/components/ui/PermissionLock';
 import { ProgressBar } from '@/components/ui/Progress';
 import { Select } from '@/components/ui/Select';
@@ -581,9 +581,7 @@ export default function OrganizationSettingsScreen() {
               mobile-writable action, same read-only-past-this-point
               reasoning 0075's original column comment already gave. */}
           <XStack alignItems="center" gap="$2" flexWrap="wrap">
-            {verificationStatus === 'verified' && (
-              <CheckCircleIcon size={16} color={color.status.success} weight="fill" />
-            )}
+            {verificationStatus === 'verified' && <Icon3D name="id-verified" size={20} />}
             <Text fontSize={13.5} color="$neutral500">
               Vérification : {VERIFICATION_LABEL[verificationStatus] ?? 'Non vérifiée'}
             </Text>

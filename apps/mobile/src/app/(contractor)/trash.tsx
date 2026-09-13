@@ -9,6 +9,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SkeletonList } from '@/components/ui/Skeleton';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId } from '@/lib/activeOrg';
@@ -253,9 +254,12 @@ export default function TrashScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3">
-        <Text fontFamily="$display" fontSize={23} fontWeight="600">
-          Corbeille
-        </Text>
+        <XStack alignItems="center" gap="$2">
+          <Icon3D name="trash-warning" size={40} />
+          <Text fontFamily="$display" fontSize={23} fontWeight="600">
+            Corbeille
+          </Text>
+        </XStack>
         <Text fontSize={13} color="$neutral500" marginTop="$1">
           Restaurable pendant 30 jours après suppression.
         </Text>

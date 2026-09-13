@@ -35,6 +35,14 @@ interface ListCardMetaItem {
 }
 
 interface ListCardProps {
+  /** Full-bleed image rendered at the top of the card, inside its border/
+   * radius/background — e.g. a project's cover photo. Bug fix: screens
+   * used to render this kind of image as a sibling ABOVE the card instead
+   * of a slot within it, so it visually floated with no card chrome
+   * around it. This slot fixes that at the shared-component level so
+   * every consumer gets it right, not just the one screen that happened
+   * to get patched. */
+  coverImage?: ReactNode;
   /** Leading icon — rendered inside a tinted rounded-square chip. Mutually
    * exclusive with `leading` (e.g. an Avatar) — pass one or the other. */
   icon?: Icon;
@@ -71,6 +79,7 @@ interface ListCardProps {
 }
 
 export function ListCard({
+  coverImage,
   icon: IconComponent,
   iconTint,
   leading,
@@ -95,92 +104,95 @@ export function ListCard({
       borderRadius="$card"
       borderWidth={muted ? 0 : 1}
       borderColor="$neutral100"
-      padding="$4"
-      gap="$3"
+      overflow="hidden"
+      gap={coverImage ? undefined : '$3'}
       opacity={muted ? 0.85 : 1}
       onPress={onPress}
       onLongPress={onLongPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={onPress ? title : undefined}
     >
-      <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
-        <XStack flex={1} gap="$3" alignItems="center">
-          {leading}
-          {!leading && IconComponent && iconTint && (
-            <View
-              width={40}
-              height={40}
-              borderRadius={11}
-              alignItems="center"
-              justifyContent="center"
-              backgroundColor={toRgba(iconTint, 0.14)}
-            >
-              <IconComponent size={20} weight="fill" color={iconTint} />
-            </View>
-          )}
-          <YStack flex={1} gap={2}>
-            <Text fontSize={16} fontWeight="600" numberOfLines={1}>
-              {title}
-            </Text>
-            {subtitle && (
-              <Text fontSize={13} color="$neutral500" numberOfLines={1}>
-                {subtitle}
-              </Text>
+      {coverImage}
+      <YStack padding="$4" gap="$3" paddingTop={coverImage ? '$3' : '$4'}>
+        <XStack justifyContent="space-between" alignItems="flex-start" gap="$2">
+          <XStack flex={1} gap="$3" alignItems="center">
+            {leading}
+            {!leading && IconComponent && iconTint && (
+              <View
+                width={40}
+                height={40}
+                borderRadius={11}
+                alignItems="center"
+                justifyContent="center"
+                backgroundColor={toRgba(iconTint, 0.14)}
+              >
+                <IconComponent size={20} weight="fill" color={iconTint} />
+              </View>
             )}
-          </YStack>
-        </XStack>
-
-        <XStack gap="$2" alignItems="center">
-          {badge}
-          {onOverflowPress && (
-            <XStack
-              width={28}
-              height={28}
-              borderRadius={999}
-              alignItems="center"
-              justifyContent="center"
-              onPress={(e: any) => {
-                e.stopPropagation?.();
-                onOverflowPress();
-              }}
-              accessibilityRole="button"
-              accessibilityLabel={overflowLabel}
-              hitSlop={8}
-            >
-              <DotsThreeVerticalIcon size={18} weight="bold" color={tc.neutral500} />
-            </XStack>
-          )}
-        </XStack>
-      </XStack>
-
-      {metaItems && metaItems.length > 0 && (
-        <XStack gap="$4" flexWrap="wrap">
-          {metaItems.map((item, i) => (
-            <XStack key={i} gap="$1.5" alignItems="center" flexShrink={1}>
-              <item.icon size={13} color={tc.neutral500} />
-              <Text fontSize={12.5} color="$neutral500" numberOfLines={1}>
-                {item.label}
+            <YStack flex={1} gap={2}>
+              <Text fontSize={16} fontWeight="600" numberOfLines={1}>
+                {title}
               </Text>
-            </XStack>
-          ))}
-        </XStack>
-      )}
-
-      {children}
-
-      {progressValue !== null && progressValue !== undefined && (
-        <YStack gap="$1.5">
-          <XStack justifyContent="space-between">
-            <Text fontSize={12.5} color="$neutral500">
-              {progressLabel}
-            </Text>
-            <NumericText fontSize={12.5} fontWeight="600" color="$neutral900">
-              {Math.round(progressValue)}%
-            </NumericText>
+              {subtitle && (
+                <Text fontSize={13} color="$neutral500" numberOfLines={1}>
+                  {subtitle}
+                </Text>
+              )}
+            </YStack>
           </XStack>
-          <ProgressBar value={progressValue} />
-        </YStack>
-      )}
+
+          <XStack gap="$2" alignItems="center">
+            {badge}
+            {onOverflowPress && (
+              <XStack
+                width={28}
+                height={28}
+                borderRadius={999}
+                alignItems="center"
+                justifyContent="center"
+                onPress={(e: any) => {
+                  e.stopPropagation?.();
+                  onOverflowPress();
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={overflowLabel}
+                hitSlop={8}
+              >
+                <DotsThreeVerticalIcon size={18} weight="bold" color={tc.neutral500} />
+              </XStack>
+            )}
+          </XStack>
+        </XStack>
+
+        {metaItems && metaItems.length > 0 && (
+          <XStack gap="$4" flexWrap="wrap">
+            {metaItems.map((item, i) => (
+              <XStack key={i} gap="$1.5" alignItems="center" flexShrink={1}>
+                <item.icon size={13} color={tc.neutral500} />
+                <Text fontSize={12.5} color="$neutral500" numberOfLines={1}>
+                  {item.label}
+                </Text>
+              </XStack>
+            ))}
+          </XStack>
+        )}
+
+        {children}
+
+        {progressValue !== null && progressValue !== undefined && (
+          <YStack gap="$1.5">
+            <XStack justifyContent="space-between">
+              <Text fontSize={12.5} color="$neutral500">
+                {progressLabel}
+              </Text>
+              <NumericText fontSize={12.5} fontWeight="600" color="$neutral900">
+                {Math.round(progressValue)}%
+              </NumericText>
+            </XStack>
+            <ProgressBar value={progressValue} />
+          </YStack>
+        )}
+      </YStack>
     </YStack>
   );
 }

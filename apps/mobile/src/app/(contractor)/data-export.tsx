@@ -3,10 +3,11 @@ import { useFocusEffect } from 'expo-router';
 import { DownloadSimpleIcon } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
 import { Share } from 'react-native';
-import { Text, YStack } from 'tamagui';
+import { Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Icon3D } from '@/components/ui/Icon3D';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { useToast } from '@/components/ui/Toast';
 import { getActiveOrgId, getMyOrgRole } from '@/lib/activeOrg';
@@ -97,9 +98,12 @@ export default function DataExportScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" paddingHorizontal="$4">
-      <Text fontFamily="$display" fontSize={23} fontWeight="600" marginBottom="$2">
-        Exporter mes données
-      </Text>
+      <XStack alignItems="center" gap="$2" marginBottom="$2">
+        <Icon3D name="download-file" size={40} />
+        <Text fontFamily="$display" fontSize={23} fontWeight="600">
+          Exporter mes données
+        </Text>
+      </XStack>
       <Text fontSize={14} color="$neutral500" marginBottom="$4">
         Téléchargez l&apos;ensemble des données de votre entreprise (chantiers, équipe, dispatch,
         avances, dépenses, matériaux, journal, sécurité, assurances) au format de votre choix.

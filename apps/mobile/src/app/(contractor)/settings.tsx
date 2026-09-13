@@ -142,7 +142,7 @@ export default function SettingsScreen() {
     <YStack flex={1} backgroundColor="$neutral25">
       <YStack paddingHorizontal="$4" paddingBottom="$3">
         <XStack alignItems="center" gap="$2">
-          <Icon3D name="settings-gear" size={28} />
+          <Icon3D name="settings-gear" size={40} />
           <Text fontFamily="$display" fontSize={23} fontWeight="600">
             Paramètres
           </Text>
