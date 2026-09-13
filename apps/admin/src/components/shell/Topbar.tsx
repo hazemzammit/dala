@@ -43,7 +43,7 @@ export function Topbar() {
       <div className="flex items-center gap-3">
         {data && (
           <div className="flex items-center gap-2.5 pr-1">
-            <div className="rounded-control bg-accent-100 text-accent-700 flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold">
+            <div className="rounded-control bg-accent-100 text-accent-700 flex h-10 w-10 shrink-0 items-center justify-center text-xs font-semibold">
               {data.admin.full_name.charAt(0).toUpperCase()}
             </div>
             <div className="hidden leading-tight sm:block">

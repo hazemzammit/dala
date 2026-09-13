@@ -70,7 +70,7 @@ export function Sidebar({ organizationName, userName, userAvatarUrl }: SidebarPr
     <aside className="bg-neutral-0 flex h-screen w-[260px] shrink-0 flex-col border-e border-neutral-100">
       {/* Org switcher */}
       <button className="hover:bg-neutral-25 flex items-center gap-2.5 border-b border-neutral-100 px-4 py-4 text-start">
-        <div className="rounded-control bg-accent-100 text-accent-700 flex h-8 w-8 items-center justify-center text-sm font-semibold">
+        <div className="rounded-control bg-accent-100 text-accent-700 flex h-10 w-10 items-center justify-center text-sm font-semibold">
           {organizationName.charAt(0).toUpperCase()}
         </div>
         <span className="flex-1 truncate text-sm font-medium text-neutral-900">

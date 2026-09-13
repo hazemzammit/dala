@@ -152,7 +152,7 @@ export function Sidebar() {
               alt="Dala"
               width={32}
               height={32}
-              className="h-8 w-8 object-contain"
+              className="h-10 w-10 object-contain"
             />
           </div>
         ) : (
@@ -211,7 +211,7 @@ export function Sidebar() {
         }`}
       >
         <div
-          className="rounded-control bg-accent-100 text-accent-700 flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold"
+          className="rounded-control bg-accent-100 text-accent-700 flex h-9 w-9 shrink-0 items-center justify-center text-xs font-semibold"
           title={collapsed ? data?.admin.full_name : undefined}
         >
           {(data?.admin.full_name ?? '?').charAt(0).toUpperCase()}
@@ -236,7 +236,7 @@ export function Sidebar() {
           title="Déconnexion"
           className={`hover:text-danger shrink-0 text-neutral-500 ${
             collapsed
-              ? 'flex h-8 w-8 items-center justify-center rounded-lg hover:bg-neutral-100'
+              ? 'flex h-9 w-9 items-center justify-center rounded-lg hover:bg-neutral-100'
               : ''
           }`}
         >
