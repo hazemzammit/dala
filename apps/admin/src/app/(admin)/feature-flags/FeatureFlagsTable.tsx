@@ -285,12 +285,15 @@ export function FeatureFlagsTable() {
                   />
                   Par défaut
                 </label>
+                {/* Step 14 (§5 Services-health/sessions-size pass) — the
+                  per-flag Supprimer button had an explicit size="sm";
+                  removed to fall back to the shared md default, matching
+                  every other table's row-action size per the DoD. */}
                 {canEdit && (
                   <IconActionButton
                     icon={TrashIcon}
                     label="Supprimer"
                     tone="danger"
-                    size="sm"
                     onClick={() => deleteFlag(flag.key)}
                   />
                 )}

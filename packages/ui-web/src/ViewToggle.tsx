@@ -49,7 +49,7 @@ export function ViewToggle({ value, onChange }: ViewToggleProps) {
             aria-label={label}
             title={label}
             className={[
-              'inline-flex h-8 w-8 items-center justify-center rounded-full transition-all duration-150',
+              'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
               active
                 ? 'bg-neutral-0 text-accent-700 shadow-[0_1px_3px_rgba(17,19,24,0.12)]'
                 : 'text-neutral-500 hover:text-neutral-900',

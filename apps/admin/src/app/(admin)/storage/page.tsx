@@ -31,7 +31,7 @@ export default function StorageMonitorPage() {
       <PageHero
         icon={HardDrivesIcon}
         title="Surveillance du stockage"
-        description="Utilisation réelle par organisation, calculée à partir de storage.objects (bucket org-files). Seuils de dépassement (Doc 00 §0.3, plan gratuit uniquement) : 800 Mo, 950 Mo, 1 Go."
+        description="Utilisation du stockage par organisation, avec seuils d'alerte."
       />
       <StorageUsageTable />
     </div>

@@ -44,6 +44,19 @@ import { Pagination } from './Pagination';
  * checkbox, bulk-action toolbar." Doc 05 §3.5 — "back-office density
  * without feeling like generic back-office software" — plain HTML table,
  * no external table library.
+ *
+ * Phase 4.7 (§2.5) — header row gains the page-background tint
+ * (`bg-neutral-25`) and rows gain a hairline left accent on hover
+ * (`border-l-2 border-l-transparent hover:border-l-accent-200`) — the
+ * hover-only treatment §2.5's [DECISION] picked over zebra striping
+ * (Doc 05's "colored table-row backgrounds" prohibition for status
+ * stays intact). Applies to both apps — every table-bearing screen.
+ *
+ * Phase 4.7 (§5 Services-Health item) — new optional `bare` prop skips
+ * this component's own Card wrapper (renders the <table> directly) for
+ * tables nested inside a SectionCard, where the SectionCard already
+ * supplies the one raised boundary. Default `false` — zero change for
+ * every existing call site in both apps; consumers adopt it in Step 10.
  */
 export interface DataTableColumn<T> {
   key: string;
@@ -78,6 +91,14 @@ interface DataTableProps<T> {
   // See "BEHAVIORAL DIFFERENCE FOUND" #2 above. Default `false` matches
   // Web's original (and this component's default) behavior.
   resetSelectionOnRowsChange?: boolean;
+
+  // Phase 4.7 (§5 Services-Health item) — skips this component's own Card
+  // wrapper and renders the <table> directly, for tables nested inside a
+  // SectionCard (where the SectionCard already supplies the one raised
+  // boundary — otherwise card-in-card). Default `false` keeps every
+  // existing call site's rendering byte-identical; consumers adopt it
+  // in Step 10.
+  bare?: boolean;
 }
 
 export function DataTable<T>({
@@ -90,6 +111,7 @@ export function DataTable<T>({
   emptyState,
   pagination,
   resetSelectionOnRowsChange = false,
+  bare = false,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
@@ -139,8 +161,82 @@ export function DataTable<T>({
   }
 
   if (rows.length === 0 && emptyState) {
-    return <Card>{emptyState}</Card>;
+    return bare ? <>{emptyState}</> : <Card>{emptyState}</Card>;
   }
+
+  const table = (
+    <table className="w-full border-collapse text-sm">
+      <thead>
+        <tr className="bg-neutral-25 border-b border-neutral-100">
+          {selectable && (
+            <th className="w-10 px-4 py-3">
+              <input
+                type="checkbox"
+                checked={selected.size === sortedRows.length && sortedRows.length > 0}
+                onChange={toggleAll}
+                className="rounded border-neutral-300"
+              />
+            </th>
+          )}
+          {columns.map((column) => (
+            <th
+              key={column.key}
+              style={{ width: column.width }}
+              className={`px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500 ${
+                column.align === 'right' ? 'text-right' : 'text-left'
+              }`}
+            >
+              {column.sortValue ? (
+                <button
+                  onClick={() => toggleSort(column)}
+                  className="inline-flex items-center gap-1 hover:text-neutral-900"
+                >
+                  {column.header}
+                  {sortKey === column.key &&
+                    (sortDir === 'asc' ? <CaretUpIcon size={12} /> : <CaretDownIcon size={12} />)}
+                </button>
+              ) : (
+                column.header
+              )}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {sortedRows.map((row) => {
+          const id = getRowId(row);
+          return (
+            <tr
+              key={id}
+              onClick={() => onRowClick?.(row)}
+              className={`hover:border-l-accent-200 hover:bg-neutral-25 group border-b border-l-2 border-neutral-100 border-l-transparent last:border-0 ${
+                onRowClick ? 'cursor-pointer' : ''
+              }`}
+            >
+              {selectable && (
+                <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={selected.has(id)}
+                    onChange={() => toggleRow(id)}
+                    className="rounded border-neutral-300"
+                  />
+                </td>
+              )}
+              {columns.map((column) => (
+                <td
+                  key={column.key}
+                  className={`px-4 py-3 text-neutral-900 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
+                >
+                  {column.render(row)}
+                </td>
+              ))}
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
 
   return (
     <div>
@@ -151,83 +247,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <Card className="overflow-hidden">
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-neutral-100">
-              {selectable && (
-                <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={selected.size === sortedRows.length && sortedRows.length > 0}
-                    onChange={toggleAll}
-                    className="rounded border-neutral-300"
-                  />
-                </th>
-              )}
-              {columns.map((column) => (
-                <th
-                  key={column.key}
-                  style={{ width: column.width }}
-                  className={`px-4 py-3 text-xs font-semibold uppercase tracking-[0.04em] text-neutral-500 ${
-                    column.align === 'right' ? 'text-right' : 'text-left'
-                  }`}
-                >
-                  {column.sortValue ? (
-                    <button
-                      onClick={() => toggleSort(column)}
-                      className="inline-flex items-center gap-1 hover:text-neutral-900"
-                    >
-                      {column.header}
-                      {sortKey === column.key &&
-                        (sortDir === 'asc' ? (
-                          <CaretUpIcon size={12} />
-                        ) : (
-                          <CaretDownIcon size={12} />
-                        ))}
-                    </button>
-                  ) : (
-                    column.header
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sortedRows.map((row) => {
-              const id = getRowId(row);
-              return (
-                <tr
-                  key={id}
-                  onClick={() => onRowClick?.(row)}
-                  className={`hover:bg-neutral-25 border-b border-neutral-100 last:border-0 ${
-                    onRowClick ? 'cursor-pointer' : ''
-                  }`}
-                >
-                  {selectable && (
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <input
-                        type="checkbox"
-                        checked={selected.has(id)}
-                        onChange={() => toggleRow(id)}
-                        className="rounded border-neutral-300"
-                      />
-                    </td>
-                  )}
-                  {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`px-4 py-3 text-neutral-900 ${column.align === 'right' ? 'text-right' : 'text-left'}`}
-                    >
-                      {column.render(row)}
-                    </td>
-                  ))}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+      {bare ? table : <Card className="overflow-hidden">{table}</Card>}
 
       {pagination && <Pagination {...pagination} />}
     </div>

@@ -37,7 +37,7 @@ export default function BillingPage() {
       <PageHero
         icon={ReceiptIcon}
         title="Facturation"
-        description="MRR, abonnements par organisation, et actions manuelles (prolongation, remise, paiement hors Konnect, annulation). L'intégration réelle avec Konnect reste dans les Edge Functions — cet écran ne fait qu'afficher et ajuster l'état déjà enregistré."
+        description="Abonnements, MRR et actions manuelles par organisation."
       />
       <BillingTable />
     </div>

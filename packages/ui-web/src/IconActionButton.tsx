@@ -39,18 +39,23 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes } from 'react';
  * inline/table tier, which §14 pins separately.
  */
 
-type IconActionTone = 'accent' | 'warning' | 'danger' | 'neutral';
+type IconActionTone = 'accent' | 'success' | 'warning' | 'danger' | 'neutral';
 
 const toneClasses: Record<IconActionTone, string> = {
   accent: 'text-accent-700 hover:border-accent-200 hover:bg-accent-50',
+  // Phase 4.7 (§1.3) — approval-success actions (e.g. "Approuver") get
+  // their own tone instead of borrowing accent (§1.3's flag: two
+  // semantically different actions shared one tone). Same hover-tint
+  // pattern as warning/danger; existing success token, no new hex.
+  success: 'text-success hover:border-success/30 hover:bg-success/10',
   warning: 'text-warning hover:border-warning/30 hover:bg-warning/10',
   danger: 'text-danger hover:border-danger/30 hover:bg-danger/10',
   neutral: 'text-neutral-500 hover:border-neutral-300 hover:bg-neutral-100 hover:text-neutral-900',
 };
 
 const sizeClasses = {
-  sm: 'h-8 w-8',
-  md: 'h-9 w-9',
+  sm: 'h-9 w-9',
+  md: 'h-10 w-10',
 };
 
 type IconSize = 'sm' | 'md';
@@ -60,6 +65,10 @@ interface BaseProps {
   label: string;
   tone?: IconActionTone;
   size?: IconSize;
+  /** Phase 4.7 (Billing [DECISION]) - renders label as visible text beside the icon
+   *  (auto-width pill instead of the fixed square). Additive: defaults to false,
+   *  so existing icon-only call sites are unchanged. */
+  showLabel?: boolean;
 }
 
 type ButtonMode = BaseProps &
@@ -75,18 +84,20 @@ export function IconActionButton({
   label,
   tone = 'neutral',
   size = 'md',
+  showLabel = false,
   href,
   className = '',
   ...rest
 }: IconActionButtonProps) {
+  const sized = showLabel ? (size === 'sm' ? 'h-8 px-2.5' : 'h-9 px-3') : sizeClasses[size];
   const shared = {
     'aria-label': label,
     title: label,
     className: [
-      'inline-flex items-center justify-center rounded-lg border border-neutral-200 bg-neutral-0',
+      'inline-flex items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-0',
       'shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150',
       'hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]',
-      sizeClasses[size],
+      sized,
       toneClasses[tone],
       'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-[0_1px_2px_rgba(17,19,24,0.05)]',
       className,
@@ -98,6 +109,7 @@ export function IconActionButton({
   const inner = (
     <>
       <IconComponent size={size === 'sm' ? 15 : 18} weight="bold" aria-hidden="true" />
+      {showLabel && <span className="text-xs font-medium">{label}</span>}
       <span className="sr-only">{label}</span>
     </>
   );

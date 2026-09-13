@@ -1,6 +1,6 @@
 'use client';
 
-import { Card, ErrorState, Skeleton, StatusBadge } from '@dala/ui-web';
+import { ErrorState, Skeleton, StatusBadge } from '@dala/ui-web';
 import { useEffect, useState } from 'react';
 
 interface HealthCheck {
@@ -71,17 +71,23 @@ export function InfraStatusGrid() {
         aria-label="Chargement…"
       >
         {Array.from({ length: 6 }).map((_, i) => (
-          <Card key={i} className="p-4">
+          <div key={i} className="rounded-control border border-neutral-200 p-4">
             <Skeleton className="h-4 w-2/3" />
             <Skeleton className="mt-2 h-6 w-1/2 rounded-full" />
             <Skeleton className="mt-2 h-3 w-3/4" />
-          </Card>
+          </div>
         ))}
       </div>
     );
   }
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
+  // Phase 4.7 (§5 Services-Health item) — per-service tiles de-elevated from
+  // Card to plain tiles (rounded-control, hairline border, no shadow): the
+  // parent SectionCard in page.tsx already supplies the one raised boundary
+  // for this section. Loading skeletons + the Konnect tile share the same
+  // tile shape (Konnect keeps border-dashed: the unmonitored-placeholder
+  // signal is deliberate).
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
       {services.map((s) => {
@@ -91,7 +97,7 @@ export function InfraStatusGrid() {
           check && Date.now() - new Date(check.checked_at).getTime() > staleThresholdMs;
 
         return (
-          <Card key={s.service_name} className="p-4">
+          <div key={s.service_name} className="rounded-control border border-neutral-200 p-4">
             <p className="text-sm font-medium text-neutral-900">
               {SERVICE_LABELS[s.service_name] ?? s.service_name}
             </p>
@@ -117,10 +123,10 @@ export function InfraStatusGrid() {
             {check?.error_message && (
               <p className="text-danger mt-1 line-clamp-2 text-xs">{check.error_message}</p>
             )}
-          </Card>
+          </div>
         );
       })}
-      <Card className="border-dashed p-4">
+      <div className="rounded-control border border-dashed border-neutral-200 p-4">
         <p className="text-sm font-medium text-neutral-500">Konnect</p>
         <div className="mt-2">
           <StatusBadge variant="neutral">Non surveillé</StatusBadge>
@@ -128,7 +134,7 @@ export function InfraStatusGrid() {
         <p className="mt-2 text-xs text-neutral-500">
           Aucune intégration Konnect existante à sonder (Billing/paiements reste hors périmètre).
         </p>
-      </Card>
+      </div>
     </div>
   );
 }

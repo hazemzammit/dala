@@ -54,7 +54,7 @@ export function PageHero({
   actions,
 }: PageHeroProps) {
   return (
-    <div className="flex flex-col gap-4 rounded-[24px] border border-neutral-100 bg-[linear-gradient(180deg,rgba(15,118,110,0.05),rgba(255,255,255,0.92))] p-6 shadow-[0_8px_24px_rgba(17,19,24,0.04)] lg:flex-row lg:items-end lg:justify-between">
+    <div className="rounded-card bg-neutral-0 flex flex-col gap-4 border border-neutral-100 p-6 shadow-[0_8px_24px_rgba(17,19,24,0.04)] lg:flex-row lg:items-end lg:justify-between">
       <div className="max-w-2xl">
         {eyebrow && (
           <p className="text-accent-700 text-[12px] font-semibold uppercase tracking-[0.12em]">

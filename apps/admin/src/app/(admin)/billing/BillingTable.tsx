@@ -6,13 +6,24 @@ import {
   type DataTableColumn,
   EmptyState,
   ErrorState,
+  FilterBar,
+  IconActionButton,
+  PlanBadge,
+  StatStrip,
   StatusBadge,
   TableSkeleton,
 } from '@dala/ui-web';
-import { BuildingsIcon } from '@phosphor-icons/react';
+import {
+  BuildingsIcon,
+  CalendarPlusIcon,
+  CheckCircleIcon,
+  PercentIcon,
+  XIcon,
+} from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { SearchInput } from '@/components/ui/SearchInput';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 interface SubscriptionRow {
@@ -57,6 +68,9 @@ export function BillingTable() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyOrgId, setBusyOrgId] = useState<string | null>(null);
+  // Phase 4.7 (Step 8) - client-side search by org name (no API change;
+  // the billing GET route takes no params and the full set is loaded).
+  const [q, setQ] = useState('');
 
   async function load() {
     setLoading(true);
@@ -76,6 +90,10 @@ export function BillingTable() {
   useEffect(() => {
     load();
   }, []);
+
+  function handleSearchChange(value: string) {
+    setQ(value);
+  }
 
   async function runAction(
     row: SubscriptionRow,
@@ -114,6 +132,10 @@ export function BillingTable() {
     }
   }
 
+  const visibleSubscriptions = q
+    ? subscriptions.filter((s) => s.orgName.toLowerCase().includes(q.toLowerCase()))
+    : subscriptions;
+
   const columns: DataTableColumn<SubscriptionRow>[] = [
     {
       key: 'orgName',
@@ -122,7 +144,7 @@ export function BillingTable() {
       render: (r) => (
         <Link
           href={`/organizations/${r.orgId}`}
-          className="text-accent-600 font-medium hover:underline"
+          className="group-hover:text-accent-700 font-semibold text-neutral-900"
         >
           {r.orgName}
         </Link>
@@ -132,7 +154,7 @@ export function BillingTable() {
       key: 'plan',
       header: 'Plan',
       sortValue: (r) => r.plan,
-      render: (r) => <StatusBadge variant="info">{r.plan}</StatusBadge>,
+      render: (r) => <PlanBadge plan={r.plan} />,
     },
     {
       key: 'subscriptionStatus',
@@ -186,34 +208,38 @@ export function BillingTable() {
             align: 'right' as const,
             render: (r: SubscriptionRow) => (
               <div className="flex justify-end gap-2">
-                <button
+                <IconActionButton
+                  icon={CalendarPlusIcon}
+                  label="Prolonger"
+                  tone="neutral"
+                  showLabel
                   disabled={busyOrgId === r.orgId}
                   onClick={() => runAction(r, 'extend_expiry')}
-                  className="text-accent-600 text-xs font-medium hover:underline disabled:opacity-50"
-                >
-                  Prolonger
-                </button>
-                <button
+                />
+                <IconActionButton
+                  icon={PercentIcon}
+                  label="Remise"
+                  tone="neutral"
+                  showLabel
                   disabled={busyOrgId === r.orgId}
                   onClick={() => runAction(r, 'manual_discount')}
-                  className="text-accent-600 text-xs font-medium hover:underline disabled:opacity-50"
-                >
-                  Remise
-                </button>
-                <button
+                />
+                <IconActionButton
+                  icon={CheckCircleIcon}
+                  label="Payé hors Konnect"
+                  tone="success"
+                  showLabel
                   disabled={busyOrgId === r.orgId}
                   onClick={() => runAction(r, 'mark_paid')}
-                  className="text-accent-600 text-xs font-medium hover:underline disabled:opacity-50"
-                >
-                  Payé hors Konnect
-                </button>
-                <button
+                />
+                <IconActionButton
+                  icon={XIcon}
+                  label="Annuler"
+                  tone="danger"
+                  showLabel
                   disabled={busyOrgId === r.orgId}
                   onClick={() => runAction(r, 'cancel')}
-                  className="text-danger text-xs font-medium hover:underline disabled:opacity-50"
-                >
-                  Annuler
-                </button>
+                />
               </div>
             ),
           },
@@ -241,25 +267,33 @@ export function BillingTable() {
 
   return (
     <div className="mt-6">
-      <p className="mb-3 text-sm text-neutral-500">
-        MRR : <span className="font-medium text-neutral-900">{formatTnd(mrrMillimes)}</span>
-        {distribution.length > 0 && (
-          <>
-            {' '}
-            · Répartition des plans :{' '}
-            {distribution.map((d) => `${d.plan} (${d.count})`).join(' · ')}
-          </>
-        )}
-      </p>
+      <div className="mb-3">
+        <StatStrip
+          items={[
+            { label: 'MRR', value: formatTnd(mrrMillimes) },
+            ...distribution.map((d) => ({ label: d.plan, value: d.count })),
+          ]}
+        />
+      </div>
+      <FilterBar>
+        <SearchInput
+          onChange={handleSearchChange}
+          placeholder="Rechercher par nom d'organisation…"
+        />
+      </FilterBar>
       <DataTable
         columns={columns}
-        rows={subscriptions}
+        rows={visibleSubscriptions}
         getRowId={(r) => r.orgId}
         emptyState={
           <EmptyState
             icon={BuildingsIcon}
             title="Aucune organisation"
-            description="Pas encore d'organisations dans cet environnement."
+            description={
+              q
+                ? 'Aucune organisation ne correspond à cette recherche.'
+                : "Pas encore d'organisations dans cet environnement."
+            }
           />
         }
       />

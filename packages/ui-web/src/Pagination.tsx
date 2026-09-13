@@ -46,7 +46,7 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
       : `${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, total)} sur ${total}`;
 
   const navButtonClasses =
-    'inline-flex h-8 w-8 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-all duration-150 hover:-translate-y-px hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-neutral-200 disabled:hover:bg-transparent disabled:hover:text-neutral-600';
+    'inline-flex h-10 w-10 items-center justify-center rounded-full border border-neutral-200 text-neutral-600 transition-all duration-150 hover:-translate-y-px hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:translate-y-0 disabled:hover:border-neutral-200 disabled:hover:bg-transparent disabled:hover:text-neutral-600';
 
   return (
     <div className="bg-neutral-0 mt-4 flex items-center justify-between gap-3 rounded-full border border-neutral-200 px-3 py-2 shadow-[0_1px_2px_rgba(17,19,24,0.05)]">

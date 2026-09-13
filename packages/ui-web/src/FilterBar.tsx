@@ -34,7 +34,7 @@ interface FilterBarProps {
 
 export function FilterBar({ children, trailing }: FilterBarProps) {
   return (
-    <div className="rounded-card bg-neutral-0 flex flex-wrap items-center gap-3 border border-neutral-100 px-4 py-3.5">
+    <div className="rounded-card bg-neutral-0 mb-3 flex flex-wrap items-center gap-3 border border-neutral-100 px-4 py-3.5">
       <div className="flex flex-1 flex-wrap items-center gap-3">{children}</div>
       {trailing && <div className="shrink-0">{trailing}</div>}
     </div>

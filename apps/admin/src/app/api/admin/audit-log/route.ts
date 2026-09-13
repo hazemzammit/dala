@@ -26,6 +26,8 @@ export async function GET(request: Request) {
   const dateTo = searchParams.get('dateTo');
 
   const supabase = getAdminSupabaseClient();
+  // Known cap, not an exact total — the UI's client-side pagination (Phase 4.7,
+  // Step 11, option a) slices on top of this window; true server-side paging is deferred backend work.
   let query = supabase
     .from('audit_log')
     .select('*')

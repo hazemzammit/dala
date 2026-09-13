@@ -231,7 +231,13 @@ export const radius = {
   sm: '8px', // inputs, small buttons
   md: '12px', // IconActionButton, ViewToggle pill segments
   lg: '16px', // Card, FilterBar (existing rounded-card)
-  xl: '24px', // DetailHeader, PageHero (existing rounded-[24px])
+  // Phase 4.7 (phase-4.7-visual-polish-remediation.md §1.1, [AMENDS guide §1]) —
+  // superseded: the 24px hero tier is dropped; DetailHeader/PageHero move to the
+  // existing `card` radius (16px, wired as the `rounded-card` Tailwind class).
+  // Key retained — token changes are additive-only (AGENTS.md) — but no new
+  // hero-surface consumer should reach for it. The component swap itself is
+  // Step 2 (PageHero/DetailHeader), not this token amendment.
+  xl: '24px',
   full: '9999px',
 };
 

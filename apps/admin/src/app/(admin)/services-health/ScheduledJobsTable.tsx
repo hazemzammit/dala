@@ -97,5 +97,7 @@ export function ScheduledJobsTable() {
   if (loading) return <TableSkeleton />;
   if (loadError) return <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />;
 
-  return <DataTable columns={columns} rows={jobs} getRowId={(j) => j.job_name} />;
+  // Phase 4.7 (§5 Services-Health item) — `bare` skips DataTable's own Card
+  // wrapper; the SectionCard in page.tsx is the one raised boundary here.
+  return <DataTable bare columns={columns} rows={jobs} getRowId={(j) => j.job_name} />;
 }

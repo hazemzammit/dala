@@ -8,6 +8,10 @@ import {
   type DataTableColumn,
   EmptyState,
   ErrorState,
+  FilterBar,
+  FilterSelect,
+  PlanBadge,
+  StatStrip,
   StatusBadge,
   TableSkeleton,
 } from '@dala/ui-web';
@@ -15,6 +19,7 @@ import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
+import { SearchInput } from '@/components/ui/SearchInput';
 import { formatStorage } from '@/lib/format';
 import { useAdminSession } from '@/lib/use-admin-session';
 
@@ -49,6 +54,11 @@ export function StorageUsageTable() {
   const [cleaning, setCleaning] = useState(false);
   const [cleanupResult, setCleanupResult] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  // Phase 4.7 (Step 9) - client-side search by org name + overage-status
+  // filter (no API change; the storage GET route takes no params and the
+  // full set is loaded).
+  const [q, setQ] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
 
   useEffect(() => {
     let cancelled = false;
@@ -103,7 +113,7 @@ export function StorageUsageTable() {
       render: (r) => (
         <Link
           href={`/organizations/${r.organization_id}`}
-          className="text-accent-600 font-medium hover:underline"
+          className="group-hover:text-accent-700 font-semibold text-neutral-900"
         >
           {r.organization_name}
         </Link>
@@ -113,7 +123,7 @@ export function StorageUsageTable() {
       key: 'plan',
       header: 'Plan',
       sortValue: (r) => r.plan ?? '',
-      render: (r) => (r.plan ? <StatusBadge variant="info">{r.plan}</StatusBadge> : '—'),
+      render: (r) => (r.plan ? <PlanBadge plan={r.plan} /> : '—'),
     },
     {
       key: 'file_count',
@@ -143,7 +153,7 @@ export function StorageUsageTable() {
     },
     {
       key: 'overage_status',
-      header: 'Quota (Doc 00 §0.3)',
+      header: 'Quota',
       render: (r) => {
         const cfg = OVERAGE_LABELS[r.overage_status];
         return <StatusBadge variant={cfg.variant}>{cfg.label}</StatusBadge>;
@@ -169,34 +179,72 @@ export function StorageUsageTable() {
     );
   }
 
+  function handleSearchChange(value: string) {
+    setQ(value);
+  }
+
+  const visibleRows = rows.filter((r) => {
+    if (statusFilter !== 'all' && r.overage_status !== statusFilter) return false;
+    if (q && !r.organization_name.toLowerCase().includes(q.toLowerCase())) return false;
+    return true;
+  });
+
   return (
     <div className="mt-6">
-      <div className="mb-3 flex items-center justify-between gap-4">
-        {totals && (
-          <p className="text-sm text-neutral-500">
-            {totals.orgCount} organisation{totals.orgCount === 1 ? '' : 's'} ·{' '}
-            {totals.totalFiles.toLocaleString('fr-FR')} fichier{totals.totalFiles === 1 ? '' : 's'}{' '}
-            · {formatStorage(totals.totalBytes)} au total
-          </p>
-        )}
-        {canCleanup && (
-          <div className="flex items-center gap-3">
-            {cleanupResult && <p className="text-xs text-neutral-500">{cleanupResult}</p>}
-            <Button variant="secondary" onClick={runCleanup} disabled={cleaning}>
-              {cleaning ? 'Nettoyage…' : 'Nettoyer les fichiers orphelins'}
-            </Button>
-          </div>
-        )}
-      </div>
+      {totals && (
+        <div className="mb-3">
+          <StatStrip
+            items={[
+              { label: 'Organisations', value: totals.orgCount },
+              { label: 'Fichiers', value: totals.totalFiles.toLocaleString('fr-FR') },
+              { label: 'Stockage total', value: formatStorage(totals.totalBytes) },
+            ]}
+          />
+        </div>
+      )}
+      <FilterBar
+        trailing={
+          canCleanup ? (
+            <div className="flex items-center gap-3">
+              {cleanupResult && <p className="text-xs text-neutral-500">{cleanupResult}</p>}
+              <Button variant="secondary" onClick={runCleanup} disabled={cleaning}>
+                {cleaning ? 'Nettoyage…' : 'Nettoyer les fichiers orphelins'}
+              </Button>
+            </div>
+          ) : undefined
+        }
+      >
+        <SearchInput
+          onChange={handleSearchChange}
+          placeholder="Rechercher par nom d'organisation…"
+        />
+        <FilterSelect
+          aria-label="Quota"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={[
+            { value: 'all', label: 'Tous les statuts' },
+            { value: 'ok', label: 'Sous le seuil' },
+            { value: 'warning', label: '≥ 800 Mo — bannière/e-mail' },
+            { value: 'critical', label: '≥ 950 Mo — upload mis en file' },
+            { value: 'over_limit', label: '≥ 1 Go — lecture seule' },
+            { value: 'no_limit_defined', label: 'Pas de seuil défini' },
+          ]}
+        />
+      </FilterBar>
       <DataTable
         columns={columns}
-        rows={rows}
+        rows={visibleRows}
         getRowId={(r) => r.organization_id}
         emptyState={
           <EmptyState
             icon={BuildingsIcon}
             title="Aucune organisation"
-            description="Pas encore d'organisations dans cet environnement."
+            description={
+              q || statusFilter !== 'all'
+                ? 'Aucune organisation ne correspond à cette recherche.'
+                : "Pas encore d'organisations dans cet environnement."
+            }
           />
         }
       />

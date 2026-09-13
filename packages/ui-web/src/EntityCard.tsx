@@ -24,6 +24,7 @@ interface EntityCardField {
 }
 
 interface EntityCardProps {
+  avatar?: ReactNode;
   title: ReactNode;
   subtitle?: ReactNode;
   badges?: ReactNode;
@@ -32,11 +33,20 @@ interface EntityCardProps {
   href?: string;
 }
 
-export function EntityCard({ title, subtitle, badges, fields, actions, href }: EntityCardProps) {
+export function EntityCard({
+  avatar,
+  title,
+  subtitle,
+  badges,
+  fields,
+  actions,
+  href,
+}: EntityCardProps) {
   const inner = (
-    <Card interactive={!!href} className="p-4">
+    <Card interactive={!!href} className="px-4 pb-4 pt-3">
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
+        {avatar && <div className="shrink-0">{avatar}</div>}
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-neutral-900">{title}</div>
           {subtitle && <div className="mt-0.5 truncate text-xs text-neutral-500">{subtitle}</div>}
@@ -46,7 +56,7 @@ export function EntityCard({ title, subtitle, badges, fields, actions, href }: E
 
       {/* Fields grid */}
       {fields && fields.length > 0 && (
-        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-neutral-100 pt-3">
+        <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 border-t border-neutral-100 pt-3">
           {fields.map((f) => (
             <div key={f.label}>
               <dt className="text-[11px] font-semibold tracking-[0.04em] text-neutral-400">

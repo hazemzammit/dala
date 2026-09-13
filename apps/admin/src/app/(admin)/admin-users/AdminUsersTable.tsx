@@ -144,13 +144,17 @@ export function AdminUsersTable() {
       key: 'actions',
       header: '',
       align: 'right',
+      // Phase 4.7 (§5 Gestion-des-admins item) — same sizing check as
+      // Sessions: this too carried an explicit size="sm" override; removed
+      // so it falls back to the shared `md` default like every other
+      // table's row action. The single-button (not menu) structure is
+      // deliberately unchanged per the guide.
       render: (a) =>
         isSuperAdmin && a.totp_enabled && a.id !== session?.admin.id ? (
           <IconActionButton
             icon={KeyIcon}
             label="Réinitialiser 2FA"
-            tone="warning"
-            size="sm"
+            tone="neutral"
             onClick={() => setResetTarget(a)}
           />
         ) : null,

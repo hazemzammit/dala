@@ -401,7 +401,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
       {impersonateTarget && (
         <ConfirmTypingDialog
           title="Démarrer une impersonation"
-          description="Doc 04 §4.3.3a — la session créée aura exactement les permissions de l'utilisateur cible, jamais plus. Le propriétaire de l'organisation sera notifié par email à la fin de la session."
+          description="La session créée aura exactement les permissions de l'utilisateur cible, jamais plus. Le propriétaire de l'organisation sera notifié par email à la fin de la session."
           confirmValue={impersonateTarget.profiles?.full_name ?? impersonateTarget.user_id}
           confirmLabel="Démarrer"
           requireReason

@@ -125,7 +125,14 @@ export function SessionsTable() {
       sortValue: (s) => s.last_active_at,
       render: (s) => new Date(s.last_active_at).toLocaleString('fr-FR'),
     },
-    { key: 'ip_address', header: 'IP', render: (s) => s.ip_address ?? '—' },
+    // Phase 4.7 (§5 Sessions-admin item) — explicit width + nowrap so IPv6
+    // addresses don't wrap awkwardly (the doc's own example: '150px').
+    {
+      key: 'ip_address',
+      header: 'IP',
+      width: '150px',
+      render: (s) => <span className="whitespace-nowrap">{s.ip_address ?? '—'}</span>,
+    },
     {
       key: 'status',
       header: '',
@@ -140,12 +147,14 @@ export function SessionsTable() {
       key: 'actions',
       header: '',
       align: 'right',
+      // Phase 4.7 (§5 Sessions-admin item) — explicit size="sm" removed:
+      // falls back to the shared `md` default so this matches every other
+      // table's row-action sizing.
       render: (s) => (
         <IconActionButton
           icon={SignOutIcon}
           label="Révoquer"
           tone="danger"
-          size="sm"
           disabled={revokingId === s.id}
           onClick={() => revoke(s)}
         />

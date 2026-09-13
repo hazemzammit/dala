@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Avatar,
   ConfirmTypingDialog,
   DataTable,
   type DataTableColumn,
@@ -8,9 +9,12 @@ import {
   EmptyState,
   ErrorState,
   FilterBar,
+  FilterSelect,
   IconActionButton,
   PlanBadge,
   TableSkeleton,
+  ToggleChip,
+  TypeChip,
   ViewToggle,
 } from '@dala/ui-web';
 import {
@@ -39,6 +43,7 @@ interface OrgRow {
   storage_used_bytes?: number;
   verification_status?: string;
   verification_requested_at?: string | null;
+  logo_signed_url?: string | null;
 }
 
 function formatBytes(bytes: number): string {
@@ -236,18 +241,21 @@ export function OrganizationsTable() {
       header: 'Nom',
       sortValue: (r) => r.name.toLowerCase(),
       render: (r) => (
-        <Link
-          href={`/organizations/${r.id}`}
-          className="text-accent-600 font-medium hover:underline"
-        >
-          {r.name}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Avatar name={r.name} imageUrl={r.logo_signed_url ?? undefined} size={28} />
+          <Link
+            href={`/organizations/${r.id}`}
+            className="group-hover:text-accent-700 font-semibold text-neutral-900"
+          >
+            {r.name}
+          </Link>
+        </div>
       ),
     },
     {
       key: 'trade_type',
       header: 'Type',
-      render: (r) => r.trade_type ?? '—',
+      render: (r) => <TypeChip tradeType={r.trade_type} />,
     },
     {
       key: 'plan',
@@ -306,7 +314,7 @@ export function OrganizationsTable() {
               <IconActionButton
                 icon={CheckIcon}
                 label="Approuver"
-                tone="accent"
+                tone="success"
                 onClick={() => runVerificationAction(r, 'verify_org')}
                 disabled={bulkBusy}
               ></IconActionButton>
@@ -338,7 +346,7 @@ export function OrganizationsTable() {
           <IconActionButton
             icon={DownloadSimpleIcon}
             label="Exporter"
-            tone="accent"
+            tone="neutral"
             href={`/api/admin/organizations/${r.id}/export?format=json`}
           />
         </div>
@@ -354,7 +362,7 @@ export function OrganizationsTable() {
             <IconActionButton
               icon={CheckIcon}
               label="Approuver"
-              tone="accent"
+              tone="success"
               onClick={() => runVerificationAction(org, 'verify_org')}
               disabled={bulkBusy}
             />
@@ -386,7 +394,7 @@ export function OrganizationsTable() {
         <IconActionButton
           icon={DownloadSimpleIcon}
           label="Exporter"
-          tone="accent"
+          tone="neutral"
           href={`/api/admin/organizations/${org.id}/export?format=json`}
         />
       </>
@@ -397,34 +405,28 @@ export function OrganizationsTable() {
     <>
       <FilterBar trailing={<ViewToggle value={viewMode} onChange={setViewMode} />}>
         <SearchInput onChange={handleSearchChange} placeholder="Rechercher par nom…" />
-        <label className="flex items-center gap-2 text-sm text-neutral-600">
-          <span className="sr-only">Plan</span>
-          <select
-            aria-label="Plan"
-            value={planFilter}
-            onChange={(event) => setPlanFilter(event.target.value)}
-            className="h-9 rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
-          >
-            <option value="all">Tous les plans</option>
-            <option value="free">Gratuit</option>
-            <option value="pro">Pro</option>
-            <option value="business">Entreprise</option>
-          </select>
-        </label>
+        <FilterSelect
+          aria-label="Plan"
+          value={planFilter}
+          onChange={(event) => setPlanFilter(event.target.value)}
+          options={[
+            { value: 'all', label: 'Tous les plans' },
+            { value: 'free', label: 'Gratuit' },
+            { value: 'pro', label: 'Pro' },
+            { value: 'business', label: 'Entreprise' },
+          ]}
+        />
         {/* Audit fix 3b (Option B) — toggles the same list between "all
             orgs" and "pending verification requests only", rather than a
             separate route/screen for what's still the same table and
             the same row actions. */}
-        <button
+        <ToggleChip
+          pressed={verificationQueueOnly}
           onClick={() => toggleVerificationQueue(!verificationQueueOnly)}
-          className={`shrink-0 rounded-md border px-3 py-1.5 text-xs font-medium ${
-            verificationQueueOnly
-              ? 'border-accent-600 bg-accent-50 text-accent-700'
-              : 'border-neutral-200 text-neutral-600 hover:bg-neutral-50'
-          }`}
+          title="Afficher uniquement les organisations en attente de vérification."
         >
           {verificationQueueOnly ? 'Toutes les organisations' : 'File de vérification'}
-        </button>
+        </ToggleChip>
       </FilterBar>
 
       {loading ? (
@@ -432,11 +434,14 @@ export function OrganizationsTable() {
       ) : loadError ? (
         <ErrorState onRetry={() => void load()} />
       ) : viewMode === 'card' ? (
-        <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {visibleOrgs.map((org) => (
             <EntityCard
               key={org.id}
               href={`/organizations/${org.id}`}
+              avatar={
+                <Avatar name={org.name} imageUrl={org.logo_signed_url ?? undefined} size={28} />
+              }
               title={org.name}
               subtitle={org.trade_type ?? 'Type non renseigné'}
               badges={<PlanBadge plan={org.plan} />}

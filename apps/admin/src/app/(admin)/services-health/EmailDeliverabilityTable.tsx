@@ -96,5 +96,8 @@ export function EmailDeliverabilityTable() {
     );
   }
 
-  return <DataTable columns={columns} rows={events} getRowId={(e) => e.id} />;
+  // Phase 4.7 (§5 Services-Health item) — `bare` skips DataTable's own Card
+  // wrapper; the SectionCard in page.tsx is the one raised boundary here
+  // (same fix as ScheduledJobsTable/InvocationLogTable).
+  return <DataTable bare columns={columns} rows={events} getRowId={(e) => e.id} />;
 }

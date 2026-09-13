@@ -51,7 +51,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder={placeholder}
-        className="rounded-control bg-neutral-0 focus:border-accent-600 w-full border border-neutral-300 py-2.5 pl-9 pr-3 text-[15.5px] text-neutral-900 outline-none transition-colors duration-150 placeholder:text-neutral-500"
+        className="rounded-control bg-neutral-0 focus:border-accent-600 h-10 w-full border border-neutral-300 pl-9 pr-3 text-[15.5px] text-neutral-900 outline-none transition-colors duration-150 placeholder:text-neutral-500"
       />
     </div>
   );

@@ -51,7 +51,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from('organizations')
     .select(
-      'id, name, trade_type, plan, created_at, verification_status, verification_requested_at',
+      'id, name, trade_type, plan, logo_url, created_at, verification_status, verification_requested_at',
       {
         count: 'exact',
       },
@@ -100,11 +100,27 @@ export async function GET(request: Request) {
     storageByOrg.set(row.organization_id, row.total_bytes);
   }
 
-  const organizations = (data ?? []).map((org) => ({
-    ...org,
-    member_count: counts.get(org.id as string) ?? 0,
-    storage_used_bytes: storageByOrg.get(org.id as string) ?? 0,
-  }));
+  const organizations = await Promise.all(
+    (data ?? []).map(async (org) => {
+      // org-files is a private bucket (0020): the raw logo_url path is
+      // useless to an <img> until signed - same minting as the [orgId]
+      // detail route, now also for the list (approved additive field,
+      // plan 0.7). Silent-null fallback mirrors that route exactly.
+      let logo_signed_url: string | null = null;
+      if (org.logo_url) {
+        const { data: signed } = await supabase.storage
+          .from('org-files')
+          .createSignedUrl(org.logo_url as string, 3600);
+        logo_signed_url = signed?.signedUrl ?? null;
+      }
+      return {
+        ...org,
+        member_count: counts.get(org.id as string) ?? 0,
+        storage_used_bytes: storageByOrg.get(org.id as string) ?? 0,
+        logo_signed_url,
+      };
+    }),
+  );
 
   return NextResponse.json({ organizations, page, pageSize, total: count ?? 0 });
 }

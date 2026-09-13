@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Avatar,
   ConfirmTypingDialog,
   DataTable,
   type DataTableColumn,
@@ -8,6 +9,7 @@ import {
   EntityCard,
   ErrorState,
   FilterBar,
+  FilterSelect,
   IconActionButton,
   StatusBadge,
   TableSkeleton,
@@ -175,9 +177,15 @@ export function UsersTable() {
       // page existed before this, and this doesn't build one beyond what
       // the notes panel needs).
       render: (u) => (
-        <Link href={`/users/${u.id}`} className="text-accent-700 hover:underline">
-          {u.full_name}
-        </Link>
+        <div className="flex items-center gap-2">
+          <Avatar name={u.full_name} size={28} />
+          <Link
+            href={`/users/${u.id}`}
+            className="group-hover:text-accent-700 font-semibold text-neutral-900"
+          >
+            {u.full_name}
+          </Link>
+        </div>
       ),
     },
     { key: 'email', header: 'Email', render: (u) => u.email ?? '—' },
@@ -228,7 +236,7 @@ export function UsersTable() {
         <IconActionButton
           icon={PasswordIcon}
           label="Réinitialiser"
-          tone="accent"
+          tone="neutral"
           onClick={() => action(user, 'reset_password')}
         />
         {canMutate && (
@@ -236,7 +244,7 @@ export function UsersTable() {
             <IconActionButton
               icon={SignOutIcon}
               label="Révoquer les sessions"
-              tone="accent"
+              tone="danger"
               onClick={() => action(user, 'revoke_sessions')}
             />
             <IconActionButton
@@ -265,19 +273,16 @@ export function UsersTable() {
           placeholder="Rechercher par nom, email, téléphone…"
           initialValue={initialQ}
         />
-        <label className="flex items-center gap-2 text-sm text-neutral-600">
-          <span className="sr-only">Statut</span>
-          <select
-            aria-label="Statut"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value)}
-            className="h-9 rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700"
-          >
-            <option value="all">Tous</option>
-            <option value="active">Actif</option>
-            <option value="suspended">Suspendu</option>
-          </select>
-        </label>
+        <FilterSelect
+          aria-label="Statut"
+          value={statusFilter}
+          onChange={(event) => setStatusFilter(event.target.value)}
+          options={[
+            { value: 'all', label: 'Tous' },
+            { value: 'active', label: 'Actif' },
+            { value: 'suspended', label: 'Suspendu' },
+          ]}
+        />
       </FilterBar>
 
       {loading ? (
@@ -373,7 +378,7 @@ export function UsersTable() {
       {deleteTarget && (
         <ConfirmTypingDialog
           title="Supprimer l'utilisateur"
-          description="Doc 04 §4.3.4 — suppression définitive (RGPD/sur demande). Cette action est journalisée et irréversible."
+          description="Suppression définitive (RGPD/sur demande). Cette action est journalisée et irréversible."
           confirmValue={deleteTarget.email ?? deleteTarget.full_name}
           confirmLabel="Supprimer"
           onConfirm={confirmDelete}

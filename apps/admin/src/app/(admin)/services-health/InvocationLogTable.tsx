@@ -2,10 +2,10 @@
 
 import type { EdgeFunctionInvocation } from '@dala/shared-types';
 import {
-  Button,
   DataTable,
   type DataTableColumn,
   ErrorState,
+  Pagination,
   StatusBadge,
   TableSkeleton,
 } from '@dala/ui-web';
@@ -115,8 +115,6 @@ export function InvocationLogTable() {
     },
   ];
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
@@ -149,30 +147,14 @@ export function InvocationLogTable() {
         <ErrorState onRetry={() => void load()} />
       ) : (
         <>
-          <DataTable columns={columns} rows={invocations} getRowId={(i) => i.id} />
-          <div className="mt-3 flex items-center justify-between text-sm text-neutral-500">
-            <span>
-              {total} invocation{total !== 1 ? 's' : ''} — page {page}/{totalPages}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-2.5 py-1 text-xs"
-              >
-                Précédent
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-2.5 py-1 text-xs"
-              >
-                Suivant
-              </Button>
-            </div>
-          </div>
+          {/* Phase 4.7 (§5 Services-Health item / §2.4) — `bare` (the
+              SectionCard in page.tsx supplies the raised boundary) + the
+              shared Pagination replacing the hand-rolled count text and
+              Précédent/Suivant buttons — same accessible names, per the
+              test contract. Props map onto this file's existing
+              page/total state; Pagination derives totalPages itself. */}
+          <DataTable bare columns={columns} rows={invocations} getRowId={(i) => i.id} />
+          <Pagination page={page} pageSize={PAGE_SIZE} total={total} onPageChange={setPage} />
         </>
       )}
     </div>

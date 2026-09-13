@@ -78,7 +78,7 @@ export function DetailHeader({
   const palette = paletteFor(title);
 
   return (
-    <div className="bg-neutral-0 rounded-[24px] border border-neutral-100 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
+    <div className="bg-neutral-0 rounded-card border border-neutral-100 p-6 shadow-[0_1px_2px_rgba(17,19,24,0.04),0_4px_12px_rgba(17,19,24,0.03)]">
       {/* Breadcrumb strip */}
       {backLabel && (
         <nav aria-label="Fil d'Ariane" className="mb-4">
