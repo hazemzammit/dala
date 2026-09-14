@@ -8,6 +8,8 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterSelect,
+  IconActionButton,
   PageHero,
   StatusBadge,
 } from '@dala/ui-web';
@@ -19,6 +21,8 @@ import { deleteWorker } from './actions';
 import { WorkerFormModal } from './WorkerFormModal';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type InvitationSummary = { worker_id: string; status: InvitationStatus };
@@ -60,6 +64,8 @@ export function TeamView({
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
   const searchParams = useSearchParams();
+  const [deleteTarget, setDeleteTarget] = useState<WorkerRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('invite') === '1') {
@@ -131,6 +137,22 @@ export function TeamView({
       return matchesSearch && matchesTrade;
     });
   }, [displayRows, query, tradeFilter]);
+
+  async function handleDeleteWorker() {
+    if (deleteTarget === null) return;
+    const target = deleteTarget;
+    setDeleteError(null);
+    startTransition(async () => {
+      const result = await deleteWorker(target.id);
+      if (!result.success) {
+        setDeleteError(result.error);
+        return;
+      }
+      setRows((current) => current.filter((row) => row.id !== target.id));
+      setNotice(`${target.full_name} a été déplacé vers la corbeille.`);
+      setDeleteTarget(null);
+    });
+  }
 
   const selectedWorker = detailState.mode === 'worker' ? detailState.worker : null;
 
@@ -207,48 +229,38 @@ export function TeamView({
       align: 'right',
       render: (w) => (
         <div className="flex items-center justify-end gap-1.5">
-          <button
+          <IconActionButton
+            icon={EyeIcon}
+            label={`Voir le détail de ${w.full_name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setDetailState({ mode: 'worker', worker: w });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Voir le détail de ${w.full_name}`}
-          >
-            <EyeIcon size={16} />
-          </button>
-          <button
+          />
+          <IconActionButton
+            icon={PencilSimpleIcon}
+            label={`Modifier ${w.full_name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setModalState({ mode: 'edit', worker: w });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modifier ${w.full_name}`}
-          >
-            <PencilSimpleIcon size={16} />
-          </button>
-          <button
+          />
+          <IconActionButton
+            icon={TrashIcon}
+            label={`Supprimer ${w.full_name}`}
+            tone="danger"
+            size="sm"
+            disabled={isPending}
             onClick={(e) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Retirer ${w.full_name} de l’équipe ?`);
-              if (!confirmed) return;
-              startTransition(async () => {
-                const result = await deleteWorker(w.id);
-                if (!result.success) {
-                  setNotice(null);
-                  window.alert(result.error);
-                  return;
-                }
-                setRows((current) => current.filter((row) => row.id !== w.id));
-                setNotice(`${w.full_name} a été déplacé vers la corbeille.`);
-              });
+              setDeleteError(null);
+              setDeleteTarget(w);
             }}
-            disabled={isPending}
-            className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500 disabled:opacity-50"
-            aria-label={`Supprimer ${w.full_name}`}
-          >
-            <TrashIcon size={16} />
-          </button>
+          />
         </div>
       ),
     },
@@ -278,26 +290,18 @@ export function TeamView({
         title="Liste des ouvriers"
         actions={
           <>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un ouvrier"
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            />
-            <select
+            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un ouvrier" />
+            <FilterSelect
+              aria-label="Filtrer par profession"
               value={tradeFilter}
               onChange={(e) => setTradeFilter(e.target.value)}
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">Toutes les professions</option>
-              {Array.from(new Set(displayRows.map((worker) => worker.profession))).map(
-                (profession) => (
-                  <option key={profession} value={profession}>
-                    {profession}
-                  </option>
+              options={[
+                { value: 'all', label: 'Toutes les professions' },
+                ...Array.from(new Set(displayRows.map((worker) => worker.profession))).map(
+                  (profession) => ({ value: profession, label: profession }),
                 ),
-              )}
-            </select>
+              ]}
+            />
           </>
         }
       >
@@ -448,6 +452,28 @@ export function TeamView({
           </div>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget ? `Retirer ${deleteTarget.full_name} de l’équipe ?` : ''}
+        description={
+          deleteTarget ? 'L’ouvrier sera retiré de l’équipe et déplacé vers la corbeille.' : ''
+        }
+        confirmLabel="Retirer"
+        destructive
+        loading={isPending}
+        onConfirm={() => void handleDeleteWorker()}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+      >
+        {deleteError && (
+          <p className="text-danger mt-2 text-sm">
+            Impossible de retirer l’ouvrier : {deleteError}
+          </p>
+        )}
+      </ConfirmDialog>
 
       {modalState.mode === 'invite' && (
         <WorkerFormModal onClose={() => setModalState({ mode: 'closed' })} />
