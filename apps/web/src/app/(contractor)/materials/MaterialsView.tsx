@@ -7,6 +7,7 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  IconActionButton,
   StatusBadge,
 } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
@@ -90,6 +91,11 @@ export function MaterialsView({
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [confirm, setConfirm] = useState<{
+    action: 'approve' | 'delete';
+    material: MaterialRow;
+  } | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const router = useRouter();
 
   // §2.4 — bulk-approve via checkbox multi-select. Same per-row
@@ -196,36 +202,17 @@ export function MaterialsView({
         <div className="flex items-center justify-end gap-1.5">
           {row.status === 'pending' && (
             <>
-              <button
-                onClick={() => {
-                  const confirmed = window.confirm(`Approuver "${row.item}" ?`);
-                  if (!confirmed) return;
-                  setPendingId(row.id);
-                  startTransition(async () => {
-                    const result = await approveMaterial(row.id);
-                    setPendingId(null);
-                    if (!result.success) {
-                      window.alert(result.error);
-                      return;
-                    }
-                    setRows((current) =>
-                      current.map((m) =>
-                        m.id === row.id ? { ...m, status: 'approved' as ApprovalStatus } : m,
-                      ),
-                    );
-                    setNotice(
-                      result.expensePushed
-                        ? `${row.item} approuvé — dépense ajoutée au chantier.`
-                        : `${row.item} approuvé.`,
-                    );
-                  });
-                }}
+              <IconActionButton
+                icon={CheckCircleIcon}
+                label={`Approuver ${row.item}`}
+                tone="success"
+                size="sm"
                 disabled={isPending && pendingId === row.id}
-                className="text-success hover:bg-success/10 rounded-control p-1.5 disabled:opacity-50"
-                aria-label={`Approuver ${row.item}`}
-              >
-                <CheckCircleIcon size={16} />
-              </button>
+                onClick={() => {
+                  setConfirmError(null);
+                  setConfirm({ action: 'approve', material: row });
+                }}
+              />
               <button
                 onClick={() => {
                   const reason = window.prompt(
@@ -259,36 +246,72 @@ export function MaterialsView({
               </button>
             </>
           )}
-          <button
+          <IconActionButton
+            icon={PencilSimpleIcon}
+            label={`Modifier ${row.item}`}
+            tone="neutral"
+            size="sm"
             onClick={() => setModalState({ mode: 'edit', material: row })}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modifier ${row.item}`}
-          >
-            <PencilSimpleIcon size={16} />
-          </button>
-          <button
-            onClick={async () => {
-              const confirmed = window.confirm(`Supprimer ${row.item} ?`);
-              if (!confirmed) return;
-              const result = await deleteMaterial(row.id);
-              if (!result.success) {
-                window.alert(result.error);
-                return;
-              }
-              setRows((current) => current.filter((material) => material.id !== row.id));
-              setNotice(`${row.item} a été retiré des matériaux.`);
+          />
+          <IconActionButton
+            icon={TrashIcon}
+            label={`Supprimer ${row.item}`}
+            tone="danger"
+            size="sm"
+            disabled={isPending && pendingId === row.id}
+            onClick={() => {
+              setConfirmError(null);
+              setConfirm({ action: 'delete', material: row });
             }}
-            className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Supprimer ${row.item}`}
-          >
-            <TrashIcon size={16} />
-          </button>
+          />
         </div>
       ),
     },
   ];
 
   const totalCount = filteredRows.length;
+
+  async function handleConfirm() {
+    if (confirm === null) return;
+    const { action, material } = confirm;
+    setConfirmError(null);
+    setPendingId(material.id);
+
+    if (action === 'approve') {
+      startTransition(async () => {
+        const result = await approveMaterial(material.id);
+        setPendingId(null);
+        if (!result.success) {
+          setConfirmError(result.error);
+          return;
+        }
+        setRows((current) =>
+          current.map((m) =>
+            m.id === material.id ? { ...m, status: 'approved' as ApprovalStatus } : m,
+          ),
+        );
+        setNotice(
+          result.expensePushed
+            ? `${material.item} approuvé — dépense ajoutée au chantier.`
+            : `${material.item} approuvé.`,
+        );
+        setConfirm(null);
+      });
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await deleteMaterial(material.id);
+      setPendingId(null);
+      if (!result.success) {
+        setConfirmError(result.error);
+        return;
+      }
+      setRows((current) => current.filter((row) => row.id !== material.id));
+      setNotice(`${material.item} a été retiré des matériaux.`);
+      setConfirm(null);
+    });
+  }
 
   async function handleBulkApprove() {
     if (!bulkConfirmIds) return;
@@ -482,6 +505,38 @@ export function MaterialsView({
         onConfirm={() => void handleBulkApprove()}
         onCancel={() => setBulkConfirmIds(null)}
       />
+
+      <ConfirmDialog
+        open={confirm !== null}
+        title={
+          confirm === null
+            ? ''
+            : confirm.action === 'approve'
+              ? `Approuver "${confirm.material.item}" ?`
+              : `Supprimer ${confirm.material.item} ?`
+        }
+        description={
+          confirm === null
+            ? ''
+            : confirm.action === 'approve'
+              ? 'La demande sera validée et la dépense ajoutée au chantier.'
+              : 'Le matériau sera retiré de l’inventaire. Cette action est définitive.'
+        }
+        confirmLabel={confirm?.action === 'approve' ? 'Approuver' : 'Supprimer'}
+        destructive={confirm?.action !== 'approve'}
+        loading={isPending}
+        onConfirm={() => void handleConfirm()}
+        onCancel={() => {
+          setConfirm(null);
+          setConfirmError(null);
+        }}
+      >
+        {confirmError && (
+          <p className="text-danger mt-2 text-sm">
+            Impossible d’effectuer l’action : {confirmError}
+          </p>
+        )}
+      </ConfirmDialog>
     </>
   );
 }
