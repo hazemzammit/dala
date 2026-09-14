@@ -48,13 +48,6 @@ export default async function Page() {
         .order('created_at', { ascending: false })
     : { data: [] };
 
-  const { data: membership } = await supabase
-    .from('organization_members')
-    .select('role')
-    .eq('org_id', profile.active_org_id)
-    .eq('user_id', user.id)
-    .maybeSingle();
-
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -68,8 +61,6 @@ export default async function Page() {
         <ProjectsView
           projects={projects ?? []}
           expenses={expenses ?? []}
-          orgId={profile.active_org_id}
-          orgRole={membership?.role ?? null}
           createProject={createProject}
           updateProject={updateProject}
           deleteProject={deleteProject}

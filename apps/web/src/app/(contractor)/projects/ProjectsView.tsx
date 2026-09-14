@@ -22,14 +22,11 @@ import {
   TrashIcon,
   ListIcon,
 } from '@phosphor-icons/react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import type { UpdateProjectInput } from './actions';
-import { getProjectDashboard, type ProjectDashboardData } from './getProjectDashboard';
-import { ProjectExpenseFormModal } from './ProjectExpenseFormModal';
 import { ProjectFormModal } from './ProjectFormModal';
-import { ProjectRoster } from './ProjectRoster';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
@@ -61,7 +58,6 @@ const STATUS_VARIANT: Record<ProjectStatus, 'success' | 'neutral' | 'info'> = {
 };
 
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; project: Project };
-type DetailState = { mode: 'none' } | { mode: 'project'; project: ProjectRow };
 
 type ProjectRow = Project & {
   progress: number;
@@ -89,28 +85,18 @@ function getBudgetTone(value: number | null): 'success' | 'warning' | 'danger' |
 export function ProjectsView({
   projects,
   expenses,
-  orgId,
-  orgRole,
   createProject,
   updateProject,
   deleteProject,
 }: {
   projects: Project[];
   expenses: ProjectExpense[];
-  orgId: string;
-  orgRole: 'owner' | 'manager' | 'viewer' | null;
   createProject: CreateProjectAction;
   updateProject: UpdateProjectAction;
   deleteProject: DeleteProjectAction;
 }) {
   const [rows, setRows] = useState(projects);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
-  const [detailState, setDetailState] = useState<DetailState>({ mode: 'none' });
-  const [expenseModalState, setExpenseModalState] = useState<{ open: boolean; projectId?: string }>(
-    {
-      open: false,
-    },
-  );
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ProjectStatus | 'all'>('all');
   // §2.2 — sortable table already existed (DataTable's sortValue/click-to-
@@ -120,16 +106,10 @@ export function ProjectsView({
   // shape as AnnouncementBanner's dismiss-in-memory-only choice.
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [notice, setNotice] = useState<string | null>(null);
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  // FLAGGED FOR HAZEM — dashboardData/dashboardLoading are fetched
-  // (getProjectDashboard) but never actually rendered anywhere in this
-  // component's JSX. Not something I'm building out here (a real dashboard
-  // panel is a UI design decision, not a data-wiring one), but worth
-  // knowing this fetch currently runs and does nothing with its result.
-  const [dashboardData, setDashboardData] = useState<ProjectDashboardData | null>(null);
-  const [dashboardLoading, setDashboardLoading] = useState(false);
   useEffect(() => {
     setRows(projects);
   }, [projects]);
@@ -139,16 +119,6 @@ export function ProjectsView({
       setModalState({ mode: 'create' });
     }
   }, [searchParams]);
-  useEffect(() => {
-    if (detailState.mode !== 'project') {
-      setDashboardData(null);
-      return;
-    }
-    setDashboardLoading(true);
-    getProjectDashboard(detailState.project.id, detailState.project.budget_total)
-      .then(setDashboardData)
-      .finally(() => setDashboardLoading(false));
-  }, [detailState]);
 
   function upsertProject(project: Project) {
     setRows((current) => [project, ...current.filter((row) => row.id !== project.id)]);
@@ -200,17 +170,6 @@ export function ProjectsView({
     });
   }, [rows, expensesByProject]);
 
-  // §2.7 global search — clicking a "project" result in the top-bar
-  // dropdown deep-links here as ?highlight=<id>, opening that project's
-  // detail panel directly instead of just landing on the unfiltered list.
-  useEffect(() => {
-    const highlightId = searchParams.get('highlight');
-    if (!highlightId) return;
-    const match = displayRows.find((p) => p.id === highlightId);
-    if (match) setDetailState({ mode: 'project', project: match });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, displayRows]);
-
   const filteredRows = useMemo(() => {
     const lower = query.trim().toLowerCase();
     return displayRows.filter((row) => {
@@ -234,14 +193,9 @@ export function ProjectsView({
       return;
     }
     setRows((current) => current.filter((row) => row.id !== result.projectId));
-    if (detailState.mode === 'project' && detailState.project.id === result.projectId) {
-      setDetailState({ mode: 'none' });
-    }
     setNotice(`${target.name} a été retiré de la liste des chantiers.`);
     setDeleteTarget(null);
   }
-
-  const selectedProject = detailState.mode === 'project' ? detailState.project : null;
 
   const columns: DataTableColumn<ProjectRow>[] = [
     {
@@ -338,7 +292,7 @@ export function ProjectsView({
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              setDetailState({ mode: 'project', project: p });
+              router.push(`/projects/${p.id}`);
             }}
           />
           <IconActionButton
@@ -492,7 +446,7 @@ export function ProjectsView({
               columns={columns}
               rows={filteredRows}
               getRowId={(p) => p.id}
-              onRowClick={(p) => setDetailState({ mode: 'project', project: p })}
+              onRowClick={(p) => router.push(`/projects/${p.id}`)}
             />
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -501,7 +455,7 @@ export function ProjectsView({
                   key={p.id}
                   raised
                   className="cursor-pointer p-4"
-                  onClick={() => setDetailState({ mode: 'project', project: p })}
+                  onClick={() => router.push(`/projects/${p.id}`)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -541,157 +495,6 @@ export function ProjectsView({
         </div>
       </SectionCard>
 
-      {selectedProject && (
-        <Card raised className="mt-6 p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Détail du chantier
-              </p>
-              <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-                {selectedProject.name}
-              </h3>
-              <p className="mt-1 text-sm text-neutral-500">
-                {selectedProject.client_name ?? 'Aucun client'} ·{' '}
-                {selectedProject.address ?? 'Aucune adresse'}
-              </p>
-            </div>
-            <StatusBadge variant={STATUS_VARIANT[selectedProject.status]}>
-              {STATUS_LABEL[selectedProject.status]}
-            </StatusBadge>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Progression</p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-                {selectedProject.progress}%
-              </p>
-              <div className="mt-3">
-                <ProgressBar value={selectedProject.progress} tone="accent" />
-              </div>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Budget total</p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-                {formatBudget(selectedProject.budget_total)}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Taille de l’équipe</p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-                {selectedProject.teamSize}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Budget consommé</p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-                {selectedProject.budgetConsumed != null
-                  ? `${selectedProject.budgetConsumed.toFixed(0)}%`
-                  : '—'}
-              </p>
-              <div className="mt-2">
-                <StatusBadge variant={getBudgetTone(selectedProject.budgetConsumed)}>
-                  {selectedProject.budgetConsumed != null
-                    ? selectedProject.budgetConsumed < 80
-                      ? 'Sous contrôle'
-                      : selectedProject.budgetConsumed <= 100
-                        ? 'À surveiller'
-                        : 'Dépassement'
-                    : '—'}
-                </StatusBadge>
-              </div>
-              <p className="mt-1 text-xs text-neutral-500">
-                {formatBudget(selectedProject.expensesTotal)} dépensés
-              </p>
-            </Card>
-          </div>
-
-          <ProjectRoster
-            projectId={selectedProject.id}
-            orgId={orgId}
-            canWrite={
-              (orgRole === 'owner' || orgRole === 'manager') && selectedProject.status === 'active'
-            }
-          />
-
-          <div className="mt-6">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                  Dépenses du chantier
-                </p>
-                <p className="mt-1 text-sm text-neutral-500">
-                  Matériaux, carburant, sous-traitance et autres frais liés au projet.
-                </p>
-              </div>
-              <Button
-                variant="secondary"
-                onClick={() => setExpenseModalState({ open: true, projectId: selectedProject.id })}
-              >
-                <PlusIcon size={16} className="me-1.5 inline" />
-                Ajouter une dépense
-              </Button>
-            </div>
-
-            {selectedProject.expenses.length === 0 ? (
-              <EmptyState
-                icon={BuildingsIcon}
-                title="Aucune dépense enregistrée"
-                description="Ajoutez un premier frais pour faire apparaître le budget consommé réel."
-                actionLabel="Ajouter une dépense"
-                onAction={() => setExpenseModalState({ open: true, projectId: selectedProject.id })}
-              />
-            ) : (
-              <div className="space-y-3">
-                {selectedProject.expenses.map((expense) => (
-                  <Card key={expense.id} className="p-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-medium text-neutral-900">
-                          {expense.category === 'materiaux'
-                            ? 'Matériaux'
-                            : expense.category === 'carburant'
-                              ? 'Carburant'
-                              : expense.category === 'sous_traitance'
-                                ? 'Sous-traitance'
-                                : 'Autre'}
-                        </p>
-                        <p className="mt-1 text-sm text-neutral-500">
-                          {expense.description ?? 'Aucune description'}
-                        </p>
-                        <p className="mt-1 text-xs text-neutral-400">{expense.expense_date}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-display text-xl font-semibold text-neutral-900">
-                          {formatBudget(Number(expense.amount))}
-                        </p>
-                        {expense.receipt_photo_url && (
-                          <p className="text-success mt-1 text-xs">Justificatif joint</p>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setModalState({ mode: 'edit', project: selectedProject })}
-            >
-              <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Modifier le chantier
-            </Button>
-            <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Fermer le détail
-            </Button>
-          </div>
-        </Card>
-      )}
-
       <ConfirmDialog
         open={deleteTarget !== null}
         title={deleteTarget ? `Supprimer ${deleteTarget.name} ?` : ''}
@@ -722,20 +525,6 @@ export function ProjectsView({
           updateProject={updateProject}
           onSaved={upsertProject}
           onClose={() => setModalState({ mode: 'closed' })}
-        />
-      )}
-
-      {expenseModalState.open && (
-        <ProjectExpenseFormModal
-          orgId={orgId}
-          projects={projects.map((project) => ({
-            id: project.id,
-            name: project.name,
-            status: project.status,
-          }))}
-          defaultProjectId={expenseModalState.projectId}
-          onClose={() => setExpenseModalState({ open: false })}
-          onSaved={() => setNotice('Dépense enregistrée et budget recalculé.')}
         />
       )}
     </div>

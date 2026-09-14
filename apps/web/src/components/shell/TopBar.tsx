@@ -17,11 +17,11 @@ import { createClient } from '@/lib/supabase/client';
  * 250ms, same RPC mobile's Projects-list search bar uses. Only the actual
  * wiring was missing — `onSearch` was a plain unused callback prop.
  *
- * Result rows deep-link into their owning list view with
- * `?highlight=<id>`, a small addition to ProjectsView/TeamView/
- * VehiclesView's existing `?create=1`/`?invite=1` query-param convention —
- * each opens that row's existing detail panel on load rather than landing
- * on an unfiltered list.
+ * Result rows deep-link to their detail surface: projects navigate straight
+ * to their addressable detail page `/projects/<id>` (web consistency plan
+ * §2.8); workers/vehicles keep the `?highlight=<id>` convention into their
+ * list views (TeamView/VehiclesView open that row's existing detail panel on
+ * load) until their own detail pages land.
  */
 interface SearchResult {
   entity_type: 'project' | 'worker' | 'vehicle';
@@ -90,6 +90,13 @@ export function TopBar({ userName, userAvatarUrl, unreadNotifications = 0, orgId
   function handleSelect(result: SearchResult) {
     setOpen(false);
     setQuery('');
+    // §2.8 — projects have a real addressable detail page now; navigate
+    // straight to it. Workers/vehicles still deep-link into their list
+    // views with ?highlight= until their detail pages exist.
+    if (result.entity_type === 'project') {
+      router.push(`/projects/${result.id}`);
+      return;
+    }
     router.push(`${ENTITY_PATH[result.entity_type]}?highlight=${result.id}`);
   }
 
