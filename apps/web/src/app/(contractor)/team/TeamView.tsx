@@ -145,6 +145,24 @@ export function TeamView({
     });
   }, [displayRows, query, tradeFilter]);
 
+  // Plan Step 13 — pagination, admin's shape (OrganizationsTable et al.,
+  // PAGE_SIZE = 50 there too): DataTable only renders the controls; the
+  // caller slices rows to the current page. Back to page 1 whenever a filter
+  // input changes, and clamp the rendered page so deleting the last row of
+  // the last page can't strand an empty view.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    setPage(1);
+  }, [query, tradeFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedRows = useMemo(
+    () => filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredRows, currentPage],
+  );
+
   async function handleDeleteWorker() {
     if (deleteTarget === null) return;
     const target = deleteTarget;
@@ -381,9 +399,15 @@ export function TeamView({
           ) : (
             <DataTable
               columns={columns}
-              rows={filteredRows}
+              rows={pagedRows}
               getRowId={(w) => w.id}
               onRowClick={(w) => router.push(`/team/${w.id}`)}
+              pagination={{
+                page: currentPage,
+                pageSize: PAGE_SIZE,
+                total: filteredRows.length,
+                onPageChange: setPage,
+              }}
             />
           )}
         </div>

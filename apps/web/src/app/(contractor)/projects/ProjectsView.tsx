@@ -10,6 +10,7 @@ import {
   FilterSelect,
   IconActionButton,
   PageHero,
+  Pagination,
   StatusBadge,
 } from '@dala/ui-web';
 import type { CreateProjectInput } from '@dala/validation';
@@ -174,6 +175,24 @@ export function ProjectsView({
       return matchesSearch && matchesStatus;
     });
   }, [displayRows, query, statusFilter]);
+
+  // Plan Step 13 — pagination, admin's shape (OrganizationsTable et al.,
+  // PAGE_SIZE = 50 there too): DataTable only renders the controls; the
+  // caller slices rows to the current page. Back to page 1 whenever a filter
+  // input changes, and clamp the rendered page so deleting the last row of
+  // the last page can't strand an empty view.
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    setPage(1);
+  }, [query, statusFilter]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredRows.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const pagedRows = useMemo(
+    () => filteredRows.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE),
+    [filteredRows, currentPage],
+  );
 
   async function handleDeleteProject() {
     if (deleteTarget === null) return;
@@ -425,53 +444,69 @@ export function ProjectsView({
           ) : viewMode === 'table' ? (
             <DataTable
               columns={columns}
-              rows={filteredRows}
+              rows={pagedRows}
               getRowId={(p) => p.id}
               onRowClick={(p) => router.push(`/projects/${p.id}`)}
+              pagination={{
+                page: currentPage,
+                pageSize: PAGE_SIZE,
+                total: filteredRows.length,
+                onPageChange: setPage,
+              }}
             />
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {filteredRows.map((p) => (
-                <Card
-                  key={p.id}
-                  raised
-                  className="cursor-pointer p-4"
-                  onClick={() => router.push(`/projects/${p.id}`)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-neutral-900">{p.name}</p>
-                      <p className="text-xs text-neutral-500">{p.client_name ?? '—'}</p>
+            <>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {pagedRows.map((p) => (
+                  <Card
+                    key={p.id}
+                    raised
+                    className="cursor-pointer p-4"
+                    onClick={() => router.push(`/projects/${p.id}`)}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="font-medium text-neutral-900">{p.name}</p>
+                        <p className="text-xs text-neutral-500">{p.client_name ?? '—'}</p>
+                      </div>
+                      <StatusBadge variant={STATUS_VARIANT[p.status]}>
+                        {STATUS_LABEL[p.status]}
+                      </StatusBadge>
                     </div>
-                    <StatusBadge variant={STATUS_VARIANT[p.status]}>
-                      {STATUS_LABEL[p.status]}
-                    </StatusBadge>
-                  </div>
-                  <div className="mt-4">
-                    <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
-                      <span>Budget consommé</span>
-                      <span>
-                        {p.budgetConsumed != null ? `${p.budgetConsumed.toFixed(0)}%` : '—'}
-                      </span>
+                    <div className="mt-4">
+                      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+                        <span>Budget consommé</span>
+                        <span>
+                          {p.budgetConsumed != null ? `${p.budgetConsumed.toFixed(0)}%` : '—'}
+                        </span>
+                      </div>
+                      <ProgressBar
+                        value={p.budgetConsumed ?? 0}
+                        tone={
+                          p.budgetConsumed != null && p.budgetConsumed > 100
+                            ? 'danger'
+                            : p.budgetConsumed != null && p.budgetConsumed >= 80
+                              ? 'warning'
+                              : 'success'
+                        }
+                      />
                     </div>
-                    <ProgressBar
-                      value={p.budgetConsumed ?? 0}
-                      tone={
-                        p.budgetConsumed != null && p.budgetConsumed > 100
-                          ? 'danger'
-                          : p.budgetConsumed != null && p.budgetConsumed >= 80
-                            ? 'warning'
-                            : 'success'
-                      }
-                    />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
-                    <span>{formatBudget(p.budget_total)}</span>
-                    <span>{p.teamSize} ouvrier(s)</span>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                    <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
+                      <span>{formatBudget(p.budget_total)}</span>
+                      <span>{p.teamSize} ouvrier(s)</span>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+              {pageCount > 1 && (
+                <Pagination
+                  page={currentPage}
+                  pageSize={PAGE_SIZE}
+                  total={filteredRows.length}
+                  onPageChange={setPage}
+                />
+              )}
+            </>
           )}
         </div>
       </SectionCard>
