@@ -7,20 +7,29 @@ import { useState } from 'react';
 
 import { WorkerFormModal } from '../WorkerFormModal';
 
+import { ProgressBar } from '@/components/contractor/Screen';
+
 /**
  * Worker detail (web consistency plan §2.9) — the inline detail card from
- * TeamView, promoted to an addressable page under a DetailHeader. Mirrors
- * the §2.8 ProjectDetail decision: the three metrics the inline card
- * fabricated from the row's array index (attendance / currentProject /
- * salaryAdvance) are NOT shipped here — see the FLAGGED note on the cards
- * below for where their real sources live (Step 12c of the plan).
+ * TeamView, promoted to an addressable page under a DetailHeader. The three
+ * payroll cards read the same real sources as the list (plan Step 12c —
+ * queries live in [workerId]/page.tsx): attendance from attendance_effective
+ * (0036) over the Monday-start cycle, the current project from the latest
+ * dispatch_assignments row (0035, 30-day window), and the approved-advances
+ * balance (0019).
  */
 export function WorkerDetail({
   worker,
   invitationStatus,
+  attendance,
+  currentProject,
+  salaryAdvance,
 }: {
   worker: Worker;
   invitationStatus: InvitationStatus | null;
+  attendance: number;
+  currentProject: string;
+  salaryAdvance: number;
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const profession = worker.trade ?? 'Main-d’œuvre générale';
@@ -63,19 +72,18 @@ export function WorkerDetail({
       />
 
       <div className="mt-6 grid gap-4 md:grid-cols-4">
-        {/* FLAGGED FOR HAZEM (plan Step 12c): currentProject has no real
-            source wired yet (dispatch_assignments/0035 or
-            project_workers/0034). Rendered as — rather than re-shipping
-            the inline card's index-fabricated value. */}
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Chantier actuel</p>
-          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">—</p>
+          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
+            {currentProject}
+          </p>
         </Card>
-        {/* FLAGGED FOR HAZEM (plan Step 12c): attendance comes from
-            attendance_effective (0036); no join wired yet. */}
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Présence</p>
-          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">—</p>
+          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">{attendance}%</p>
+          <div className="mt-2">
+            <ProgressBar value={attendance} tone={attendance > 85 ? 'success' : 'accent'} />
+          </div>
         </Card>
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Taux journalier</p>
@@ -83,11 +91,11 @@ export function WorkerDetail({
             {worker.daily_rate != null ? `${worker.daily_rate} TND` : '—'}
           </p>
         </Card>
-        {/* FLAGGED FOR HAZEM (plan Step 12c): salaryAdvance comes from the
-            payroll RPCs (0019); no join wired yet. */}
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Avance</p>
-          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">—</p>
+          <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
+            {salaryAdvance.toLocaleString('fr-TN')} TND
+          </p>
         </Card>
       </div>
 

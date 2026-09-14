@@ -51,9 +51,15 @@ type WorkerRow = Worker & {
 export function TeamView({
   workers,
   invitations,
+  attendanceByWorker,
+  currentProjectByWorker,
+  salaryAdvanceByWorker,
 }: {
   workers: Worker[];
   invitations: InvitationSummary[];
+  attendanceByWorker: Record<string, number>;
+  currentProjectByWorker: Record<string, string>;
+  salaryAdvanceByWorker: Record<string, number>;
 }) {
   const [rows, setRows] = useState(workers);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
@@ -79,19 +85,17 @@ export function TeamView({
     }
   }
 
-  // FLAGGED FOR HAZEM (integration pass, not resolved here): `attendance`,
-  // `currentProject`, and `salaryAdvance` below are fabricated from the
-  // worker's array index, not read from real data. The guide covering this
-  // route didn't call this out, but it's not a "genuinely missing field"
-  // case — there's no single real source for any of the three yet
-  // (attendance would come from `attendance_effective`/0036, current-project
-  // from `dispatch_assignments`/0035 or `project_workers`/0034, advance
-  // amount from the payroll RPCs/0019 — three different joins, not one).
-  // Left as clearly-fake placeholder data rather than silently wired to a
-  // guess at which of those sources is "the" answer — worth a real product
-  // decision before shipping this screen.
+  // Real per-worker payroll data (plan Step 12c — resolves the previously
+  // index-fabricated values; see team/page.tsx for the queries). Sources,
+  // mirroring apps/mobile's advances.tsx + lib/salaryCycle.ts conventions:
+  //   - attendance: weighted attended days (present=1, half_day=0.5) from
+  //     attendance_effective (0036) over the current Monday-start cycle,
+  //     as a % of cycle days elapsed.
+  //   - currentProject: project on the worker's latest dispatch_assignments
+  //     row (0035) within the last 30 days, else '—'.
+  //   - salaryAdvance: approved advances (0019) since the cycle started.
   const displayRows = useMemo<WorkerRow[]>(() => {
-    return rows.map((worker, index) => {
+    return rows.map((worker) => {
       const invitation = latestInvitationByWorker.get(worker.id);
       const statusLabel = worker.user_id
         ? 'Actif'
@@ -104,15 +108,19 @@ export function TeamView({
       return {
         ...worker,
         profession: worker.trade ?? 'Main-d’œuvre générale',
-        attendance: 72 + ((index * 7) % 25),
-        currentProject: ['El Baraka Towers', 'Downtown Offices', 'Coastal Villas', 'Road Works'][
-          index % 4
-        ]!,
-        salaryAdvance: index % 3 === 0 ? 250 : index % 3 === 1 ? 0 : 120,
+        attendance: attendanceByWorker[worker.id] ?? 0,
+        currentProject: currentProjectByWorker[worker.id] ?? '—',
+        salaryAdvance: salaryAdvanceByWorker[worker.id] ?? 0,
         statusLabel,
       };
     });
-  }, [rows, latestInvitationByWorker]);
+  }, [
+    rows,
+    latestInvitationByWorker,
+    attendanceByWorker,
+    currentProjectByWorker,
+    salaryAdvanceByWorker,
+  ]);
 
   // §2.7 global search — clicking a "worker" result in the top-bar
   // dropdown deep-links to the worker's addressable detail page (§2.9).
