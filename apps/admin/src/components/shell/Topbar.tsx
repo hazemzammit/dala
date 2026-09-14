@@ -59,9 +59,10 @@ export function Topbar() {
           onClick={logout}
           aria-label="Se déconnecter"
           title="Se déconnecter"
-          className="hover:border-danger/30 hover:bg-danger/10 hover:text-danger bg-neutral-0 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150 hover:-translate-y-px"
+          className="hover:border-danger/30 hover:bg-danger/10 hover:text-danger bg-neutral-0 focus-visible:ring-accent-600 inline-flex h-9 w-9 items-center justify-center rounded-lg border border-neutral-200 text-neutral-500 shadow-[0_1px_2px_rgba(17,19,24,0.05)] hover:-translate-y-px focus-visible:ring-2 focus-visible:ring-offset-1 motion-safe:transition-all motion-safe:duration-150"
         >
           <SignOutIcon size={17} aria-hidden="true" />
+          <span className="sr-only">Se déconnecter</span>
         </button>
       </div>
     </header>

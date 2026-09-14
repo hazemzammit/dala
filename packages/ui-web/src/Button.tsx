@@ -62,8 +62,9 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       disabled={disabled || loading}
       className={[
         'rounded-control relative inline-flex items-center justify-center px-4 py-2.5',
-        'text-[15.5px] font-medium transition-colors duration-150',
+        'text-[15.5px] font-medium motion-safe:transition-colors motion-safe:duration-150',
         'disabled:cursor-not-allowed disabled:opacity-60',
+        'focus-visible:ring-accent-600 focus-visible:ring-2 focus-visible:ring-offset-1',
         fullWidth ? 'w-full' : 'w-auto',
         variantClasses[variant],
         className,

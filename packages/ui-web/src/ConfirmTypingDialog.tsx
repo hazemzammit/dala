@@ -1,10 +1,13 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 
 import { Button } from './Button';
 import { Card } from './Card';
 import { FormField } from './FormField';
+
+const FOCUSABLE_SELECTOR =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
  * packages/ui-web/src/ConfirmTypingDialog.tsx
@@ -58,8 +61,51 @@ export function ConfirmTypingDialog({
   const [reason, setReason] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const reasonId = useId();
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const canConfirm = typed === confirmValue && (!requireReason || reason.trim().length >= 10);
+
+  // Phase 6.4 (premium-ux-system-guide.md §9/§10/§12) — focus management:
+  // trap Tab/Shift+Tab inside the dialog while open, close on ESC, and
+  // restore focus to the triggering element on close. Mirrors the proven
+  // ConfirmDialog.tsx mechanism. Call sites render this conditionally, so
+  // mount = open (the trigger is focused just before mount).
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    container.focus();
+
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onCancel();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const focusable = Array.from(
+        containerRef.current?.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR) ?? [],
+      ).filter((el) => el.tabIndex !== -1);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (!first || !last) return;
+      const active = document.activeElement;
+      if (e.shiftKey && (active === first || active === containerRef.current)) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      previouslyFocused?.focus();
+    };
+  }, [onCancel]);
 
   async function handleConfirm() {
     setSubmitting(true);
@@ -72,47 +118,55 @@ export function ConfirmTypingDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-neutral-900/40 p-4">
-      <Card raised className="w-full max-w-md p-6">
-        <h2 className="font-display text-lg font-semibold text-neutral-900">{title}</h2>
-        <p className="mt-2 text-sm text-neutral-500">{description}</p>
+      <div
+        ref={containerRef}
+        role="dialog"
+        aria-modal="true"
+        tabIndex={-1}
+        className="w-full max-w-md outline-none"
+      >
+        <Card raised className="p-6">
+          <h2 className="font-display text-lg font-semibold text-neutral-900">{title}</h2>
+          <p className="mt-2 text-sm text-neutral-500">{description}</p>
 
-        {requireReason && (
+          {requireReason && (
+            <div className="mt-4">
+              <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
+                Motif (10 caractères minimum)
+              </label>
+              <textarea
+                id={reasonId}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                className="rounded-control focus:border-accent-600 mt-1 w-full border border-neutral-300 px-3 py-2.5 text-[15.5px] outline-none"
+              />
+            </div>
+          )}
+
           <div className="mt-4">
-            <label htmlFor={reasonId} className="text-sm font-medium text-neutral-900">
-              Motif (10 caractères minimum)
-            </label>
-            <textarea
-              id={reasonId}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              rows={2}
-              className="rounded-control focus:border-accent-600 mt-1 w-full border border-neutral-300 px-3 py-2.5 text-[15.5px] outline-none"
+            <FormField
+              label={`Tapez "${confirmValue}" pour confirmer`}
+              value={typed}
+              onChange={(e) => setTyped(e.target.value)}
             />
           </div>
-        )}
 
-        <div className="mt-4">
-          <FormField
-            label={`Tapez "${confirmValue}" pour confirmer`}
-            value={typed}
-            onChange={(e) => setTyped(e.target.value)}
-          />
-        </div>
-
-        <div className="mt-6 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onCancel}>
-            Annuler
-          </Button>
-          <Button
-            variant={destructive ? 'danger' : 'primary'}
-            onClick={handleConfirm}
-            disabled={!canConfirm}
-            loading={submitting}
-          >
-            {confirmLabel}
-          </Button>
-        </div>
-      </Card>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="secondary" onClick={onCancel}>
+              Annuler
+            </Button>
+            <Button
+              variant={destructive ? 'danger' : 'primary'}
+              onClick={handleConfirm}
+              disabled={!canConfirm}
+              loading={submitting}
+            >
+              {confirmLabel}
+            </Button>
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }

@@ -2,16 +2,27 @@
 
 import {
   Button,
+  ColumnPicker,
   DataTable,
   type DataTableColumn,
+  DensityToggle,
   EmptyState,
   ErrorState,
   FilterSelect,
+  NoResultsState,
   StatusBadge,
 } from '@dala/ui-web';
 import { ClipboardTextIcon } from '@phosphor-icons/react';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+
+import {
+  applyColumnState,
+  DEFAULT_TABLE_PREFS,
+  readTablePrefs,
+  writeTablePrefs,
+  type TablePrefs,
+} from '@/lib/table-preferences';
 
 interface Entry {
   id: string;
@@ -115,29 +126,111 @@ const CAP = 200;
 // both null, so filtering on them naturally excludes pre-0052 history
 // rather than silently misreporting it.
 export function AuditLogTable() {
-  // Admin remediation Tier 4.4 — GlobalSearch links here with `?action=`
-  // to deep-link a pre-filtered view. Read once on mount, same "this
-  // screen's own filter state becomes the source of truth from here on,
-  // not kept in sync with the URL afterward" reasoning as UsersTable.tsx.
+  // Phase 5.3 (premium-ux-system-guide.md §15/§18) — applied filters and
+  // page live in the URL (shareable, reload-stable); GlobalSearch's
+  // `?action=` deep-link (Tier 4.4) keeps working because the key name is
+  // unchanged. The input values below stay LOCAL draft state — this screen
+  // is click-to-apply (the Filtrer button), so the URL is written only when
+  // filters are actually applied (or the page changes), never per keystroke.
+  // Defaults are never serialized; sort is NOT URL-backed this step — it
+  // lives inside DataTable (ui-web), which exposes no controlled sort
+  // props; flagged, not silently skipped.
   const searchParams = useSearchParams();
-  const initialAction = searchParams.get('action') ?? '';
+  const router = useRouter();
+  const pathname = usePathname();
+
+  function setParams(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === '') params.delete(key);
+      else params.set(key, value);
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  // Draft filter inputs — local state hydrated from the URL on first mount
+  // (same read-once semantics the Tier 4.4 deep-link had before 5.3), so a
+  // shared `?action=…&dateFrom=…` link opens with the inputs pre-filled.
+  const [actionFilter, setActionFilter] = useState(searchParams.get('action') ?? '');
+  const [tableFilter, setTableFilter] = useState(searchParams.get('table') ?? '');
+  const [actorIdFilter, setActorIdFilter] = useState(searchParams.get('actorId') ?? '');
+  const [orgIdFilter, setOrgIdFilter] = useState(searchParams.get('orgId') ?? '');
+  const [ipFilter, setIpFilter] = useState(searchParams.get('ipAddress') ?? '');
+  const [dateFrom, setDateFrom] = useState(searchParams.get('dateFrom') ?? '');
+  const [dateTo, setDateTo] = useState(searchParams.get('dateTo') ?? '');
 
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   // Phase 20 (§1.7a) — same gap as the other admin tables: no res.ok
   // check on this filtered fetch.
   const [loadError, setLoadError] = useState(false);
-  const [actionFilter, setActionFilter] = useState(initialAction);
-  const [tableFilter, setTableFilter] = useState('');
-  const [actorIdFilter, setActorIdFilter] = useState('');
-  const [orgIdFilter, setOrgIdFilter] = useState('');
-  const [ipFilter, setIpFilter] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+
   // Phase 4.7 (§5 Journal-d'audit item) — client-side pagination state
   // (option a): page slices the already-fetched entries; no refetch on
   // page change. Resets with every Filtrer-triggered load (see button).
-  const [page, setPage] = useState(1);
+  const page = Number(searchParams.get('page')) || 1;
+
+  // Same name/signature as the useState setter it replaces, so the
+  // pagination call site below stays byte-identical.
+  function setPage(next: number) {
+    setParams({ page: next === 1 ? null : String(next) });
+  }
+
+  // Phase 5.4 (§7) — the choice is based on the APPLIED filters (the URL —
+  // what the fetched entries actually reflect), not the draft input values,
+  // and not just entries.length === 0: a typed-but-not-yet-applied draft
+  // must not flip "empty audit log" into "no results". This also fixes a
+  // pre-existing wrongness: the old EmptyState showed its filter message
+  // even when no filter was applied.
+  const hasActiveFilters = Boolean(
+    searchParams.get('action') ||
+    searchParams.get('table') ||
+    searchParams.get('actorId') ||
+    searchParams.get('orgId') ||
+    searchParams.get('ipAddress') ||
+    searchParams.get('dateFrom') ||
+    searchParams.get('dateTo'),
+  );
+
+  function resetFilters() {
+    // Clear the URL (applied filters), the draft inputs (so the form
+    // reflects the reset), reset the page, and refetch — one URL write.
+    setParams({
+      action: null,
+      table: null,
+      actorId: null,
+      orgId: null,
+      ipAddress: null,
+      dateFrom: null,
+      dateTo: null,
+      page: null,
+    });
+    setActionFilter('');
+    setTableFilter('');
+    setActorIdFilter('');
+    setOrgIdFilter('');
+    setIpFilter('');
+    setDateFrom('');
+    setDateTo('');
+    void load();
+  }
+
+  // Phase 5.5 (§6.3/6.4, §15) — per-table column visibility/reorder +
+  // density, persisted in localStorage (dala-admin-table-audit-log-prefs;
+  // extends the sidebar's dala-admin-* key convention). Read on mount like
+  // the sidebar (SSR-safe): first paint is the defaults, then stored prefs
+  // settle in — fresh loads with no stored prefs are byte-identical (test
+  // contract).
+  const [prefs, setPrefs] = useState<TablePrefs>(DEFAULT_TABLE_PREFS);
+  useEffect(() => {
+    setPrefs(readTablePrefs('audit-log'));
+  }, []);
+
+  function updatePrefs(next: TablePrefs) {
+    setPrefs(next);
+    writeTablePrefs('audit-log', next);
+  }
 
   async function load() {
     setLoading(true);
@@ -171,6 +264,24 @@ export function AuditLogTable() {
     // values via closure each time it's invoked from the Filtrer button,
     // so none of them need to be a dependency here.
   }, []);
+
+  function applyFilters() {
+    // Single setParams call — all applied filters + the page-1 reset must
+    // land in the same URL write (two sequential replace()s would each
+    // build from the pre-navigation searchParams), then fetch with those
+    // same draft values via closure.
+    setParams({
+      action: actionFilter,
+      table: tableFilter,
+      actorId: actorIdFilter,
+      orgId: orgIdFilter,
+      ipAddress: ipFilter,
+      dateFrom,
+      dateTo,
+      page: null,
+    });
+    void load();
+  }
 
   const columns: DataTableColumn<Entry>[] = [
     {
@@ -212,6 +323,42 @@ export function AuditLogTable() {
     },
   ];
 
+  // Phase 5.5 — picker inputs (§6.3/6.4). Read-only table: no actions
+  // column, nothing locked. This screen predates FilterBar adoption, so
+  // the controls sit in the filter row (see the trailing group below).
+  const currentOrder = prefs.order.length ? prefs.order : columns.map((c) => c.key);
+  const pickerColumns = columns.map((c) => ({ key: c.key, header: c.header }));
+  const displayColumns = applyColumnState(columns, { ...prefs, order: currentOrder });
+
+  function toggleColumn(key: string) {
+    updatePrefs({
+      ...prefs,
+      hiddenKeys: prefs.hiddenKeys.includes(key)
+        ? prefs.hiddenKeys.filter((k) => k !== key)
+        : [...prefs.hiddenKeys, key],
+      order: currentOrder,
+    });
+  }
+
+  function moveColumn(key: string, direction: -1 | 1) {
+    const order = [...currentOrder];
+    const index = order.indexOf(key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    // noUncheckedIndexedAccess: element reads are string | undefined —
+    // guard both before the swap.
+    const moved = order[index];
+    const neighbor = order[target];
+    if (moved === undefined || neighbor === undefined) return;
+    order[index] = neighbor;
+    order[target] = moved;
+    updatePrefs({ ...prefs, order });
+  }
+
+  function resetPrefs() {
+    updatePrefs(DEFAULT_TABLE_PREFS);
+  }
+
   // Phase 4.7 (§5 Journal-d'audit item) — client-side pagination (option a):
   // the route returns ONE fetch capped at CAP rows, so pages slice what's
   // already here instead of refetching. True server-side paging is deferred
@@ -222,6 +369,24 @@ export function AuditLogTable() {
   return (
     <div>
       <div className="mb-4 flex flex-wrap items-end gap-2">
+        {/* Phase 5.5 (§6.3/6.4) — this screen predates FilterBar; the
+            controls sit in an ml-auto trailing group of the same row until
+            a surface pass converts the row to FilterBar (out of scope
+            here). */}
+        <div className="ml-auto flex items-center gap-2">
+          <ColumnPicker
+            columns={pickerColumns}
+            hiddenKeys={prefs.hiddenKeys}
+            order={currentOrder}
+            onToggle={toggleColumn}
+            onMove={moveColumn}
+            onReset={resetPrefs}
+          />
+          <DensityToggle
+            value={prefs.density}
+            onChange={(density) => updatePrefs({ ...prefs, density })}
+          />
+        </div>
         {/* Phase 4.7 (§5 Journal-d'audit item) — was a free-text input; the
             action space is finite (40 strings, see AUDIT_ACTIONS). The
             leading value:'' option preserves the input's exact "empty =
@@ -285,13 +450,7 @@ export function AuditLogTable() {
         {/* Phase 4.7 — click-to-apply behavior unchanged; the page resets
             with the filters so a stale page/filter combination can't return
             an empty slice (same reasoning as InvocationLogTable). */}
-        <Button
-          variant="secondary"
-          onClick={() => {
-            setPage(1);
-            void load();
-          }}
-        >
+        <Button variant="secondary" onClick={applyFilters}>
           Filtrer
         </Button>
       </div>
@@ -310,9 +469,10 @@ export function AuditLogTable() {
             <p className="mb-2 text-xs text-neutral-500">200+ résultats (affinez les filtres)</p>
           )}
           <DataTable
-            columns={columns}
+            columns={displayColumns}
             rows={pagedEntries}
             getRowId={(e) => e.id}
+            density={prefs.density}
             pagination={{
               page,
               pageSize: PAGE_SIZE,
@@ -320,11 +480,15 @@ export function AuditLogTable() {
               onPageChange: setPage,
             }}
             emptyState={
-              <EmptyState
-                icon={ClipboardTextIcon}
-                title="Aucune entrée"
-                description="Aucune action ne correspond à ce filtre."
-              />
+              hasActiveFilters ? (
+                <NoResultsState onClearFilters={resetFilters} />
+              ) : (
+                <EmptyState
+                  icon={ClipboardTextIcon}
+                  title="Aucune entrée"
+                  description="Aucune action ne correspond à ce filtre."
+                />
+              )
             }
           />
         </>

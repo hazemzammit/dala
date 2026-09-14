@@ -1,24 +1,24 @@
-'use client';
+﻿'use client';
 
 import { SquaresFourIcon, TableIcon } from '@phosphor-icons/react';
 
 /**
  * packages/ui-web/src/ViewToggle.tsx
  *
- * Admin UI/UX overhaul pass — two-button segmented control for switching
- * between table and card list views. §2.6 of the plan.
+ * Admin UI/UX overhaul pass â€” two-button segmented control for switching
+ * between table and card list views. Â§2.6 of the plan.
  *
- * Test-contract / default-state rules (§0.5):
+ * Test-contract / default-state rules (Â§0.5):
  *   - The parent MUST always initialize `value` to 'table' on a fresh load.
  *   - This component is purely controlled; it never manages its own default.
  *     The caller (e.g. OrganizationsTable) is responsible for the default.
  *
- * Premium-polish pass (pre-Phase-5 cleanup) — rebuilt as an iOS/macOS-style
+ * Premium-polish pass (pre-Phase-5 cleanup) â€” rebuilt as an iOS/macOS-style
  * segmented control: a neutral-100 "track" holding a floating white pill
  * that carries the active option (bg-neutral-0 + small shadow), rather
  * than the previous flat two-button pair with no resting surface at all
  * (which is why it read as unstyled). Same accessible-name/aria-pressed
- * contract as before — nothing test-relevant changed.
+ * contract as before â€” nothing test-relevant changed.
  */
 
 interface ViewToggleProps {
@@ -49,7 +49,7 @@ export function ViewToggle({ value, onChange }: ViewToggleProps) {
             aria-label={label}
             title={label}
             className={[
-              'inline-flex h-10 w-10 items-center justify-center rounded-full transition-all duration-150',
+              'focus-visible:ring-accent-600 inline-flex h-10 w-10 items-center justify-center rounded-full focus-visible:ring-2 focus-visible:ring-offset-1 motion-safe:transition-all motion-safe:duration-150',
               active
                 ? 'bg-neutral-0 text-accent-700 shadow-[0_1px_3px_rgba(17,19,24,0.12)]'
                 : 'text-neutral-500 hover:text-neutral-900',

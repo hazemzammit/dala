@@ -1,7 +1,7 @@
 'use client';
 
 import { MagnifyingGlassIcon } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
  * apps/admin/src/components/ui/SearchInput.tsx
@@ -22,6 +22,7 @@ export function SearchInput({
   placeholder,
   debounceMs = 300,
   initialValue = '',
+  value,
 }: {
   onChange: (value: string) => void;
   placeholder: string;
@@ -31,13 +32,31 @@ export function SearchInput({
   // box, not just silently apply a filter the admin can't see reflected
   // anywhere in the UI.
   initialValue?: string;
+  // Phase 5.4 — the committed filter value (URL state). When it changes
+  // from OUTSIDE (Réinitialiser-les-filtres reset, back/forward navigation,
+  // a shared deep link), the visible text adopts it. Our own debounced
+  // commits are recognized via the last-reported ref and skipped, so
+  // typing is never clobbered mid-word. Omit for the old uncontrolled
+  // behavior (existing call sites are unaffected).
+  value?: string;
 }) {
-  const [value, setValue] = useState(initialValue);
+  const [text, setText] = useState(initialValue);
+  const lastReported = useRef(initialValue);
 
   useEffect(() => {
-    const timer = setTimeout(() => onChange(value), debounceMs);
+    const timer = setTimeout(() => {
+      lastReported.current = text;
+      onChange(text);
+    }, debounceMs);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [text]);
+
+  // External sync (controlled mode) — see the `value` prop comment.
+  useEffect(() => {
+    if (value === undefined || value === lastReported.current) return;
+    lastReported.current = value;
+    setText(value);
   }, [value]);
 
   return (
@@ -48,8 +67,8 @@ export function SearchInput({
       />
       <input
         type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
         placeholder={placeholder}
         className="rounded-control bg-neutral-0 focus:border-accent-600 h-10 w-full border border-neutral-300 pl-9 pr-3 text-[15.5px] text-neutral-900 outline-none transition-colors duration-150 placeholder:text-neutral-500"
       />

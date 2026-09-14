@@ -1,12 +1,12 @@
-import type { Icon } from '@phosphor-icons/react';
+﻿import type { Icon } from '@phosphor-icons/react';
 
 import { Card } from './Card';
 
 /**
  * packages/ui-web/src/IconStatCard.tsx
  *
- * Admin UI/UX overhaul pass — new sibling of StatCard that adds a colored
- * icon chip (§2.3 of the plan). StatCard itself is untouched so no
+ * Admin UI/UX overhaul pass â€” new sibling of StatCard that adds a colored
+ * icon chip (Â§2.3 of the plan). StatCard itself is untouched so no
  * existing apps/web or mobile-parity assumption is disturbed.
  *
  * The `tone` prop drives the icon chip's background (10% opacity of the
@@ -28,7 +28,7 @@ type IconStatTone =
   | 'neutral';
 
 /**
- * Static class strings — written out in full so Tailwind's content
+ * Static class strings â€” written out in full so Tailwind's content
  * scanner detects them (no dynamic construction).
  */
 const toneChipClasses: Record<IconStatTone, string> = {
@@ -64,9 +64,9 @@ export function IconStatCard({
   if (loading) {
     return (
       <Card className="p-6">
-        <div className="h-10 w-10 animate-pulse rounded-xl bg-neutral-100" />
-        <div className="mt-3 h-3 w-24 animate-pulse rounded bg-neutral-100" />
-        <div className="mt-3 h-9 w-32 animate-pulse rounded bg-neutral-100" />
+        <div className="h-10 w-10 rounded-xl bg-neutral-100 motion-safe:animate-pulse" />
+        <div className="mt-3 h-3 w-24 rounded bg-neutral-100 motion-safe:animate-pulse" />
+        <div className="mt-3 h-9 w-32 rounded bg-neutral-100 motion-safe:animate-pulse" />
       </Card>
     );
   }
@@ -75,7 +75,7 @@ export function IconStatCard({
     return (
       <Card className="p-6">
         <p className="text-sm text-neutral-500">
-          {emptyMessage ?? 'Aucune donnée pour le moment.'}
+          {emptyMessage ?? 'Aucune donnÃ©e pour le moment.'}
         </p>
       </Card>
     );

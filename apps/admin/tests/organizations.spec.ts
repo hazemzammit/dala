@@ -5,33 +5,70 @@ import { loadFixtures } from './helpers/fixtures';
 import { loginAsAdmin } from './helpers/login';
 
 /**
- * Doc 04 §4.3.3 — destructive-action confirm-by-typing gate. Verifies the
- * UI genuinely blocks the action until the exact org name is typed, not
- * just that a dialog appears.
+ * Phase 6.3 (premium-ux-system-guide.md §9/§18) — suspend is now an
+ * immediate-fire action with an undo toast, not a typed-confirmation dialog.
+ * Verifies the new flow: clicking "Suspendre" fires suspend right away (no
+ * "Tapez" gate), shows a toast with an "Annucer" action, the org is actually
+ * suspended server-side, and clicking "Annucer" reverses it via unsuspend.
  */
 test.describe('Organizations — destructive actions', () => {
-  test('suspend button stays disabled until the exact org name is typed', async ({ page }) => {
+  test('suspend fires immediately with an undo toast; Annuler reverses it', async ({ page }) => {
     const fixtures = loadFixtures();
-    await loginAsAdmin(page, fixtures.adminA);
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
 
-    await page.goto('/organizations');
-    const orgRow = page.getByRole('row', { name: new RegExp(fixtures.orgName) });
-    await orgRow.getByRole('button', { name: 'Suspendre' }).click();
+    // Start from a known-unsuspended state so the assertion is deterministic.
+    await supabase.from('organizations').update({ suspended_at: null }).eq('id', fixtures.orgId);
 
-    const confirmButton = page.getByRole('button', { name: 'Suspendre', exact: true }).last();
-    await expect(confirmButton).toBeDisabled();
+    try {
+      await loginAsAdmin(page, fixtures.adminA);
 
-    // Wrong text — still disabled.
-    const confirmInput = page.getByLabel(new RegExp('Tapez'));
-    await confirmInput.fill('not the org name');
-    await expect(confirmButton).toBeDisabled();
+      await page.goto('/organizations');
+      const orgRow = page.getByRole('row', { name: new RegExp(fixtures.orgName) });
+      // Phase 5.2 — row actions moved into a ••• menu (premium-ux-system-guide
+      // §6.1): same 'Suspendre' string, now role="menuitem" behind the row's
+      // 'Actions' trigger (portaled to <body>, hence page-level scoping).
+      await orgRow.getByRole('button', { name: 'Actions' }).click();
+      await page.getByRole('menuitem', { name: 'Suspendre' }).click();
 
-    // A reason is also required (>=10 chars) alongside the exact name.
-    await confirmInput.fill(fixtures.orgName);
-    await expect(confirmButton).toBeDisabled();
+      // No typed-confirmation dialog — the action fires immediately.
+      await expect(page.getByLabel(/Tapez/)).toHaveCount(0);
 
-    await page.getByLabel(/Motif/).fill('Test suspension via Playwright e2e suite');
-    await expect(confirmButton).toBeEnabled();
+      // The undo toast appears with an "Annuler" action, proving suspend fired.
+      const undoButton = page.getByRole('button', { name: 'Annuler' });
+      await expect(undoButton).toBeVisible();
+
+      // The org is now suspended server-side.
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('organizations')
+            .select('suspended_at')
+            .eq('id', fixtures.orgId)
+            .single();
+          return data?.suspended_at !== null;
+        })
+        .toBe(true);
+
+      // "Annuler" reverses the suspension.
+      await undoButton.click();
+
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('organizations')
+            .select('suspended_at')
+            .eq('id', fixtures.orgId)
+            .single();
+          return data?.suspended_at === null;
+        })
+        .toBe(true);
+    } finally {
+      // Leave the shared fixture org in a clean, unsuspended state.
+      await supabase.from('organizations').update({ suspended_at: null }).eq('id', fixtures.orgId);
+    }
   });
 });
 
@@ -202,9 +239,9 @@ test.describe('Organizations — search', () => {
     await page.getByPlaceholder('Rechercher par nom…').fill('zzz-no-such-org-zzz');
     // SearchInput debounces 300ms — wait for the filtered (empty) result
     // rather than asserting immediately after fill().
-    await expect(
-      page.getByText('Aucune organisation ne correspond à cette recherche.'),
-    ).toBeVisible({
+    // Phase 5.4 — the filtered-empty case now renders §7's NoResultsState;
+    // the §7 description is the stable string to assert.
+    await expect(page.getByText('Essayez un autre terme ou modifiez vos filtres.')).toBeVisible({
       timeout: 2000,
     });
   });

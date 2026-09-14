@@ -71,6 +71,81 @@ test.describe('Users', () => {
 });
 
 /**
+ * Phase 6.3 (premium-ux-system-guide.md §9/§18) — Users' "Suspendre" is now an
+ * immediate-fire action with an undo toast (the dynamic Suspendre/Réactiver
+ * pair), not a confirmation dialog. Verifies the new UI flow: clicking
+ * "Suspendre" in the row's ••• menu fires suspend right away (no "Tapez" gate),
+ * shows a toast with an "Annuler" action, the user is actually suspended
+ * server-side, and clicking "Annuler" reverses it via unsuspend.
+ */
+test.describe('Users — suspend undo toast', () => {
+  test('suspend fires immediately with an undo toast; Annuler reverses it', async ({ page }) => {
+    const fixtures = loadFixtures();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+
+    // Derive the org owner's user id (a real, suspendable user in the list).
+    const { data: authUsers } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    const orgOwner = authUsers.users.find((u) => u.email === fixtures.orgOwner.email);
+    if (!orgOwner)
+      throw new Error(`No auth.users row for fixture email ${fixtures.orgOwner.email}`);
+    const targetId = orgOwner.id;
+
+    // Start from a known-unsuspended state so the assertion is deterministic.
+    await supabase.from('profiles').update({ suspended_at: null }).eq('id', targetId);
+
+    try {
+      await loginAsAdmin(page, fixtures.adminA);
+
+      await page.goto('/users');
+      // Phase 5.2 — row actions live behind a ••• menu; the row is found by the
+      // user's email cell (portaled menu means page-level scoping for the click).
+      const userRow = page.getByRole('row', { name: new RegExp(fixtures.orgOwner.email) });
+      await userRow.getByRole('button', { name: 'Actions' }).click();
+      await page.getByRole('menuitem', { name: 'Suspendre' }).click();
+
+      // No typed-confirmation dialog — the action fires immediately.
+      await expect(page.getByLabel(/Tapez/)).toHaveCount(0);
+
+      // The undo toast appears with an "Annuler" action, proving suspend fired.
+      const undoButton = page.getByRole('button', { name: 'Annuler' });
+      await expect(undoButton).toBeVisible();
+
+      // The user is now suspended server-side.
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('profiles')
+            .select('suspended_at')
+            .eq('id', targetId)
+            .single();
+          return data?.suspended_at !== null;
+        })
+        .toBe(true);
+
+      // "Annuler" reverses the suspension.
+      await undoButton.click();
+
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('profiles')
+            .select('suspended_at')
+            .eq('id', targetId)
+            .single();
+          return data?.suspended_at === null;
+        })
+        .toBe(true);
+    } finally {
+      // Leave the shared fixture user in a clean, unsuspended state.
+      await supabase.from('profiles').update({ suspended_at: null }).eq('id', targetId);
+    }
+  });
+});
+
+/**
  * Admin remediation Tier 4.1 — pagination. Same reasoning as
  * organizations.spec.ts's own pagination suite: pageSize=1 against this
  * suite's small fixed set of seeded users forces a real second page
@@ -142,7 +217,9 @@ test.describe('Users — search', () => {
     await page
       .getByPlaceholder('Rechercher par nom, email, téléphone…')
       .fill('zzz-no-such-user-zzz');
-    await expect(page.getByText('Aucun utilisateur ne correspond à cette recherche.')).toBeVisible({
+    // Phase 5.4 — §7's NoResultsState replaces the old per-table
+    // description; the §7 description is the stable string to assert.
+    await expect(page.getByText('Essayez un autre terme ou modifiez vos filtres.')).toBeVisible({
       timeout: 2000,
     });
   });

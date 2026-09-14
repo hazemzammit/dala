@@ -9,6 +9,7 @@ import {
   StatusBadge,
   TableSkeleton,
 } from '@dala/ui-web';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 const PAGE_SIZE = 50;
@@ -30,14 +31,49 @@ const KNOWN_FUNCTIONS = [
 ];
 
 export function InvocationLogTable() {
+  // Phase 5.3 (premium-ux-system-guide.md §15) — filters/page live in the
+  // URL as the single source of truth (shareable, reload-stable), replacing
+  // three local useStates. Every write goes through setParams() →
+  // router.replace({ scroll: false }); defaults ('' = all, page 1) are
+  // never serialized, so a param-less URL behaves exactly as before. Param
+  // names mirror the API params they feed (functionName/status).
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const functionFilter = searchParams.get('functionName') ?? '';
+  const statusFilter = searchParams.get('status') ?? '';
+  const page = Number(searchParams.get('page')) || 1;
+
+  function setParams(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === '') params.delete(key);
+      else params.set(key, value);
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
   const [invocations, setInvocations] = useState<EdgeFunctionInvocation[]>([]);
   const [loading, setLoading] = useState(true);
   // Phase 20 (§1.7a) — same gap as this route's other tables.
   const [loadError, setLoadError] = useState(false);
-  const [functionFilter, setFunctionFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+
+  // Same name/signature as the old setter-based applyFilter, so the two
+  // <select> call sites below stay byte-identical apart from the key
+  // argument; the page-1 reset lands in the same URL write (the old one
+  // did setter + setPage(1)). Any filter change resets to page 1 — stale
+  // page/filter combinations would otherwise silently return zero rows.
+  function applyFilter(which: 'functionName' | 'status', value: string) {
+    setParams({ [which]: value, page: null });
+  }
+
+  // Same name/signature as the useState setter it replaces, so the
+  // Pagination call site below stays byte-identical.
+  function setPage(next: number) {
+    setParams({ page: next === 1 ? null : String(next) });
+  }
 
   async function load() {
     setLoading(true);
@@ -67,12 +103,6 @@ export function InvocationLogTable() {
     // values via closure, same pattern as AuditLogTable's own effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, functionFilter, statusFilter]);
-
-  function applyFilter(setter: (v: string) => void, value: string) {
-    setter(value);
-    setPage(1); // any filter change resets to page 1 — stale page/filter
-    // combinations would otherwise silently return zero rows.
-  }
 
   const columns: DataTableColumn<EdgeFunctionInvocation>[] = [
     {
@@ -120,7 +150,7 @@ export function InvocationLogTable() {
       <div className="mb-4 flex flex-wrap items-end gap-2">
         <select
           value={functionFilter}
-          onChange={(e) => applyFilter(setFunctionFilter, e.target.value)}
+          onChange={(e) => applyFilter('functionName', e.target.value)}
           className="rounded-control focus:border-accent-600 border border-neutral-300 px-3 py-2 text-sm outline-none"
         >
           <option value="">Toutes les fonctions</option>
@@ -132,7 +162,7 @@ export function InvocationLogTable() {
         </select>
         <select
           value={statusFilter}
-          onChange={(e) => applyFilter(setStatusFilter, e.target.value)}
+          onChange={(e) => applyFilter('status', e.target.value)}
           className="rounded-control focus:border-accent-600 border border-neutral-300 px-3 py-2 text-sm outline-none"
         >
           <option value="">Tous les statuts</option>

@@ -1,0 +1,37 @@
+diff --git a/native/android-jsi/src/main/cpp/CMakeLists.txt b/native/android-jsi/src/main/cpp/CMakeLists.txt
+index 79d961e8a1b3a292d93cd5bfc4dff303d7151cd6..5cf6ed43fc79a7cb26510e97beacd6aed5332939 100644
+--- a/native/android-jsi/src/main/cpp/CMakeLists.txt
++++ b/native/android-jsi/src/main/cpp/CMakeLists.txt
+@@ -15,16 +15,29 @@ set(WMELON_JSI_BUMP 4)
+ get_filename_component(_nativeTesterPath "../../../../../node_modules/@nozbe/sqlite/" REALPATH)
+ get_filename_component(_nozbePath "../../../../../../../../../native/node_modules/react-native/ReactCommon/jsi/jsi/" REALPATH)
+ 
++execute_process(
++        COMMAND node -e "console.log(require('path').dirname(require('path').dirname(require.resolve('react-native/package.json'))))"
++        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
++        OUTPUT_VARIABLE _pnpmReactNativeParent
++        OUTPUT_STRIP_TRAILING_WHITESPACE
++        RESULT_VARIABLE _pnpmResolveResult
++        ERROR_QUIET
++)
++
++if(_pnpmResolveResult EQUAL 0)
++        file(TO_CMAKE_PATH "${_pnpmReactNativeParent}" _pnpmReactNativeParent)
++endif()
++
+ if(EXISTS "${_nativeTesterPath}")
+-        # these paths work for WatermelonDB native tester
+         set(NODE_MODULES_PATH_WM ../../../../../node_modules/)
+         set(NODE_MODULES_PATH_RN ../../../../../node_modules/)
+ elseif(EXISTS "${_nozbePath}")
+-        # these paths work for Nozbe
+         set(NODE_MODULES_PATH_WM ../../../../../../../)
+         set(NODE_MODULES_PATH_RN ../../../../../../../../../native/node_modules/)
++elseif(_pnpmResolveResult EQUAL 0 AND EXISTS "${_pnpmReactNativeParent}/react-native/ReactCommon/jsi/jsi/jsi.cpp")
++        set(NODE_MODULES_PATH_WM ../../../../../../../)
++        set(NODE_MODULES_PATH_RN ${_pnpmReactNativeParent}/)
+ else()
+-        # these paths should work for a standard RN project
+         set(NODE_MODULES_PATH_WM ../../../../../../../)
+         set(NODE_MODULES_PATH_RN ../../../../../../../)
+ endif()

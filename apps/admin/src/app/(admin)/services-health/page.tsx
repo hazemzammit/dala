@@ -1,5 +1,6 @@
 import { PageHero, SectionCard } from '@dala/ui-web';
 import { PulseIcon } from '@phosphor-icons/react/ssr';
+import { Suspense } from 'react';
 
 import { EmailDeliverabilityTable } from './EmailDeliverabilityTable';
 import { InfraStatusGrid } from './InfraStatusGrid';
@@ -44,9 +45,14 @@ export default function ServicesHealthPage() {
         <ScheduledJobsTable />
       </SectionCard>
 
-      <SectionCard title="Journal des invocations (Edge Functions)">
-        <InvocationLogTable />
-      </SectionCard>
+      {/* Tier 4.4 / Phase 5.3 — same useSearchParams()-requires-Suspense
+          reasoning as apps/(admin)/users/page.tsx. Only this widget reads
+          the URL; the other three render without waiting on it. */}
+      <Suspense fallback={<p className="text-sm text-neutral-500">Chargement…</p>}>
+        <SectionCard title="Journal des invocations (Edge Functions)">
+          <InvocationLogTable />
+        </SectionCard>
+      </Suspense>
 
       <SectionCard title="Délivrabilité des emails (rebonds & plaintes)">
         <EmailDeliverabilityTable />

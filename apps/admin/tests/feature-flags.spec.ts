@@ -218,3 +218,93 @@ test.describe('Feature flags — per-org override precedence (get_feature_flag)'
     expect(data).toBe(false);
   });
 });
+
+/**
+ * Phase 6.3 (premium-ux-system-guide.md §9/§18) — clearing a feature-flag
+ * override is reversible, so the "Retirer" button now fires immediately and
+ * shows an undo toast ("Annuler") instead of a confirmation dialog. Verifies
+ * the new UI flow: set an override, click Retirer, assert the undo toast, the
+ * override is gone server-side, then "Annuler" restores it with the same
+ * enabled state.
+ */
+test.describe('Feature flags — clear override undo toast', () => {
+  test('Retirer fires immediately with an undo toast; Annuler restores the override', async ({
+    page,
+  }) => {
+    const fixtures = loadFixtures();
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    );
+    const key = `e2e_test_undo_${Date.now()}`;
+
+    await loginAsAdmin(page, fixtures.adminA);
+
+    try {
+      // Seed a flag with default disabled, then set an enabled override for
+      // the fixture org — the override we'll clear and restore via the UI.
+      // Set up via API (authed) before driving the UI for the Retirer click.
+      await page.request.post('/api/admin/feature-flags', {
+        data: { key, description: 'undo toast test', defaultEnabled: false },
+      });
+      await page.request.post(`/api/admin/feature-flags/${key}/overrides`, {
+        data: { orgId: fixtures.orgId, action: 'set', enabled: true },
+      });
+
+      const { data: beforeClear } = await supabase
+        .from('organization_feature_flags')
+        .select('enabled')
+        .eq('flag_key', key)
+        .eq('org_id', fixtures.orgId)
+        .single();
+      expect(beforeClear?.enabled).toBe(true);
+
+      await page.goto('/feature-flags');
+
+      // Expand the flag's overrides panel, then click "Retirer" on the
+      // override row. The SectionCard title is an <h2> with the flag key;
+      // navigate up to the card root, then find its expand button.
+      const flagCard = page.getByRole('heading', { name: key, level: 2 }).locator('../..');
+      await flagCard.getByRole('button', { name: 'Gérer les surcharges par organisation' }).click();
+
+      // The override row is a flex div containing the org-name text and the
+      // "Retirer" button as siblings. getByText matches the inner span, so
+      // step up to the row container, then scope the button to it.
+      const overrideRow = page.getByText(new RegExp(fixtures.orgName)).locator('..');
+      await overrideRow.getByRole('button', { name: 'Retirer' }).click();
+
+      // The undo toast appears with an "Annuler" action, proving the clear fired.
+      const undoButton = page.getByRole('button', { name: 'Annuler' });
+      await expect(undoButton).toBeVisible();
+
+      // The override is now gone server-side.
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('organization_feature_flags')
+            .select('org_id')
+            .eq('flag_key', key)
+            .eq('org_id', fixtures.orgId);
+          return data?.length ?? 0;
+        })
+        .toBe(0);
+
+      // "Annuler" restores the override with the same enabled state.
+      await undoButton.click();
+
+      await expect
+        .poll(async () => {
+          const { data } = await supabase
+            .from('organization_feature_flags')
+            .select('enabled')
+            .eq('flag_key', key)
+            .eq('org_id', fixtures.orgId)
+            .single();
+          return data?.enabled === true;
+        })
+        .toBe(true);
+    } finally {
+      await supabase.from('feature_flags').delete().eq('key', key);
+    }
+  });
+});

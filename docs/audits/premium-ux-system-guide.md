@@ -391,6 +391,13 @@ Phase 8+ — gated on a product decision not yet made
 
 ## 18. Page-by-page work
 
+> **[Phase 4.7 amendment]** Every page in this section now has a real
+> PageHero (not a bare `<h1>`) — Steps 1–14 of
+> phase-4.7-visual-polish-remediation.md gave all of them one, along with
+> PlanBadge/StatStrip/tone-remap fixes on Billing, Storage, Organizations,
+> and Users. Treat every "Today:" paragraph below as unverified until
+> re-checked against live code — this is not optional, per rule 3.
+
 Every screen in the app, current state, and exactly what applies from
 §§1–16 above, in phase order. "Surface tier" = §2's Level 0/1/2 model.
 

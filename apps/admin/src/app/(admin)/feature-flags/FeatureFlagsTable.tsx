@@ -7,6 +7,7 @@ import {
   IconActionButton,
   SectionCard,
   TableSkeleton,
+  useToast,
 } from '@dala/ui-web';
 import { TrashIcon } from '@phosphor-icons/react';
 import { useEffect, useState } from 'react';
@@ -33,6 +34,11 @@ function OverridesPanel({ flagKey, canEdit }: { flagKey: string; canEdit: boolea
   const [orgId, setOrgId] = useState('');
   const [enabled, setEnabled] = useState(true);
 
+  // Phase 6.3 (§9/§18) — undo-toast for the clear-override action. Mounted once
+  // per page in (admin)/layout.tsx via <ToastProvider>; callable here for the
+  // toast the Retirer action shows.
+  const toast = useToast();
+
   async function load() {
     setLoading(true);
     const res = await fetch(`/api/admin/feature-flags/${flagKey}/overrides`);
@@ -58,12 +64,39 @@ function OverridesPanel({ flagKey, canEdit }: { flagKey: string; canEdit: boolea
   }
 
   async function clearOverride(targetOrgId: string) {
+    // Phase 6.3 — capture the override BEFORE clearing so "Annuler" can restore
+    // it with the same enabled state. Looked up from current state; if the row
+    // vanished under us, fall back to a plain clear with no toast.
+    const cleared = overrides.find((o) => o.org_id === targetOrgId);
     await fetch(`/api/admin/feature-flags/${flagKey}/overrides`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orgId: targetOrgId, action: 'clear' }),
     });
     await load();
+    if (cleared) {
+      toast(`Surcharge retirée pour ${cleared.org_name}`, {
+        action: {
+          label: 'Annuler',
+          onClick: () => void reAddOverride(cleared),
+        },
+      });
+    }
+  }
+
+  // Phase 6.3 — reverses a clear-override by re-adding the same override
+  // (same org + enabled state). Toast-free: the undo of an undo shouldn't
+  // spawn another toast.
+  async function reAddOverride(override: Override) {
+    try {
+      await fetch(`/api/admin/feature-flags/${flagKey}/overrides`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgId: override.org_id, action: 'set', enabled: override.enabled }),
+      });
+    } finally {
+      await load();
+    }
   }
 
   return (

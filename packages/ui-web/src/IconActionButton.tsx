@@ -95,8 +95,9 @@ export function IconActionButton({
     title: label,
     className: [
       'inline-flex items-center justify-center gap-1.5 rounded-lg border border-neutral-200 bg-neutral-0',
-      'shadow-[0_1px_2px_rgba(17,19,24,0.05)] transition-all duration-150',
+      'shadow-[0_1px_2px_rgba(17,19,24,0.05)] motion-safe:transition-all motion-safe:duration-150',
       'hover:shadow-[0_2px_6px_rgba(17,19,24,0.08)]',
+      'focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-accent-600',
       sized,
       toneClasses[tone],
       'disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:shadow-[0_1px_2px_rgba(17,19,24,0.05)]',

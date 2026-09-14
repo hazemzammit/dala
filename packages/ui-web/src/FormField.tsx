@@ -65,12 +65,12 @@ export const FormField = forwardRef<HTMLInputElement, FormFieldProps>(function F
           aria-invalid={!!error}
           className={[
             'rounded-control bg-neutral-0 w-full border px-3 py-2.5 text-[15.5px]',
-            'outline-none transition-colors duration-150',
+            'outline-none motion-safe:transition-colors motion-safe:duration-150',
             'placeholder:text-neutral-500',
             disabled ? 'cursor-not-allowed bg-neutral-100 text-neutral-500' : 'text-neutral-900',
             error
-              ? 'border-danger focus:border-danger'
-              : 'focus:border-accent-600 border-neutral-300',
+              ? 'border-danger focus:border-danger focus-visible:ring-danger focus-visible:ring-2 focus-visible:ring-offset-1'
+              : 'focus:border-accent-600 focus-visible:ring-accent-600 border-neutral-300 focus-visible:ring-2 focus-visible:ring-offset-1',
             isPassword && showToggle ? 'pe-10' : '',
             className,
           ].join(' ')}

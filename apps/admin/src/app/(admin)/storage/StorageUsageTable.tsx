@@ -4,12 +4,15 @@ import type { OrgStorageUsage } from '@dala/shared-types';
 import {
   Button,
   Card,
+  ColumnPicker,
   DataTable,
   type DataTableColumn,
+  DensityToggle,
   EmptyState,
   ErrorState,
   FilterBar,
   FilterSelect,
+  NoResultsState,
   PlanBadge,
   StatStrip,
   StatusBadge,
@@ -17,10 +20,18 @@ import {
 } from '@dala/ui-web';
 import { BuildingsIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 
 import { SearchInput } from '@/components/ui/SearchInput';
 import { formatStorage } from '@/lib/format';
+import {
+  applyColumnState,
+  DEFAULT_TABLE_PREFS,
+  readTablePrefs,
+  writeTablePrefs,
+  type TablePrefs,
+} from '@/lib/table-preferences';
 import { useAdminSession } from '@/lib/use-admin-session';
 
 // Doc 00 §0.3 item 7 — free-tier storage-overage policy, labels shown next
@@ -57,8 +68,60 @@ export function StorageUsageTable() {
   // Phase 4.7 (Step 9) - client-side search by org name + overage-status
   // filter (no API change; the storage GET route takes no params and the
   // full set is loaded).
-  const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  // Phase 5.3 (premium-ux-system-guide.md §15/§18) — both now round-trip
+  // through the URL (shareable, reload-stable): `?status=over_limit`
+  // deep-links straight to orgs needing action. Defaults are never
+  // serialized, so a param-less URL behaves exactly as before.
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const q = searchParams.get('q') ?? '';
+  const rawStatus = searchParams.get('status');
+  const statusFilter = ['ok', 'warning', 'critical', 'over_limit', 'no_limit_defined'].includes(
+    rawStatus ?? '',
+  )
+    ? (rawStatus as string)
+    : 'all';
+
+  function setParams(patch: Record<string, string | null>) {
+    const params = new URLSearchParams(searchParams.toString());
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === '') params.delete(key);
+      else params.set(key, value);
+    }
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  // Same name/signature as the useState setter it replaces, so the
+  // FilterSelect call site below stays byte-identical.
+  function setStatusFilter(next: string) {
+    setParams({ status: next === 'all' ? null : next });
+  }
+
+  // Phase 5.4 (§7) — "no data at all" vs "filters matched nothing" is
+  // decided by whether ANY filter/search value is set, not rows.length.
+  const hasActiveFilters = Boolean(q) || statusFilter !== 'all';
+
+  function resetFilters() {
+    setParams({ q: null, status: null });
+  }
+
+  // Phase 5.5 (§6.3/6.4, §15) — per-table column visibility/reorder +
+  // density, persisted in localStorage (dala-admin-table-storage-prefs;
+  // extends the sidebar's dala-admin-* key convention). Read on mount like
+  // the sidebar (SSR-safe): first paint is the defaults, then stored prefs
+  // settle in — fresh loads with no stored prefs are byte-identical (test
+  // contract).
+  const [prefs, setPrefs] = useState<TablePrefs>(DEFAULT_TABLE_PREFS);
+  useEffect(() => {
+    setPrefs(readTablePrefs('storage'));
+  }, []);
+
+  function updatePrefs(next: TablePrefs) {
+    setPrefs(next);
+    writeTablePrefs('storage', next);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -161,6 +224,41 @@ export function StorageUsageTable() {
     },
   ];
 
+  // Phase 5.5 — picker inputs (§6.3/6.4). No locked column: this table has
+  // no row-actions column (cleanup lives in FilterBar's trailing slot).
+  const currentOrder = prefs.order.length ? prefs.order : columns.map((c) => c.key);
+  const pickerColumns = columns.map((c) => ({ key: c.key, header: c.header }));
+  const displayColumns = applyColumnState(columns, { ...prefs, order: currentOrder });
+
+  function toggleColumn(key: string) {
+    updatePrefs({
+      ...prefs,
+      hiddenKeys: prefs.hiddenKeys.includes(key)
+        ? prefs.hiddenKeys.filter((k) => k !== key)
+        : [...prefs.hiddenKeys, key],
+      order: currentOrder,
+    });
+  }
+
+  function moveColumn(key: string, direction: -1 | 1) {
+    const order = [...currentOrder];
+    const index = order.indexOf(key);
+    const target = index + direction;
+    if (index < 0 || target < 0 || target >= order.length) return;
+    // noUncheckedIndexedAccess: element reads are string | undefined —
+    // guard both before the swap.
+    const moved = order[index];
+    const neighbor = order[target];
+    if (moved === undefined || neighbor === undefined) return;
+    order[index] = neighbor;
+    order[target] = moved;
+    updatePrefs({ ...prefs, order });
+  }
+
+  function resetPrefs() {
+    updatePrefs(DEFAULT_TABLE_PREFS);
+  }
+
   if (error) {
     return (
       <Card className="mt-6 p-8">
@@ -180,7 +278,7 @@ export function StorageUsageTable() {
   }
 
   function handleSearchChange(value: string) {
-    setQ(value);
+    setParams({ q: value });
   }
 
   const visibleRows = rows.filter((r) => {
@@ -204,19 +302,34 @@ export function StorageUsageTable() {
       )}
       <FilterBar
         trailing={
-          canCleanup ? (
-            <div className="flex items-center gap-3">
-              {cleanupResult && <p className="text-xs text-neutral-500">{cleanupResult}</p>}
-              <Button variant="secondary" onClick={runCleanup} disabled={cleaning}>
-                {cleaning ? 'Nettoyage…' : 'Nettoyer les fichiers orphelins'}
-              </Button>
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-3">
+            <ColumnPicker
+              columns={pickerColumns}
+              hiddenKeys={prefs.hiddenKeys}
+              order={currentOrder}
+              onToggle={toggleColumn}
+              onMove={moveColumn}
+              onReset={resetPrefs}
+            />
+            <DensityToggle
+              value={prefs.density}
+              onChange={(density) => updatePrefs({ ...prefs, density })}
+            />
+            {canCleanup && (
+              <div className="flex items-center gap-3">
+                {cleanupResult && <p className="text-xs text-neutral-500">{cleanupResult}</p>}
+                <Button variant="secondary" onClick={runCleanup} disabled={cleaning}>
+                  {cleaning ? 'Nettoyage…' : 'Nettoyer les fichiers orphelins'}
+                </Button>
+              </div>
+            )}
+          </div>
         }
       >
         <SearchInput
           onChange={handleSearchChange}
           placeholder="Rechercher par nom d'organisation…"
+          value={q}
         />
         <FilterSelect
           aria-label="Quota"
@@ -233,19 +346,20 @@ export function StorageUsageTable() {
         />
       </FilterBar>
       <DataTable
-        columns={columns}
+        columns={displayColumns}
         rows={visibleRows}
         getRowId={(r) => r.organization_id}
+        density={prefs.density}
         emptyState={
-          <EmptyState
-            icon={BuildingsIcon}
-            title="Aucune organisation"
-            description={
-              q || statusFilter !== 'all'
-                ? 'Aucune organisation ne correspond à cette recherche.'
-                : "Pas encore d'organisations dans cet environnement."
-            }
-          />
+          hasActiveFilters ? (
+            <NoResultsState term={q || undefined} onClearFilters={resetFilters} />
+          ) : (
+            <EmptyState
+              icon={BuildingsIcon}
+              title="Aucune organisation"
+              description="Pas encore d'organisations dans cet environnement."
+            />
+          )
         }
       />
     </div>

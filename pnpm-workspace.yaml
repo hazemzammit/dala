@@ -12,3 +12,5 @@ allowBuilds:
   dtrace-provider: true
   esbuild: true
   unrs-resolver: true
+patchedDependencies:
+  '@nozbe/watermelondb@0.28.0': patches/@nozbe__watermelondb@0.28.0.patch

@@ -8,6 +8,9 @@ overrides:
   '@babel/runtime': ^7.29.7
   expo-constants: 18.0.14
 
+patchedDependencies:
+  '@nozbe/watermelondb@0.28.0': 7d8ef801af2cbadc79fff5b406ebae5e67abba12f6564dc53fca5cceb7dc75c6
+
 importers:
 
   .:
@@ -156,7 +159,7 @@ importers:
         version: 2.4.0-beta.0
       '@nozbe/watermelondb':
         specifier: ^0.28.0
-        version: 0.28.0
+        version: 0.28.0(patch_hash=7d8ef801af2cbadc79fff5b406ebae5e67abba12f6564dc53fca5cceb7dc75c6)
       '@react-native-community/datetimepicker':
         specifier: ^8.4.4
         version: 8.4.4(expo@54.0.37)(react-native@0.81.5(@babel/core@7.29.7(supports-color@8.1.1))(@react-native-community/cli@13.6.9(supports-color@8.1.1))(@react-native/metro-config@0.86.0(@babel/core@7.29.7(supports-color@8.1.1))(supports-color@8.1.1))(@types/react@19.1.17)(react@19.1.0)(supports-color@8.1.1))(react@19.1.0)
@@ -11241,7 +11244,7 @@ snapshots:
 
   '@nozbe/sqlite@3.46.0': {}
 
-  '@nozbe/watermelondb@0.28.0':
+  '@nozbe/watermelondb@0.28.0(patch_hash=7d8ef801af2cbadc79fff5b406ebae5e67abba12f6564dc53fca5cceb7dc75c6)':
     dependencies:
       '@babel/runtime': 7.29.7
       '@nozbe/simdjson': 3.9.4

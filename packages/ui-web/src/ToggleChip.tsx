@@ -40,7 +40,7 @@ export function ToggleChip({ pressed, title, children, ...rest }: ToggleChipProp
       type="button"
       aria-pressed={pressed}
       title={title}
-      className={`rounded-control focus:border-accent-600 inline-flex h-10 shrink-0 items-center border px-3 text-sm font-medium outline-none transition-colors duration-150 ${
+      className={`rounded-control focus:border-accent-600 focus-visible:ring-accent-600 inline-flex h-10 shrink-0 items-center border px-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-offset-1 motion-safe:transition-colors motion-safe:duration-150 ${
         pressed
           ? 'border-accent-600 bg-accent-50 text-accent-700'
           : 'border-neutral-300 text-neutral-600 hover:bg-neutral-50'

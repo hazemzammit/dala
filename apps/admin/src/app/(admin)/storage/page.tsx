@@ -1,5 +1,6 @@
 import { PageHero } from '@dala/ui-web';
 import { HardDrivesIcon } from '@phosphor-icons/react/ssr';
+import { Suspense } from 'react';
 
 import { StorageUsageTable } from './StorageUsageTable';
 
@@ -33,7 +34,11 @@ export default function StorageMonitorPage() {
         title="Surveillance du stockage"
         description="Utilisation du stockage par organisation, avec seuils d'alerte."
       />
-      <StorageUsageTable />
+      {/* Tier 4.4 / Phase 5.3 — same useSearchParams()-requires-Suspense
+          reasoning as apps/(admin)/users/page.tsx. */}
+      <Suspense fallback={<p className="text-sm text-neutral-500">Chargement…</p>}>
+        <StorageUsageTable />
+      </Suspense>
     </div>
   );
 }

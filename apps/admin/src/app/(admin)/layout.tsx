@@ -1,3 +1,4 @@
+import { ToastProvider } from '@dala/ui-web';
 import { redirect } from 'next/navigation';
 
 import { ImpersonationBanner } from '@/components/shell/ImpersonationBanner';
@@ -17,13 +18,15 @@ export default async function AdminShellLayout({ children }: { children: React.R
   if (!ctx) redirect('/login');
 
   return (
-    <div className="bg-neutral-25 flex h-screen">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <Topbar />
-        <ImpersonationBanner />
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+    <ToastProvider>
+      <div className="bg-neutral-25 flex h-screen">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <Topbar />
+          <ImpersonationBanner />
+          <main className="flex-1 overflow-y-auto p-8">{children}</main>
+        </div>
       </div>
-    </div>
+    </ToastProvider>
   );
 }
