@@ -38,15 +38,14 @@ const STATUS_VARIANT: Record<VehicleStatus, 'success' | 'info' | 'warning'> = {
 
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 
+// FLAGGED FOR HAZEM (plan Step 12b): brand/model, driver/currentProject, and
+// mileage are removed — no data source exists anywhere (§2.9 rule: no source
+// → remove; vehicle_maintenance_log 0073 keeps only log_date/description/
+// cost, no odometer). `fuelCost`/`maintenanceStatus` stay fabricated pending
+// the open latest-entry-vs-date-range rendering decision (§7.1).
 type VehicleRow = Vehicle & {
-  brand: string;
-  model: string;
-  driver: string;
-  currentProject: string;
-  mileage: number;
   fuelCost: number;
   maintenanceStatus: string;
-  availability: string;
 };
 
 function formatMoney(value: number): string {
@@ -71,34 +70,20 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     }
   }, [searchParams]);
 
-  // FLAGGED FOR HAZEM — same pattern as team/'s roster stats: brand, model,
-  // driver, currentProject, mileage, fuelCost, and maintenanceStatus below
-  // are fabricated from array index, not real data. driver/currentProject
-  // would need a dispatch_assignments join; mileage/fuelCost/maintenance
-  // status would need vehicle_maintenance_log (0073), which is append-only
-  // history, not a running odometer/cost total — computing those "current
-  // value" numbers from it is itself a product decision (latest log entry?
-  // sum of a date range?) rather than a one-line fix. Left as clearly-fake
-  // placeholder data pending that decision, same as team/.
+  // FLAGGED FOR HAZEM (plan Step 12b) — resolved + still pending: brand,
+  // model, driver, currentProject, mileage, and the unused derived
+  // `availability` field are GONE (decisions 5 & 6 + §7.1: no source).
+  // `fuelCost`/`maintenanceStatus` below remain fabricated from array index:
+  // vehicle_maintenance_log (0073) is append-only history, and computing a
+  // "current" value from it (latest log entry? sum over a date range?) is
+  // the still-open product decision — same clearly-fake placeholder as
+  // before until that call is made.
   const displayRows = useMemo<VehicleRow[]>(() => {
     return rows.map((vehicle, index) => ({
       ...vehicle,
-      brand: ['Toyota', 'Renault', 'Ford', 'Isuzu'][index % 4]!,
-      model: ['Hilux', 'Master', 'Transit', 'NPR'][index % 4]!,
-      driver: ['Sami', 'Nour', 'Rami', 'Meriem'][index % 4]!,
-      currentProject: ['El Baraka Towers', 'Villa Sfax', 'Rénovation du port', 'Annexe scolaire'][
-        index % 4
-      ]!,
-      mileage: 32000 + index * 4200,
       fuelCost: 180 + index * 35,
       maintenanceStatus:
         index % 3 === 0 ? 'Bientôt due' : index % 2 === 0 ? 'État sain' : 'Inspection en attente',
-      availability:
-        vehicle.status === 'available'
-          ? 'Prêt'
-          : vehicle.status === 'in_use'
-            ? 'Affecté'
-            : 'Hors ligne',
     }));
   }, [rows]);
 
@@ -119,9 +104,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     return displayRows.filter((row) => {
       const matchesSearch =
         lower.length === 0 ||
-        [row.name, row.plate ?? '', row.brand, row.model, row.driver, row.currentProject].some(
-          (value) => value.toLowerCase().includes(lower),
-        );
+        [row.name, row.plate ?? ''].some((value) => value.toLowerCase().includes(lower));
       const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
@@ -147,14 +130,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     {
       key: 'name',
       header: 'Véhicule',
-      render: (v) => (
-        <div>
-          <div className="font-medium text-neutral-900">{v.name}</div>
-          <div className="text-xs text-neutral-500">
-            {v.brand} {v.model}
-          </div>
-        </div>
-      ),
+      render: (v) => <div className="font-medium text-neutral-900">{v.name}</div>,
       sortValue: (v) => v.name,
     },
     {
@@ -164,29 +140,10 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       sortValue: (v) => v.plate ?? '',
     },
     {
-      key: 'driver',
-      header: 'Conducteur actuel',
-      render: (v) => v.driver,
-      sortValue: (v) => v.driver,
-    },
-    {
-      key: 'currentProject',
-      header: 'Chantier actuel',
-      render: (v) => v.currentProject,
-      sortValue: (v) => v.currentProject,
-    },
-    {
       key: 'capacity',
       header: 'Capacité',
       render: (v) => `${v.capacity} ouvriers`,
       sortValue: (v) => v.capacity,
-      align: 'right',
-    },
-    {
-      key: 'mileage',
-      header: 'Kilométrage',
-      render: (v) => `${v.mileage.toLocaleString('fr-TN')} km`,
-      sortValue: (v) => v.mileage,
       align: 'right',
     },
     {
