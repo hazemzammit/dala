@@ -8,6 +8,8 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterSelect,
+  IconActionButton,
   PageHero,
   StatusBadge,
 } from '@dala/ui-web';
@@ -19,6 +21,8 @@ import { deleteVehicle } from './actions';
 import { VehicleFormModal } from './VehicleFormModal';
 
 import { ProgressBar, SectionCard, StatusMetric } from '@/components/contractor/Screen';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
@@ -60,6 +64,8 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
   const searchParams = useSearchParams();
+  const [deleteTarget, setDeleteTarget] = useState<VehicleRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchParams.get('create') === '1') {
@@ -120,6 +126,22 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       return matchesSearch && matchesStatus;
     });
   }, [displayRows, query, statusFilter]);
+
+  async function handleDeleteVehicle() {
+    if (deleteTarget === null) return;
+    const target = deleteTarget;
+    setDeleteError(null);
+    startTransition(async () => {
+      const result = await deleteVehicle(target.id);
+      if (!result.success) {
+        setDeleteError(result.error);
+        return;
+      }
+      setRows((current) => current.filter((row) => row.id !== target.id));
+      setNotice(`${target.name} a été retiré du parc.`);
+      setDeleteTarget(null);
+    });
+  }
 
   const selectedVehicle = detailState.mode === 'vehicle' ? detailState.vehicle : null;
 
@@ -196,47 +218,38 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       align: 'right',
       render: (v) => (
         <div className="flex items-center justify-end gap-1.5">
-          <button
+          <IconActionButton
+            icon={EyeIcon}
+            label={`Voir le détail de ${v.name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setDetailState({ mode: 'vehicle', vehicle: v });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Voir le détail de ${v.name}`}
-          >
-            <EyeIcon size={16} />
-          </button>
-          <button
+          />
+          <IconActionButton
+            icon={PencilSimpleIcon}
+            label={`Modifier ${v.name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setModalState({ mode: 'edit', vehicle: v });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modify ${v.name}`}
-          >
-            <PencilSimpleIcon size={16} />
-          </button>
-          <button
+          />
+          <IconActionButton
+            icon={TrashIcon}
+            label={`Supprimer ${v.name}`}
+            tone="danger"
+            size="sm"
+            disabled={isPending}
             onClick={(e) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Supprimer ${v.name} ?`);
-              if (!confirmed) return;
-              startTransition(async () => {
-                const result = await deleteVehicle(v.id);
-                if (!result.success) {
-                  window.alert(result.error);
-                  return;
-                }
-                setRows((current) => current.filter((row) => row.id !== v.id));
-                setNotice(`${v.name} a été retiré du parc.`);
-              });
+              setDeleteError(null);
+              setDeleteTarget(v);
             }}
-            disabled={isPending}
-            className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500 disabled:opacity-50"
-            aria-label={`Supprimer ${v.name}`}
-          >
-            <TrashIcon size={16} />
-          </button>
+          />
         </div>
       ),
     },
@@ -268,22 +281,18 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
         title="Liste des véhicules"
         actions={
           <>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un véhicule"
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            />
-            <select
+            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un véhicule" />
+            <FilterSelect
+              aria-label="Filtrer par statut"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as VehicleStatus | 'all')}
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="available">Disponible</option>
-              <option value="in_use">En service</option>
-              <option value="maintenance">Maintenance</option>
-            </select>
+              options={[
+                { value: 'all', label: 'Tous les statuts' },
+                { value: 'available', label: 'Disponible' },
+                { value: 'in_use', label: 'En service' },
+                { value: 'maintenance', label: 'Maintenance' },
+              ]}
+            />
           </>
         }
       >
@@ -416,6 +425,28 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
           </div>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget ? `Supprimer ${deleteTarget.name} ?` : ''}
+        description={
+          deleteTarget ? `Le véhicule « ${deleteTarget.name} » sera retiré du parc.` : ''
+        }
+        confirmLabel="Supprimer"
+        destructive
+        loading={isPending}
+        onConfirm={() => void handleDeleteVehicle()}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+      >
+        {deleteError && (
+          <p className="text-danger mt-2 text-sm">
+            Impossible de supprimer le véhicule : {deleteError}
+          </p>
+        )}
+      </ConfirmDialog>
 
       {modalState.mode !== 'closed' && (
         <VehicleFormModal
