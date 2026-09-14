@@ -14,7 +14,7 @@ import {
   StatusBadge,
 } from '@dala/ui-web';
 import { HardHatIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { deleteWorker } from './actions';
@@ -27,7 +27,6 @@ import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type InvitationSummary = { worker_id: string; status: InvitationStatus };
 type ModalState = { mode: 'closed' } | { mode: 'invite' } | { mode: 'edit'; worker: WorkerRow };
-type DetailState = { mode: 'none' } | { mode: 'worker'; worker: WorkerRow };
 
 const STATUS_LABEL: Record<InvitationStatus, string> = {
   pending: 'Invitation envoyée',
@@ -58,12 +57,12 @@ export function TeamView({
 }) {
   const [rows, setRows] = useState(workers);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
-  const [detailState, setDetailState] = useState<DetailState>({ mode: 'none' });
   const [query, setQuery] = useState('');
   const [tradeFilter, setTradeFilter] = useState<string>('all');
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<WorkerRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -116,12 +115,12 @@ export function TeamView({
   }, [rows, latestInvitationByWorker]);
 
   // §2.7 global search — clicking a "worker" result in the top-bar
-  // dropdown deep-links here as ?highlight=<id>.
+  // dropdown deep-links to the worker's addressable detail page (§2.9).
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
     if (!highlightId) return;
     const match = displayRows.find((w) => w.id === highlightId);
-    if (match) setDetailState({ mode: 'worker', worker: match });
+    if (match) router.push(`/team/${match.id}`);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, displayRows]);
 
@@ -153,8 +152,6 @@ export function TeamView({
       setDeleteTarget(null);
     });
   }
-
-  const selectedWorker = detailState.mode === 'worker' ? detailState.worker : null;
 
   const columns: DataTableColumn<WorkerRow>[] = [
     {
@@ -236,7 +233,7 @@ export function TeamView({
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              setDetailState({ mode: 'worker', worker: w });
+              router.push(`/team/${w.id}`);
             }}
           />
           <IconActionButton
@@ -378,80 +375,11 @@ export function TeamView({
               columns={columns}
               rows={filteredRows}
               getRowId={(w) => w.id}
-              onRowClick={(w) => setDetailState({ mode: 'worker', worker: w })}
+              onRowClick={(w) => router.push(`/team/${w.id}`)}
             />
           )}
         </div>
       </SectionCard>
-
-      {selectedWorker && (
-        <Card raised className="mt-6 p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Profil de l’ouvrier
-              </p>
-              <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-                {selectedWorker.full_name}
-              </h3>
-              <p className="mt-1 text-sm text-neutral-500">
-                {selectedWorker.profession} · {selectedWorker.phone ?? 'Aucun téléphone'}
-              </p>
-            </div>
-            {selectedWorker.user_id ? (
-              <StatusBadge variant="success">Actif</StatusBadge>
-            ) : (
-              <StatusBadge variant="warning">En attente</StatusBadge>
-            )}
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Chantier actuel</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedWorker.currentProject}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Présence</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedWorker.attendance}%
-              </p>
-              <div className="mt-3">
-                <ProgressBar
-                  value={selectedWorker.attendance}
-                  tone={selectedWorker.attendance > 85 ? 'success' : 'accent'}
-                />
-              </div>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Taux journalier</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedWorker.daily_rate != null ? `${selectedWorker.daily_rate} TND` : '—'}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Avance</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedWorker.salaryAdvance} TND
-              </p>
-            </Card>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setModalState({ mode: 'edit', worker: selectedWorker })}
-            >
-              <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Modifier l’ouvrier
-            </Button>
-            <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Fermer le détail
-            </Button>
-          </div>
-        </Card>
-      )}
 
       <ConfirmDialog
         open={deleteTarget !== null}

@@ -17,11 +17,11 @@ import { createClient } from '@/lib/supabase/client';
  * 250ms, same RPC mobile's Projects-list search bar uses. Only the actual
  * wiring was missing — `onSearch` was a plain unused callback prop.
  *
- * Result rows deep-link to their detail surface: projects navigate straight
- * to their addressable detail page `/projects/<id>` (web consistency plan
- * §2.8); workers/vehicles keep the `?highlight=<id>` convention into their
- * list views (TeamView/VehiclesView open that row's existing detail panel on
- * load) until their own detail pages land.
+ * Result rows deep-link to their detail surface: projects and workers
+ * navigate straight to their addressable detail pages `/projects/<id>` and
+ * `/team/<id>` (web consistency plan §2.8/§2.9); vehicles keep the
+ * `?highlight=<id>` convention into their list view (VehiclesView opens that
+ * row's existing detail panel on load) until their own detail page lands.
  */
 interface SearchResult {
   entity_type: 'project' | 'worker' | 'vehicle';
@@ -90,11 +90,15 @@ export function TopBar({ userName, userAvatarUrl, unreadNotifications = 0, orgId
   function handleSelect(result: SearchResult) {
     setOpen(false);
     setQuery('');
-    // §2.8 — projects have a real addressable detail page now; navigate
-    // straight to it. Workers/vehicles still deep-link into their list
-    // views with ?highlight= until their detail pages exist.
+    // §2.8/§2.9 — projects and workers have addressable detail pages now;
+    // navigate straight to them. Vehicles still deep-link into their list
+    // view with ?highlight= until their detail page exists.
     if (result.entity_type === 'project') {
       router.push(`/projects/${result.id}`);
+      return;
+    }
+    if (result.entity_type === 'worker') {
+      router.push(`/team/${result.id}`);
       return;
     }
     router.push(`${ENTITY_PATH[result.entity_type]}?highlight=${result.id}`);
