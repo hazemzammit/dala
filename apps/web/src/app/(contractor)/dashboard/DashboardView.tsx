@@ -133,17 +133,17 @@ export function DashboardView({
       tone: 'success' as const,
     },
     {
-      label: 'Ouvriers presents aujourd hui',
+      label: 'Ouvriers présents aujourd’hui',
       value: stats.workersPresentToday.toString(),
       tone: 'success' as const,
     },
     {
-      label: 'Vehicules disponibles',
+      label: 'Véhicules disponibles',
       value: stats.availableVehiclesCount.toString(),
       tone: 'success' as const,
     },
     {
-      label: 'Depenses du jour',
+      label: 'Dépenses du jour',
       value: formatTND(stats.todayExpensesTotal),
       tone: 'warning' as const,
     },
@@ -153,7 +153,7 @@ export function DashboardView({
       tone: 'success' as const,
     },
     {
-      label: 'Budget consomme',
+      label: 'Budget consommé',
       value: stats.budgetConsumedPercent + '%',
       tone:
         stats.budgetConsumedPercent >= 100
@@ -184,7 +184,7 @@ export function DashboardView({
       <PageHero
         eyebrow="Centre de commande"
         title="Tunisia Construction OS"
-        description="Gerez les chantiers, le dispatch, l equipe, les vehicules, les materiaux, la facturation et le reporting client depuis un seul tableau de bord."
+        description="Gérez les chantiers, le dispatch, l'équipe, les véhicules, les matériaux, la facturation et le reporting client depuis un seul tableau de bord."
         actions={
           <>
             <LinkButton variant="secondary" href="/reports">
@@ -220,11 +220,11 @@ export function DashboardView({
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
         <SectionCard
           title="Budget des chantiers actifs"
-          description="Pourcentage du budget total deja consomme sur les chantiers en cours."
+          description="Pourcentage du budget total déjà consommé sur les chantiers en cours."
         >
           <div>
             <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-neutral-900">Budget consomme</span>
+              <span className="font-medium text-neutral-900">Budget consommé</span>
               <span className="text-neutral-500">{stats.budgetConsumedPercent}%</span>
             </div>
             <div className="mt-2">
@@ -244,7 +244,7 @@ export function DashboardView({
 
         <SectionCard
           title="Actions rapides"
-          description="Raccourcis operationnels les plus utilises."
+          description="Raccourcis opérationnels les plus utilisés."
         >
           <div className="grid grid-cols-2 gap-3">
             {quickActions.map((action) => (
@@ -262,11 +262,11 @@ export function DashboardView({
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <SectionCard
-          title="Activites recentes"
-          description="Les dernieres entrees de journal, depenses, incidents et affectations de votre organisation."
+          title="Activités récentes"
+          description="Les dernières entrées de journal, dépenses, incidents et affectations de votre organisation."
         >
           {activities.length === 0 ? (
-            <p className="text-sm text-neutral-500">Aucune activite recente pour le moment.</p>
+            <p className="text-sm text-neutral-500">Aucune activité récente pour le moment.</p>
           ) : (
             <TimelineList items={activities} />
           )}
@@ -274,7 +274,7 @@ export function DashboardView({
 
         <SectionCard
           title="Calendrier de dispatch"
-          description="Nombre d'affectations planifiees cette semaine, par jour."
+          description="Nombre d'affectations planifiées cette semaine, par jour."
         >
           <CalendarGrid
             days={calendarDays}
