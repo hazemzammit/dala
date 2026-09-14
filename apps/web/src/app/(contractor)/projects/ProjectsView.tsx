@@ -60,11 +60,9 @@ const STATUS_VARIANT: Record<ProjectStatus, 'success' | 'neutral' | 'info'> = {
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; project: Project };
 
 type ProjectRow = Project & {
-  progress: number;
+  progress: number | null; // alias of budgetConsumed (plan §12a decision 2)
   startDate: string | null; // real project.start_date (ISO), null when unset
-  endDate: string;
   teamSize: number;
-  owner: string;
   expensesTotal: number;
   budgetConsumed: number | null;
   expenses: ProjectExpense[];
@@ -136,38 +134,29 @@ export function ProjectsView({
     return map;
   }, [expenses]);
 
-  // FLAGGED FOR HAZEM — partially fixed in the Tier-1 data pass (plan Step
-  // 11): `teamSize` is now the real project_workers roster count (passed in
-  // by the server page) and `startDate` is the real project.start_date.
-  // Still fabricated from array index: `progress` (needs a real definition —
-  // % of budget consumed? % of days elapsed? there's no "percent complete"
-  // column anywhere), `owner` (no responsable field exists on projects), and
-  // `endDate` (projects has no end_date column — removal decisions in plan
-  // §12a). Only `expensesTotal`/`budgetConsumed` are computed from real
-  // data (project_expenses).
+  // FLAGGED FOR HAZEM — resolved in the Tier-2 data pass (plan Step 12a):
+  // `progress` is now a defined product concept — an alias of
+  // budgetConsumed (% of budget spent, the only measurable completion
+  // signal projects have) per decision 2 — and the fabricated `owner`/
+  // `endDate` fields are gone (no responsable/end_date source exists;
+  // decisions 1 & 4). Everything here is real data: teamSize (Step 11),
+  // startDate (Step 11), expensesTotal/budgetConsumed (project_expenses).
   const displayRows = useMemo<ProjectRow[]>(() => {
-    return rows.map((project, index) => {
-      const baseDate = new Date(project.created_at);
-      const startDate = new Date(baseDate);
-      startDate.setDate(startDate.getDate() - 21 + index * 3);
-      const endDate = new Date(startDate);
-      endDate.setDate(endDate.getDate() + 120 + index * 8);
+    return rows.map((project) => {
       const projectExpenses = expensesByProject.get(project.id) ?? [];
       const expensesTotal = calculateConsumedTotal(projectExpenses);
+      const budgetConsumed = calculateConsumedPercent(expensesTotal, project.budget_total);
 
       return {
         ...project,
-        progress: Math.min(96, 24 + index * 12),
+        progress: budgetConsumed,
         // Real data (plan Step 11): raw ISO start_date keeps the column's
         // sortValue lexicographically correct; the render does the fr-TN
-        // formatting. The fabricated startDate Date computed above now only
-        // feeds endDate, which stays fake until §12a removes that column.
+        // formatting.
         startDate: project.start_date ?? null,
-        endDate: endDate.toLocaleDateString('fr-TN'),
         teamSize: teamSizeByProject[project.id] ?? 0,
-        owner: ['Nabil', 'Marwa', 'Amine', 'Yasmine'][index % 4]!,
         expensesTotal,
-        budgetConsumed: calculateConsumedPercent(expensesTotal, project.budget_total),
+        budgetConsumed,
         expenses: projectExpenses,
       };
     });
@@ -178,7 +167,7 @@ export function ProjectsView({
     return displayRows.filter((row) => {
       const matchesSearch =
         lower.length === 0 ||
-        [row.name, row.client_name ?? '', row.address ?? '', row.owner].some((value) =>
+        [row.name, row.client_name ?? '', row.address ?? ''].some((value) =>
           value.toLowerCase().includes(lower),
         );
       const matchesStatus = statusFilter === 'all' || row.status === statusFilter;
@@ -204,12 +193,7 @@ export function ProjectsView({
     {
       key: 'name',
       header: 'Chantier',
-      render: (p) => (
-        <div>
-          <div className="font-medium text-neutral-900">{p.name}</div>
-          <div className="text-xs text-neutral-500">Responsable : {p.owner}</div>
-        </div>
-      ),
+      render: (p) => <div className="font-medium text-neutral-900">{p.name}</div>,
       sortValue: (p) => p.name,
     },
     {
@@ -268,12 +252,6 @@ export function ProjectsView({
       header: 'Date de début',
       render: (p) => (p.startDate ? new Date(p.startDate).toLocaleDateString('fr-TN') : '—'),
       sortValue: (p) => p.startDate ?? '',
-    },
-    {
-      key: 'end_date',
-      header: 'Date de fin',
-      render: (p) => p.endDate,
-      sortValue: (p) => p.endDate,
     },
     {
       key: 'team_size',
@@ -408,7 +386,7 @@ export function ProjectsView({
             </p>
             <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
               {Math.round(
-                filteredRows.reduce((sum, row) => sum + row.progress, 0) /
+                filteredRows.reduce((sum, row) => sum + (row.progress ?? 0), 0) /
                   Math.max(1, visibleCount),
               )}
               %
