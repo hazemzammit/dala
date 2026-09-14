@@ -193,7 +193,7 @@ export function DashboardView({
             <div className="relative">
               <Button onClick={() => setQuickMenuOpen((open) => !open)}>Action rapide</Button>
               {quickMenuOpen && (
-                <div className="bg-neutral-0 absolute end-0 top-[calc(100%+8px)] z-40 w-56 rounded-[20px] border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
+                <div className="bg-neutral-0 rounded-card absolute end-0 top-[calc(100%+8px)] z-40 w-56 border border-neutral-100 p-2 shadow-[0_24px_60px_rgba(17,19,24,0.16)]">
                   {quickActions.map((action) => (
                     <Link
                       key={action.href}

@@ -354,7 +354,7 @@ export function DispatchView({
             actionHref="/vehicles"
           />
         ) : (
-          <div className="overflow-hidden rounded-[22px] border border-neutral-100">
+          <div className="rounded-card overflow-hidden border border-neutral-100">
             <div className="bg-neutral-25 grid grid-cols-[240px_repeat(7,minmax(170px,1fr))] border-b border-neutral-100 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
               <div className="px-4 py-3">Véhicule</div>
               {weekDays.map((day) => (
