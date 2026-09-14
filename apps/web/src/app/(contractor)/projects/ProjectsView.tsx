@@ -7,6 +7,8 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterSelect,
+  IconActionButton,
   PageHero,
   StatusBadge,
 } from '@dala/ui-web';
@@ -21,7 +23,7 @@ import {
   ListIcon,
 } from '@phosphor-icons/react';
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import type { UpdateProjectInput } from './actions';
 import { getProjectDashboard, type ProjectDashboardData } from './getProjectDashboard';
@@ -30,6 +32,8 @@ import { ProjectFormModal } from './ProjectFormModal';
 import { ProjectRoster } from './ProjectRoster';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 
 type ProjectMutationResult =
@@ -117,6 +121,8 @@ export function ProjectsView({
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [notice, setNotice] = useState<string | null>(null);
   const searchParams = useSearchParams();
+  const [deleteTarget, setDeleteTarget] = useState<ProjectRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   // FLAGGED FOR HAZEM — dashboardData/dashboardLoading are fetched
   // (getProjectDashboard) but never actually rendered anywhere in this
   // component's JSX. Not something I'm building out here (a real dashboard
@@ -218,6 +224,23 @@ export function ProjectsView({
     });
   }, [displayRows, query, statusFilter]);
 
+  async function handleDeleteProject() {
+    if (deleteTarget === null) return;
+    const target = deleteTarget;
+    setDeleteError(null);
+    const result = await deleteProject({ id: target.id, version: target.version });
+    if (!result.success) {
+      setDeleteError(result.error);
+      return;
+    }
+    setRows((current) => current.filter((row) => row.id !== result.projectId));
+    if (detailState.mode === 'project' && detailState.project.id === result.projectId) {
+      setDetailState({ mode: 'none' });
+    }
+    setNotice(`${target.name} a été retiré de la liste des chantiers.`);
+    setDeleteTarget(null);
+  }
+
   const selectedProject = detailState.mode === 'project' ? detailState.project : null;
 
   const columns: DataTableColumn<ProjectRow>[] = [
@@ -308,49 +331,37 @@ export function ProjectsView({
       align: 'right',
       render: (p) => (
         <div className="flex items-center justify-end gap-1.5">
-          <button
+          <IconActionButton
+            icon={EyeIcon}
+            label={`Voir le détail de ${p.name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setDetailState({ mode: 'project', project: p });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Voir le détail de ${p.name}`}
-          >
-            <EyeIcon size={16} />
-          </button>
-          <button
+          />
+          <IconActionButton
+            icon={PencilSimpleIcon}
+            label={`Modifier ${p.name}`}
+            tone="neutral"
+            size="sm"
             onClick={(e) => {
               e.stopPropagation();
               setModalState({ mode: 'edit', project: p });
             }}
-            className="rounded-control p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900"
-            aria-label={`Modifier ${p.name}`}
-          >
-            <PencilSimpleIcon size={16} />
-          </button>
-          <button
-            onClick={async (e: MouseEvent<HTMLButtonElement>) => {
+          />
+          <IconActionButton
+            icon={TrashIcon}
+            label={`Supprimer ${p.name}`}
+            tone="danger"
+            size="sm"
+            onClick={(e) => {
               e.stopPropagation();
-              const confirmed = window.confirm(`Supprimer ${p.name} ?`);
-              if (!confirmed) return;
-
-              const result = await deleteProject({ id: p.id, version: p.version });
-              if (!result.success) {
-                window.alert(result.error);
-                return;
-              }
-
-              setRows((current) => current.filter((row) => row.id !== result.projectId));
-              if (detailState.mode === 'project' && detailState.project.id === result.projectId) {
-                setDetailState({ mode: 'none' });
-              }
-              setNotice(`${p.name} a été retiré de la liste des chantiers.`);
+              setDeleteError(null);
+              setDeleteTarget(p);
             }}
-            className="rounded-control hover:bg-danger/5 hover:text-danger p-1.5 text-neutral-500"
-            aria-label={`Supprimer ${p.name}`}
-          >
-            <TrashIcon size={16} />
-          </button>
+          />
         </div>
       ),
     },
@@ -382,22 +393,18 @@ export function ProjectsView({
         title="Liste des chantiers"
         actions={
           <>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un chantier"
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            />
-            <select
+            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un chantier" />
+            <FilterSelect
+              aria-label="Filtrer par statut"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="active">Actif</option>
-              <option value="completed">Terminé</option>
-              <option value="archived">Archivé</option>
-            </select>
+              options={[
+                { value: 'all', label: 'Tous les statuts' },
+                { value: 'active', label: 'Actif' },
+                { value: 'completed', label: 'Terminé' },
+                { value: 'archived', label: 'Archivé' },
+              ]}
+            />
             <div className="flex overflow-hidden rounded-2xl border border-neutral-200">
               <button
                 type="button"
@@ -684,6 +691,29 @@ export function ProjectsView({
           </div>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget ? `Supprimer ${deleteTarget.name} ?` : ''}
+        description={
+          deleteTarget
+            ? `Le chantier « ${deleteTarget.name} » sera retiré de la liste des chantiers.`
+            : ''
+        }
+        confirmLabel="Supprimer"
+        destructive
+        onConfirm={() => void handleDeleteProject()}
+        onCancel={() => {
+          setDeleteTarget(null);
+          setDeleteError(null);
+        }}
+      >
+        {deleteError && (
+          <p className="text-danger mt-2 text-sm">
+            Impossible de supprimer le chantier : {deleteError}
+          </p>
+        )}
+      </ConfirmDialog>
 
       {modalState.mode !== 'closed' && (
         <ProjectFormModal
