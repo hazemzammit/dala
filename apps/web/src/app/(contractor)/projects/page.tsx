@@ -48,6 +48,17 @@ export default async function Page() {
         .order('created_at', { ascending: false })
     : { data: [] };
 
+  // Real teamSize (plan Step 11 / audit §1.6): count each project's durable
+  // staffing roster (project_workers, migration 0034, RLS org-scoped)
+  // instead of the index-fabricated number the view used to display.
+  const { data: rosterCounts } = projectIds.length
+    ? await supabase.from('project_workers').select('project_id').in('project_id', projectIds)
+    : { data: [] };
+  const teamSizeByProject: Record<string, number> = {};
+  for (const row of rosterCounts ?? []) {
+    teamSizeByProject[row.project_id] = (teamSizeByProject[row.project_id] ?? 0) + 1;
+  }
+
   return (
     <div className="p-8">
       <div className="mb-6">
@@ -61,6 +72,7 @@ export default async function Page() {
         <ProjectsView
           projects={projects ?? []}
           expenses={expenses ?? []}
+          teamSizeByProject={teamSizeByProject}
           createProject={createProject}
           updateProject={updateProject}
           deleteProject={deleteProject}

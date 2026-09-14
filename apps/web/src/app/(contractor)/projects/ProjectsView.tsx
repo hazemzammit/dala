@@ -61,7 +61,7 @@ type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; proj
 
 type ProjectRow = Project & {
   progress: number;
-  startDate: string;
+  startDate: string | null; // real project.start_date (ISO), null when unset
   endDate: string;
   teamSize: number;
   owner: string;
@@ -85,12 +85,14 @@ function getBudgetTone(value: number | null): 'success' | 'warning' | 'danger' |
 export function ProjectsView({
   projects,
   expenses,
+  teamSizeByProject,
   createProject,
   updateProject,
   deleteProject,
 }: {
   projects: Project[];
   expenses: ProjectExpense[];
+  teamSizeByProject: Record<string, number>;
   createProject: CreateProjectAction;
   updateProject: UpdateProjectAction;
   deleteProject: DeleteProjectAction;
@@ -134,18 +136,15 @@ export function ProjectsView({
     return map;
   }, [expenses]);
 
-  // FLAGGED FOR HAZEM — same pattern as team/'s and vehicles/'s fabricated
-  // stats: `progress`, `teamSize`, and `owner` are synthesized from array
-  // index, not real data (progress would need a real definition — % of
-  // budget consumed? % of days elapsed between start_date and an estimated
-  // end? there's no "percent complete" column anywhere). `startDate`/
-  // `endDate` here are ALSO fabricated and recomputed from `baseDate`,
-  // ignoring the real `project.start_date` this pass just wired into the
-  // create/edit form — worth fixing to use the real field now that it
-  // exists, but left alongside the other fake fields rather than half-fixing
-  // just this one number while the rest of the card stays fake. Only
-  // `expensesTotal`/`budgetConsumed` here are computed from real data
-  // (project_expenses).
+  // FLAGGED FOR HAZEM — partially fixed in the Tier-1 data pass (plan Step
+  // 11): `teamSize` is now the real project_workers roster count (passed in
+  // by the server page) and `startDate` is the real project.start_date.
+  // Still fabricated from array index: `progress` (needs a real definition —
+  // % of budget consumed? % of days elapsed? there's no "percent complete"
+  // column anywhere), `owner` (no responsable field exists on projects), and
+  // `endDate` (projects has no end_date column — removal decisions in plan
+  // §12a). Only `expensesTotal`/`budgetConsumed` are computed from real
+  // data (project_expenses).
   const displayRows = useMemo<ProjectRow[]>(() => {
     return rows.map((project, index) => {
       const baseDate = new Date(project.created_at);
@@ -159,16 +158,20 @@ export function ProjectsView({
       return {
         ...project,
         progress: Math.min(96, 24 + index * 12),
-        startDate: startDate.toLocaleDateString('fr-TN'),
+        // Real data (plan Step 11): raw ISO start_date keeps the column's
+        // sortValue lexicographically correct; the render does the fr-TN
+        // formatting. The fabricated startDate Date computed above now only
+        // feeds endDate, which stays fake until §12a removes that column.
+        startDate: project.start_date ?? null,
         endDate: endDate.toLocaleDateString('fr-TN'),
-        teamSize: 4 + ((index * 2) % 8),
+        teamSize: teamSizeByProject[project.id] ?? 0,
         owner: ['Nabil', 'Marwa', 'Amine', 'Yasmine'][index % 4]!,
         expensesTotal,
         budgetConsumed: calculateConsumedPercent(expensesTotal, project.budget_total),
         expenses: projectExpenses,
       };
     });
-  }, [rows, expensesByProject]);
+  }, [rows, expensesByProject, teamSizeByProject]);
 
   const filteredRows = useMemo(() => {
     const lower = query.trim().toLowerCase();
@@ -263,8 +266,8 @@ export function ProjectsView({
     {
       key: 'start_date',
       header: 'Date de début',
-      render: (p) => p.startDate,
-      sortValue: (p) => p.startDate,
+      render: (p) => (p.startDate ? new Date(p.startDate).toLocaleDateString('fr-TN') : '—'),
+      sortValue: (p) => p.startDate ?? '',
     },
     {
       key: 'end_date',
