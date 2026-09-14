@@ -2,7 +2,6 @@
 
 import type { Vehicle, VehicleStatus } from '@dala/shared-types';
 import {
-  AvatarStack,
   Button,
   Card,
   DataTable,
@@ -14,13 +13,13 @@ import {
   StatusBadge,
 } from '@dala/ui-web';
 import { CarIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 import { deleteVehicle } from './actions';
 import { VehicleFormModal } from './VehicleFormModal';
 
-import { ProgressBar, SectionCard, StatusMetric } from '@/components/contractor/Screen';
+import { SectionCard, StatusMetric } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
@@ -38,7 +37,6 @@ const STATUS_VARIANT: Record<VehicleStatus, 'success' | 'info' | 'warning'> = {
 };
 
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
-type DetailState = { mode: 'none' } | { mode: 'vehicle'; vehicle: VehicleRow };
 
 type VehicleRow = Vehicle & {
   brand: string;
@@ -58,12 +56,12 @@ function formatMoney(value: number): string {
 export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
   const [rows, setRows] = useState(vehicles);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
-  const [detailState, setDetailState] = useState<DetailState>({ mode: 'none' });
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<VehicleStatus | 'all'>('all');
   const [notice, setNotice] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [deleteTarget, setDeleteTarget] = useState<VehicleRow | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -105,12 +103,14 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
   }, [rows]);
 
   // §2.7 global search — clicking a "vehicle" result in the top-bar
-  // dropdown deep-links here as ?highlight=<id>.
+  // dropdown deep-links to the vehicle's detail page (§2.9), same as
+  // projects/workers.
   useEffect(() => {
     const highlightId = searchParams.get('highlight');
     if (!highlightId) return;
-    const match = displayRows.find((v) => v.id === highlightId);
-    if (match) setDetailState({ mode: 'vehicle', vehicle: match });
+    if (displayRows.some((v) => v.id === highlightId)) {
+      router.push(`/vehicles/${highlightId}`);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, displayRows]);
 
@@ -142,8 +142,6 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       setDeleteTarget(null);
     });
   }
-
-  const selectedVehicle = detailState.mode === 'vehicle' ? detailState.vehicle : null;
 
   const columns: DataTableColumn<VehicleRow>[] = [
     {
@@ -225,7 +223,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
             size="sm"
             onClick={(e) => {
               e.stopPropagation();
-              setDetailState({ mode: 'vehicle', vehicle: v });
+              router.push(`/vehicles/${v.id}`);
             }}
           />
           <IconActionButton
@@ -335,96 +333,11 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
               columns={columns}
               rows={filteredRows}
               getRowId={(v) => v.id}
-              onRowClick={(v) => setDetailState({ mode: 'vehicle', vehicle: v })}
+              onRowClick={(v) => router.push(`/vehicles/${v.id}`)}
             />
           )}
         </div>
       </SectionCard>
-
-      {selectedVehicle && (
-        <Card raised className="mt-6 p-6">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.1em] text-neutral-500">
-                Vue du véhicule
-              </p>
-              <h3 className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-                {selectedVehicle.name}
-              </h3>
-              <p className="mt-1 text-sm text-neutral-500">
-                {selectedVehicle.brand} {selectedVehicle.model} ·{' '}
-                {selectedVehicle.plate ?? 'Aucune immatriculation'}
-              </p>
-            </div>
-            <StatusBadge variant={STATUS_VARIANT[selectedVehicle.status]}>
-              {STATUS_LABEL[selectedVehicle.status]}
-            </StatusBadge>
-          </div>
-
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Driver</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedVehicle.driver}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Chantier actuel</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedVehicle.currentProject}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Coût carburant</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {formatMoney(selectedVehicle.fuelCost)}
-              </p>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Maintenance</p>
-              <p className="font-display mt-1 text-xl font-semibold text-neutral-900">
-                {selectedVehicle.maintenanceStatus}
-              </p>
-            </Card>
-          </div>
-
-          <div className="mt-4 grid gap-4 lg:grid-cols-[1fr_1fr]">
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Kilométrage</p>
-              <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-                {selectedVehicle.mileage.toLocaleString('fr-TN')} km
-              </p>
-              <div className="mt-3">
-                <ProgressBar
-                  value={Math.min(100, Math.round(selectedVehicle.mileage / 600))}
-                  tone="accent"
-                />
-              </div>
-            </Card>
-            <Card className="p-4">
-              <p className="text-xs text-neutral-500">Capacité d’équipage</p>
-              <div className="mt-3">
-                <AvatarStack
-                  people={[{ name: 'Youssef' }, { name: 'Aymen' }, { name: 'Meriem' }]}
-                />
-              </div>
-            </Card>
-          </div>
-
-          <div className="mt-5 flex flex-wrap gap-3">
-            <Button
-              variant="secondary"
-              onClick={() => setModalState({ mode: 'edit', vehicle: selectedVehicle })}
-            >
-              <PencilSimpleIcon size={16} className="me-1.5 inline" />
-              Modifier le véhicule
-            </Button>
-            <Button variant="secondary" onClick={() => setDetailState({ mode: 'none' })}>
-              Fermer le détail
-            </Button>
-          </div>
-        </Card>
-      )}
 
       <ConfirmDialog
         open={deleteTarget !== null}
