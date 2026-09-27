@@ -19,14 +19,17 @@ jobs:
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
           cache: "pnpm"
+
+      - name: Drop Windows-only .npmrc setting
+        # .npmrc pins virtual-store-dir=C:\ps\dala (short path for Windows MAX_PATH);
+        # on Linux that would create a literal directory named that. Local-only.
+        run: sed -i '/^virtual-store-dir=/d' .npmrc
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -64,13 +67,16 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
           cache: pnpm
+
+      - name: Drop Windows-only .npmrc setting
+        # .npmrc pins virtual-store-dir=C:\ps\dala (short path for Windows MAX_PATH);
+        # on Linux that would create a literal directory named that. Local-only.
+        run: sed -i '/^virtual-store-dir=/d' .npmrc
 
       - name: Install dependencies (admin + its workspace deps only)
         run: pnpm install --filter admin...
@@ -80,7 +86,7 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.118.0
 
       - name: Start local Supabase stack
         # Runs from the repo root — supabase/config.toml already exists
@@ -90,6 +96,31 @@ jobs:
 
       - name: Reset DB (fresh migration apply)
         run: supabase db reset
+
+      - name: Lint database security invariants
+        # Both scripts print offending objects; any output fails the job.
+        #  - lint_null_unsafe_role_checks: `org_role_of(x) <> 'owner'` (no coalesce) fails
+        #    OPEN for non-members/anon — shipped twice (0040, 0093).
+        #  - lint_rls_enabled: every public table must have RLS enabled.
+        #  - lint_anon_execute_allowlist: only allowlisted functions may be anon-executable (0100).
+        #  - lint_views_security_invoker: a view without security_invoker bypasses RLS (0102).
+        #  - lint_account_deletion_fks: an FK to profiles/auth.users must not block user deletion (0105).
+        run: |
+          DB=postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          fail=0
+          for f in lint_null_unsafe_role_checks lint_rls_enabled lint_anon_execute_allowlist lint_views_security_invoker lint_account_deletion_fks; do
+            out=$(psql "$DB" -v ON_ERROR_STOP=1 -At -f "supabase/tests/$f.sql")
+            if [ -n "$out" ]; then
+              echo "::error::$f found problems:"; echo "$out"; fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Security regression suite (migrations 0093-0109)
+        # 198 attack/legitimate-use cases + multi-step scenarios (storage path injection,
+        # audit trail, sync tombstones). One transaction, own fixtures, always rolled
+        # back; non-zero exit prints the failing cases. See the file header.
+        run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/security_regression.sql
 
       - name: Export local Supabase connection details
         # DATABASE_URL is deterministic from config.toml's fixed local
@@ -114,6 +145,12 @@ jobs:
           # already documents this as the recommended local/CI setting
           # ("gate effectively disabled for localhost").
           echo "ADMIN_IP_ALLOWLIST=" >> apps/admin/.env.local
+          # The e2e suite performs ~150 logins as 4 admins, often inside one TOTP
+          # step. Login throttling + the TOTP replay guard (0096) are relaxed for
+          # CI ONLY; both are clamped/forced back on when NODE_ENV=production.
+          echo "ADMIN_TOTP_MAX_ATTEMPTS=100000" >> apps/admin/.env.local
+          echo "ADMIN_PASSWORD_MAX_ATTEMPTS=100000" >> apps/admin/.env.local
+          echo "ADMIN_TOTP_REPLAY_GUARD=off" >> apps/admin/.env.local
           supabase status -o env \
             --override-name auth.anon_key=NEXT_PUBLIC_SUPABASE_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_SERVICE_ROLE_KEY \
@@ -166,3 +203,52 @@ jobs:
           name: admin-playwright-report
           path: apps/admin/playwright-report/
           retention-days: 14
+
+  # Production builds of the two Next.js apps. There was no build job, so a
+  # dependency mix that breaks `next build` (e.g. two React majors hoisted
+  # into one node_modules, which made both apps fail to prerender /404 and
+  # /500) could ship unnoticed. Dummy env values are enough: nothing is
+  # contacted at build time.
+  build-web-admin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: "pnpm"
+
+      - name: Drop Windows-only .npmrc setting
+        run: sed -i '/^virtual-store-dir=/d' .npmrc
+
+      - name: Install dependencies (web + admin and their workspace deps)
+        run: pnpm install --filter "web..." --filter "admin..." --frozen-lockfile
+
+      - name: Guard - a single React copy must be installed
+        run: |
+          # (Next and the Expo CLI vendor their own React builds — expected, excluded.)
+          versions=$(find node_modules -name package.json -path '*/react/package.json' -not -path '*/next/dist/compiled/*' -not -path '*/@expo/cli/static/*' \
+            | xargs -I{} node -p "require('./{}').name==='react'?require('./{}').version:''" | sort -u | tr '\n' ' ')
+          echo "react versions found: $versions"
+          [ "$(echo $versions | wc -w)" -le 1 ] || { echo "::error::multiple React versions installed: $versions"; exit 1; }
+
+      - name: Build admin
+        run: pnpm --filter admin build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
+          SUPABASE_SERVICE_ROLE_KEY: ci-dummy-service-role-key
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+          ADMIN_SESSION_SECRET: ci-dummy-admin-session-secret-0123456789abcdef
+          NEXT_TELEMETRY_DISABLED: "1"
+
+      - name: Build web
+        run: pnpm --filter web build
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-dummy-anon-key
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          NEXT_TELEMETRY_DISABLED: "1"

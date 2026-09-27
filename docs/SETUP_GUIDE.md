@@ -41,10 +41,15 @@ winget install CoreyButler.NVMforWindows
 Restart your terminal, then:
 
 ```powershell
-nvm install 20.17.0
-nvm use 20.17.0
-node -v      # should print v20.17.0
+nvm install 22
+nvm use 22
+node -v      # should print v22.x (>= 22.13.0)
 ```
+
+`22` is what the repo pins: `.nvmrc` contains `22`, and the root
+`package.json`'s `engines` requires `>= 22.13.0`. Don't install a different
+major and "make it work" — a Node/React-19 mismatch is the most common cause of
+a `pnpm install` or `next build` failure in this repo.
 
 Your collaborator does the exact same thing — the repo's `.nvmrc` file
 means either of you can also just run `nvm use` from inside the repo folder
@@ -54,9 +59,13 @@ and it'll pick the right version automatically.
 
 ```powershell
 corepack enable
-corepack prepare pnpm@9.12.0 --activate
-pnpm -v      # should print 9.12.0
+corepack prepare pnpm@11.22.0 --activate
+pnpm -v      # should print 11.22.0
 ```
+
+The version comes from `packageManager` in the root `package.json` — `corepack`
+reads it, so `pnpm -v` inside the repo should already agree without the
+`prepare` step.
 
 ### 1.3 Git
 
@@ -75,10 +84,19 @@ git config --global user.email "you@example.com"
 
 ### 1.4 Supabase CLI
 
+The repo devDependency and CI workflow both pin the Supabase CLI to **`2.118.0`**
+(see `package.json` and `.github/workflows/ci.yml`). Repo scripts (`pnpm db:reset`,
+`pnpm db:diff`, etc.) automatically run that pinned local version via `pnpm exec`.
+
+If you also want `supabase` available globally on your terminal `PATH`, install
+or upgrade it via `pnpm`:
+
 ```powershell
-winget install Supabase.CLI
-supabase --version
+pnpm add -g supabase@2.118.0
+supabase --version   # should print 2.118.0
 ```
+
+_(If you already installed via `winget install Supabase.CLI`, upgrade to match 2.118.0.)_
 
 ### 1.5 Expo / EAS CLI (for mobile)
 
@@ -289,7 +307,9 @@ Open `http://localhost:3000` — you should be redirected to `/login`
 pnpm dev:admin
 ```
 
-`http://localhost:3001` — Admin placeholder page.
+`http://localhost:3001` — the Platform Admin console (15 admin screens plus 4
+auth screens). It will **not** let you log in until the three prerequisites in
+§6.3 are done.
 
 ```powershell
 pnpm dev:mobile
@@ -337,6 +357,83 @@ supabase functions deploy forgot-password
 supabase secrets set APP_URL=https://your-real-domain.tn
 supabase secrets set RESEND_API_KEY=re_xxxxxxxx
 ```
+
+That's the minimum for the sign-up / forgot-password flows specifically. There
+are **19** Edge Functions in `supabase/functions/` (plus `_shared/`); deploy the
+rest as you exercise the features that need them — reports and exports
+(`generate-report`, `export-org-data`, `generate-invoice-pdf`), invites and
+notifications (`send-*`, `accept-*`), billing (`generate-subscription-charges`,
+`payment-webhook`, `resend-webhook`), account management (`delete-account`,
+`mfa-recover`), and operations (`ping-service-health`,
+`rotate-totp-encryption-key`). `deploy` takes a directory name, so
+`Get-ChildItem supabase/functions -Directory` gives you the current list.
+
+---
+
+### 6.3 Making the admin console usable locally (three prerequisites)
+
+`pnpm dev:admin` alone is not enough — the admin login flow refuses to work
+until all three of these are done, and each one fails in a different,
+non-obvious way:
+
+**1. A TOTP encryption key in Vault.** Admin login is two-step and the second
+step is TOTP, which is encrypted at rest with an AES-256 key stored in Supabase
+Vault. A freshly reset database has no such key, so TOTP setup cannot complete:
+
+```powershell
+pnpm --filter admin generate-totp-vault-key
+```
+
+Run once per environment. Worth knowing: the same script is a step in CI's
+`admin-e2e` job, so a missing key shows up there as a wall of login-test
+failures rather than a clear error.
+
+**2. `ADMIN_SESSION_SECRET`.** Admin does **not** use Supabase Auth's session
+cookie; it signs its own session JWTs with this secret. Generate one and put it
+in `apps/admin/.env.local`:
+
+```powershell
+# openssl rand -base64 32
+ADMIN_SESSION_SECRET=<generated value>
+```
+
+Never reuse the Supabase service-role key here. If it's missing, every route
+handler that touches a session throws an error naming `ADMIN_SESSION_SECRET`
+explicitly.
+
+**3. `ADMIN_IP_ALLOWLIST`.** The Edge middleware IP gate. **Leaving it empty
+disables the gate entirely** — correct for local dev, and logged as an error in
+production. Set it to your operators' egress IPs before deploying.
+
+Then create the first admin account:
+
+```powershell
+pnpm --filter admin create-admin
+```
+
+For the full list of environment variables — all 31 keys in `.env.example`,
+which app or Edge Function consumes each one, and which are server-only — see
+`.env.example`'s own comments. `docs/dala-admin-delivery-guide.md` §3 has a
+longer walkthrough, but note that file is **HISTORICAL** (see `docs/README.md`).
+
+### 6.4 Lint the database security invariants
+
+After `supabase db reset`, you can run the same invariant checks CI runs. Each
+script prints any offending object and is meant to fail the build if it prints
+anything:
+
+```powershell
+$DB = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+foreach ($f in 'lint_null_unsafe_role_checks','lint_rls_enabled','lint_anon_execute_allowlist','lint_views_security_invoker','lint_account_deletion_fks') {
+  Write-Host "--- $f"; psql $DB -f "supabase/tests/$f.sql"
+}
+```
+
+`supabase/tests/security_regression.sql` is a broader behavioural suite rather
+than a single-invariant check. Why these exist: the same class of bug shipped
+twice — see `lint_null_unsafe_role_checks`'s own comment about
+`org_role_of(x) <> 'owner'` without a `coalesce` failing **open** for
+non-members and `anon` (migrations `0040`, `0093`).
 
 ---
 
