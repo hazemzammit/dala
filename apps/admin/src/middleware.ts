@@ -28,12 +28,35 @@ function isAllowedIp(request: NextRequest): boolean {
     .map((ip) => ip.trim())
     .filter(Boolean);
 
-  // Empty allowlist = gate disabled (local dev convenience). Document this
-  // loudly: production MUST set ADMIN_IP_ALLOWLIST or this check is a no-op.
-  if (allowlist.length === 0) return true;
+  // Empty allowlist: FAIL CLOSED in production. An empty value there can only
+  // be a misconfiguration, and a security control must not silently disappear
+  // when misconfigured — a broken deploy should be down, not open to the
+  // internet. This is deliberately loud rather than permissive: production
+  // MUST set ADMIN_IP_ALLOWLIST, and until it does, every request is blocked.
+  if (allowlist.length === 0) {
+    if (process.env.NODE_ENV === 'production') {
+      warnOnceEmptyAllowlist();
+      return false;
+    }
+    // Non-production only (local dev, and the CI admin-e2e job, which
+    // deliberately sets ADMIN_IP_ALLOWLIST= so the suite can drive the app
+    // from localhost): gate disabled, unchanged.
+    return true;
+  }
 
-  const requestIp = getClientIp(request.headers, request.ip);
+  // NextRequest.ip was removed in Next 15; the platform's X-Forwarded-For is the source now.
+  const requestIp = getClientIp(request.headers);
   return allowlist.includes(requestIp);
+}
+
+let warnedEmptyAllowlist = false;
+function warnOnceEmptyAllowlist() {
+  if (warnedEmptyAllowlist) return;
+  warnedEmptyAllowlist = true;
+  console.error(
+    '[admin] ADMIN_IP_ALLOWLIST is empty in production: blocking all requests (fail-closed). ' +
+      "Set it to the operators' egress IPs.",
+  );
 }
 
 export async function middleware(request: NextRequest) {
@@ -44,9 +67,14 @@ export async function middleware(request: NextRequest) {
   }
 
   if (!isAllowedIp(request) && pathname !== '/access-denied') {
+    // A real 403 (not a 200 rewrite) so monitoring, scanners and API clients
+    // can tell "blocked" from "served".
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+    }
     const url = request.nextUrl.clone();
     url.pathname = '/access-denied';
-    return NextResponse.rewrite(url);
+    return NextResponse.rewrite(url, { status: 403 });
   }
 
   const isPublicPath = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
@@ -73,5 +101,11 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image).*)'],
+  // Static files in /public (logos, favicon, fonts…) must bypass the gate.
+  // next/image's optimizer fetches `/logo-full.png` server-side WITHOUT the
+  // admin session cookie; if the middleware answers that fetch with a
+  // redirect to /login (or the /access-denied rewrite), the optimizer gets
+  // HTML instead of an image and throws
+  // "ImageError: Unable to optimize image and unable to fallback to upstream image".
+  matcher: ['/((?!_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|webp|avif|ico|woff2?)$).*)'],
 };
