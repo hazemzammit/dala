@@ -1,0 +1,60 @@
+-- =============================================================================
+-- 0111_validate_site_logs_file_paths_in_own_org.sql
+-- Ref: docs/audits/DALA_FULL_SYSTEM_AUDIT.md §Database (DB-1)
+--      supabase/migrations/0101_storage_hardening.sql
+--
+-- MEDIUM FIX (data-integrity, not a code change) — closes the loose end left by
+-- 0101. That migration fixed a real, reproduced-live storage path-injection
+-- vulnerability (a site_logs row's photo_url/voice_note_url/thumbnail_url could
+-- point at ANOTHER org's storage path, and is_shared_site_log_file() would then
+-- grant read access to it) in two parts:
+--   a. is_shared_site_log_file() now also requires the log's org_id to equal the
+--      path's first folder — this is the part that actually closed the exposure;
+--   b. a CHECK constraint, site_logs_file_paths_in_own_org, added NOT VALID so it
+--      only applies to new/changed rows going forward.
+--
+-- 0101's own comment says: "legacy rows are not re-checked; run VALIDATE
+-- CONSTRAINT after cleaning" — and that was never done. Verified against the
+-- local stack before writing this migration:
+--
+--   select conname, convalidated from pg_constraint
+--    where conname = 'site_logs_file_paths_in_own_org';
+--   -> site_logs_file_paths_in_own_org | f          (still NOT VALID)
+--
+-- The DB-1 diagnostic query was then run (read-only) against the local database
+-- — the exact query from the audit finding:
+--
+--   select id, org_id, photo_url, voice_note_url, thumbnail_url from site_logs
+--    where (photo_url    is not null and split_part(photo_url,'/',1)    <> org_id::text)
+--       or (voice_note_url is not null and split_part(voice_note_url,'/',1) <> org_id::text)
+--       or (thumbnail_url  is not null and split_part(thumbnail_url,'/',1)  <> org_id::text);
+--
+--   -> 0 rows  (against 5 rows total in site_logs)
+--
+-- Zero legacy offending rows, so no customer data needed remediation and
+-- VALIDATE can run unattended. This is NOT an assumption: the audit explicitly
+-- required the query to be run before deciding, precisely because 0101's
+-- "after cleaning" step may never have happened.
+--
+-- WHAT THIS DOES: VALIDATE CONSTRAINT re-checks every existing row against the
+-- constraint. It flips pg_constraint.convalidated to true, which is what makes
+-- the table's *historical* data provably enforced-clean (until now the
+-- constraint provided a guarantee about new rows only, so "this table is
+-- enforced clean" was not a supportable claim for a customer security review or
+-- an incident investigation).
+--
+-- COST/LOCKING: VALIDATE takes a SHARE UPDATE EXCLUSIVE lock on site_logs for
+-- the duration of the scan — it blocks concurrent DDL/schema changes and other
+-- VALIDATEs, but not ordinary reads or writes. site_logs is a small, append-only
+-- journal table, so the scan is trivial; this is safe to run on a live database.
+-- (On the local stack it runs as part of `supabase db reset`.)
+--
+-- Follow-up (tracked in the audit's Priority Action Plan, item 13, NOT done
+-- here): mirror this predicate in the existing service_health_checks/cron
+-- infrastructure (0026/0032) so a future regression of the same path-ownership
+-- bug is detected within a health-check cycle instead of sitting unnoticed for
+-- another 8+ migrations, as this one did.
+-- =============================================================================
+
+alter table public.site_logs
+  validate constraint site_logs_file_paths_in_own_org;
