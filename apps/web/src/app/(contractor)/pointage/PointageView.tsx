@@ -1,7 +1,7 @@
 'use client';
 
 import type { Project, Worker, AttendanceRecord } from '@dala/shared-types';
-import { Button, Card, EmptyState, StatusBadge } from '@dala/ui-web';
+import { Button, Card, EmptyState, IconStatCard, StatusBadge } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
 import {
   CalendarBlankIcon,
@@ -14,10 +14,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import { saveManualAttendance } from './actions';
-
 import { SectionCard } from '@/components/contractor/Screen';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { saveManualAttendance } from './actions';
 
 type AttendanceStatus = 'present' | 'absent' | 'half_day';
 
@@ -27,18 +27,6 @@ type WorkerRow = Worker & {
   projectId: string;
   absenceReason: string;
 };
-
-function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function parseDate(value: string) {
-  return new Date(`${value}T00:00:00`);
-}
-
-function todayString() {
-  return formatDateInput(new Date());
-}
 
 const STATUS_LABEL: Record<AttendanceStatus, string> = {
   present: 'Présent',
@@ -174,7 +162,7 @@ export function PointageView({
       )}
 
       <PageHero
-        eyebrow="Pointage"
+        icon={ClockCounterClockwiseIcon}
         title="Présence manuelle"
         description="Saisissez la présence d’une journée sans dépendre d’un dispatch. Les pointages manuels restent prioritaires sur les check-ins automatiques."
         actions={
@@ -205,38 +193,20 @@ export function PointageView({
       />
 
       <div className="grid gap-4 sm:grid-cols-4">
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Présents
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {summary.present}
-          </p>
-        </Card>
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Absents
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {summary.absent}
-          </p>
-        </Card>
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Demi-journées
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {summary.half_day}
-          </p>
-        </Card>
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Non renseignés
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {summary.unset}
-          </p>
-        </Card>
+        <IconStatCard icon={CheckCircleIcon} tone="success" label="Présents" value={summary.present} />
+        <IconStatCard icon={XCircleIcon} tone="danger" label="Absents" value={summary.absent} />
+        <IconStatCard
+          icon={MinusCircleIcon}
+          tone="warning"
+          label="Demi-journées"
+          value={summary.half_day}
+        />
+        <IconStatCard
+          icon={CalendarBlankIcon}
+          tone="neutral"
+          label="Non renseignés"
+          value={summary.unset}
+        />
       </div>
 
       <SectionCard

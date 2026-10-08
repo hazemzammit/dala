@@ -1,15 +1,17 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { PointageView } from './PointageView';
 
-import { createClient } from '@/lib/supabase/server';
 
 function formatDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export default async function Page({ searchParams }: { searchParams?: { date?: string } }) {
+export default async function Page(props: { searchParams?: Promise<{ date?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -28,7 +30,7 @@ export default async function Page({ searchParams }: { searchParams?: { date?: s
 
   const [workersResult, projectsResult, recordsResult] = await Promise.all([
     supabase
-      .from('active_workers')
+      .from('active_worker_directory')
       .select(
         'id, org_id, full_name, email, phone, trade, daily_rate, user_id, created_at, deleted_at, photo_url',
       )

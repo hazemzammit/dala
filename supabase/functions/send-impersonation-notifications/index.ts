@@ -15,12 +15,23 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { sendEmail } from '../_shared/resend.ts';
+import { escapeHtml, sendEmail } from '../_shared/resend.ts';
+import { requireInternalCaller } from '../_shared/internalAuth.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Internal-only (cron): this reads org-owner emails and sends "an admin
+  // accessed your account" notices with the service role. It had NO caller
+  // check at all — same bug class already fixed in 0026's other cron
+  // functions (rotate-totp-encryption-key, generate-subscription-charges,
+  // send-digest-notifications, send-announcement-notifications), just missed
+  // here. Any signed-in user's JWT satisfies the platform's default
+  // verify_jwt gate, so any user could have triggered this early / spammed it.
+  const denied = await requireInternalCaller(req);
+  if (denied) return denied;
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -79,13 +90,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const orgName = (notification as any).organizations?.name ?? 'votre organisation';
+      // Escaped at interpolation: org name is owner-set free text; reason is an
+      // admin-typed free-text field. Neither is something the RECIPIENT chose,
+      // so neither is trusted to already be safe HTML (see _shared/resend.ts).
+      const orgName = escapeHtml((notification as any).organizations?.name ?? 'votre organisation');
       const dateStr = new Date(notification.session_ended_at).toLocaleString('fr-FR');
+      const reason = escapeHtml(notification.reason);
 
       await sendEmail({
         to: ownerEmail,
         subject: `Accès administrateur à votre compte Dala — ${orgName}`,
-        html: `<p>Un membre de l'équipe Dala a accédé à votre compte le ${dateStr} pour la raison suivante : ${notification.reason}.</p>`,
+        html: `<p>Un membre de l'équipe Dala a accédé à votre compte le ${dateStr} pour la raison suivante : ${reason}.</p>`,
       });
 
       await supabase

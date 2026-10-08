@@ -2,13 +2,14 @@
 
 import { PageHero } from '@dala/ui-web';
 import type { NotificationPrefsInput } from '@dala/validation';
+import { BellIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-
-import { updateNotificationPrefs } from './actions';
 
 import { SectionCard } from '@/components/contractor/Screen';
 import { Switch } from '@/components/ui/Switch';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { updateNotificationPrefs } from './actions';
 
 const DIGEST_OPTIONS: { value: NotificationPrefsInput['digest_frequency']; label: string }[] = [
   { value: 'off', label: 'Désactivé' },
@@ -60,7 +61,7 @@ export function NotificationsForm({ initialPrefs }: { initialPrefs: Notification
   return (
     <>
       <PageHero
-        eyebrow="Mon compte"
+        icon={BellIcon}
         title="Notifications"
         description="Choisissez ce qui est inclus dans votre résumé par e-mail, et à quelle fréquence vous le recevez."
       />

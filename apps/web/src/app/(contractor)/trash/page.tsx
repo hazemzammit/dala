@@ -2,9 +2,10 @@ import type { TrashItem } from '@dala/shared-types';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { TrashView } from './TrashView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/trash/page.tsx

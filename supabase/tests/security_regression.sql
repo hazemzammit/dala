@@ -2,9 +2,10 @@
 -- supabase/tests/security_regression.sql
 --
 -- Self-contained security regression suite for the fixes in migrations
--- 0093-0109 + Edge Function guards (see each migration header for the finding it closes). Runs in ONE
--- transaction that is always rolled back, with its own fixtures (ids prefixed
--- 5ec0…, emails @example.invalid), so it is safe against a seeded database.
+-- 0093-0111 + Edge Function guards (see each migration header for the finding it
+-- closes). Runs in ONE transaction that is always rolled back, with its own
+-- fixtures (ids prefixed 5ec0…, emails @example.invalid), so it is safe against
+-- a seeded database.
 --
 --   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/security_regression.sql
 --
@@ -62,17 +63,31 @@ end $f$;
 insert into auth.users (id, email) values
   ('5ec0a000-0000-4000-8000-000000000010','owner-a@example.invalid'), ('5ec0a000-0000-4000-8000-000000000011','manager-a@example.invalid'),
   ('5ec0a000-0000-4000-8000-000000000012','viewer-a@example.invalid'), ('5ec0a000-0000-4000-8000-000000000013','worker-a@example.invalid'),
-  ('5ec0b000-0000-4000-8000-000000000010','owner-b@example.invalid'), ('5ec0c000-0000-4000-8000-000000000010','outsider@example.invalid');
+  ('5ec0b000-0000-4000-8000-000000000010','owner-b@example.invalid'), ('5ec0c000-0000-4000-8000-000000000010','outsider@example.invalid'),
+  -- 0112: one account in TWO orgs (manager of A, viewer of B). Must be a
+  -- top-level fixture, not created inside a run_check body: run_check wraps its
+  -- body in a subtransaction that is rolled back when it raises its sentinel
+  -- error, so anything inserted there never exists for the cases that follow.
+  ('5ec0a000-0000-4000-8000-000000000014','dual-a@example.invalid');
 insert into organizations (id, name, created_by) values
   ('5ec0a000-0000-4000-8000-000000000001','SecTest Org A','5ec0a000-0000-4000-8000-000000000010'), ('5ec0b000-0000-4000-8000-000000000001','SecTest Org B','5ec0b000-0000-4000-8000-000000000010');
 insert into organization_members (org_id, user_id, role) values
   ('5ec0a000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000010','owner'), ('5ec0a000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000011','manager'), ('5ec0a000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000012','viewer'),
-  ('5ec0b000-0000-4000-8000-000000000001','5ec0b000-0000-4000-8000-000000000010','owner');
+  ('5ec0b000-0000-4000-8000-000000000001','5ec0b000-0000-4000-8000-000000000010','owner'),
+  -- 0112 attacker: a manager of Org A who is ALSO a plain member of Org B.
+  -- Every other fixture user belongs to exactly one org, which is precisely why
+  -- the caller-scoped participation check looked airtight until this one.
+  ('5ec0a000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000014','manager'),
+  ('5ec0b000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000014','viewer');
 insert into workers (id, org_id, full_name, daily_rate, user_id) values
   ('5ec0d000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000001','Worker A1',100,'5ec0a000-0000-4000-8000-000000000013'), ('5ec0d000-0000-4000-8000-000000000002','5ec0a000-0000-4000-8000-000000000001','Worker A2',150,null),
   ('5ec0d000-0000-4000-8000-000000000003','5ec0b000-0000-4000-8000-000000000001','Worker B1',120,null);
 insert into projects (id, lead_org_id, name, created_by) values
-  ('5ec0e000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000001','SecTest Project A','5ec0a000-0000-4000-8000-000000000010'), ('5ec0e000-0000-4000-8000-000000000002','5ec0b000-0000-4000-8000-000000000001','SecTest Project B','5ec0b000-0000-4000-8000-000000000010');
+  ('5ec0e000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000001','SecTest Project A','5ec0a000-0000-4000-8000-000000000010'), ('5ec0e000-0000-4000-8000-000000000002','5ec0b000-0000-4000-8000-000000000001','SecTest Project B','5ec0b000-0000-4000-8000-000000000010'),
+  -- 0112: a second Org B project, on which Org A has no participation at all
+  -- and Org B is the sole participant. Dedicated to the attack cases so they
+  -- cannot be perturbed by whatever any other case does to Project B.
+  ('5ec0e000-0000-4000-8000-000000000003','5ec0b000-0000-4000-8000-000000000001','SecTest Project B2','5ec0b000-0000-4000-8000-000000000010');
 insert into project_memberships (project_id, org_id, role) values ('5ec0e000-0000-4000-8000-000000000001','5ec0b000-0000-4000-8000-000000000001','trade');
 insert into vehicles (id, org_id, name, capacity) values
   ('5ec0f000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000001','Truck A',2), ('5ec0f000-0000-4000-8000-000000000002','5ec0b000-0000-4000-8000-000000000001','Truck B',2);
@@ -801,6 +816,92 @@ begin
   if n <> 0 then raise exception 'LEAK: sees % row(s)', n; end if;
 end;$b$);
 select pg_temp.run_case('0109 anon cannot select material_requests_directory', 'deny', 'anon', null, $q$select count(*) from material_requests_directory$q$);
+
+-- 0112 — dispatch/project rows must be scoped to the org the PROJECT belongs to
+--
+-- The attack this pins (MT-2). `is_project_participant(project_id)` is
+-- caller-scoped: it answers "is the CURRENT USER associated with this project
+-- through SOME org", not "is the org on the row associated with it". The
+-- write policies on dispatch_assignments/project_workers ask the first
+-- question about the org column and the second about the project column, so
+-- one account belonging to two orgs satisfies both with DIFFERENT orgs.
+-- Fixtures for the attack: the `dual-a` user created in the fixture block above
+-- is a MANAGER of Org A and a plain member of Org B, and SecTest Project B2 is
+-- led by Org B with no membership row for Org A. So for that one account
+-- "am I a participant of this project?" and "is my row's org a participant of
+-- this project?" have OPPOSITE answers — which is the whole bug.
+--
+-- legitimate use that must keep working -----------------------------------------
+select pg_temp.run_case('0112 lead org A can still dispatch on its own project', 'ok', 'authenticated', '5ec0a000-0000-4000-8000-000000000011'::uuid, $q$insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date) values ('5ec0a000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000002',current_date+1)$q$);
+select pg_temp.run_case('0112 trade org B can still dispatch its own worker on shared project A', 'ok', 'authenticated', '5ec0b000-0000-4000-8000-000000000010'::uuid, $q$insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date) values ('5ec0b000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000003',current_date)$q$);
+select pg_temp.run_case('0112 trade org B can still add its own worker to shared project A''s roster', 'ok', 'authenticated', '5ec0b000-0000-4000-8000-000000000010'::uuid, $q$insert into project_workers(project_id,worker_id) values ('5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000003')$q$);
+select pg_temp.run_case('0112 dispatch with no project_id (maintenance/unassigned) is still allowed', 'ok', 'authenticated', '5ec0a000-0000-4000-8000-000000000011'::uuid, $q$insert into dispatch_assignments(org_id,worker_id,assignment_date) values ('5ec0a000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000002',current_date+2)$q$);
+select pg_temp.run_case('0112 anon still cannot insert a dispatch assignment', 'deny', 'anon', null, $q$insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date) values ('5ec0a000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000002',current_date+3)$q$);
+
+-- the three attacks (SecTest Project B2 = led by Org B, Org A not a participant)
+select pg_temp.run_case('0112 dual-membership manager CANNOT dispatch org A''s worker onto org B''s project', 'perm', 'authenticated', '5ec0a000-0000-4000-8000-000000000014'::uuid, $q$insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date) values ('5ec0a000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000003','5ec0d000-0000-4000-8000-000000000001',current_date)$q$);
+select pg_temp.run_case('0112 dual-membership manager CANNOT staff org A''s worker on org B''s project roster', 'perm', 'authenticated', '5ec0a000-0000-4000-8000-000000000014'::uuid, $q$insert into project_workers(project_id,worker_id) values ('5ec0e000-0000-4000-8000-000000000003','5ec0d000-0000-4000-8000-000000000001')$q$);
+select pg_temp.run_case('0112 dual-membership manager CANNOT re-point an existing assignment at org B''s project', 'perm', 'authenticated', '5ec0a000-0000-4000-8000-000000000014'::uuid, $q$update dispatch_assignments set project_id = '5ec0e000-0000-4000-8000-000000000003' where id = '5ec09000-0000-4000-8000-000000000001'$q$);
+
+
+-- participation changes take effect on the next write --------------------------
+-- (the delete below is undone automatically: run_check's body is rolled back)
+select pg_temp.run_check('0112 losing the trade membership blocks the next roster write', $b$
+begin
+  delete from project_memberships
+   where project_id = '5ec0e000-0000-4000-8000-000000000001'
+     and org_id = '5ec0b000-0000-4000-8000-000000000001';
+  perform set_config('request.jwt.claims', '{"sub":"5ec0b000-0000-4000-8000-000000000010","role":"authenticated"}', true); execute 'set local role authenticated';
+  begin
+    insert into project_workers(project_id,worker_id) values ('5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000003');
+    raise exception 'an org removed from the project could still staff its worker';
+  exception when insufficient_privilege then null;
+  end;
+end;$b$);
+
+-- the auto-seed trigger ---------------------------------------------------------
+select pg_temp.run_check('0112 an allowed dispatch still auto-seeds the roster; a blocked one seeds nothing', $b$
+declare n int;
+begin
+  perform set_config('request.jwt.claims', '{"sub":"5ec0b000-0000-4000-8000-000000000010","role":"authenticated"}', true); execute 'set local role authenticated';
+  insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date)
+    values ('5ec0b000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000003',current_date+1);
+  reset role;
+  select count(*) into n from project_workers
+   where project_id = '5ec0e000-0000-4000-8000-000000000001'
+     and worker_id  = '5ec0d000-0000-4000-8000-000000000003'
+     and org_id     = '5ec0b000-0000-4000-8000-000000000001';
+  if n <> 1 then raise exception 'legitimate auto-seed missing (% row(s))', n; end if;
+
+  perform set_config('request.jwt.claims', '{"sub":"5ec0a000-0000-4000-8000-000000000014","role":"authenticated"}', true); execute 'set local role authenticated';
+  begin
+    insert into dispatch_assignments(org_id,project_id,worker_id,assignment_date)
+      values ('5ec0a000-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000003','5ec0d000-0000-4000-8000-000000000001',current_date+1);
+    raise exception 'the cross-org dispatch was NOT blocked';
+  exception when insufficient_privilege then null;   -- 42501, the RLS refusal
+  end;
+  reset role;
+  select count(*) into n from project_workers where project_id = '5ec0e000-0000-4000-8000-000000000003';
+  if n <> 0 then raise exception 'LEAK: % roster row(s) on another org''s project', n; end if;
+end;$b$);
+
+
+-- composite FK: a roster row cannot name a worker from another org -------------
+-- (project_workers.org_id is derived from the worker on INSERT by 0034's trigger,
+-- so the FK is what stops a later UPDATE from re-pointing worker_id at another
+-- org's worker while keeping this row's org_id.)
+select pg_temp.run_check('0112 project_workers cannot be re-pointed at another org''s worker (composite FK)', $b$
+begin
+  insert into project_workers (id, project_id, worker_id, org_id)
+    values ('5ec09100-0000-4000-8000-000000000001','5ec0e000-0000-4000-8000-000000000001','5ec0d000-0000-4000-8000-000000000001','5ec0a000-0000-4000-8000-000000000001');
+  begin
+    update project_workers set worker_id = '5ec0d000-0000-4000-8000-000000000003'
+     where id = '5ec09100-0000-4000-8000-000000000001';
+    raise exception 'roster row was re-pointed at another org''s worker';
+  exception when foreign_key_violation then null;
+  end;
+end;$b$);
+
 
 -- ---------------------------------------------------------------- verdict
 create temp view verdicts as

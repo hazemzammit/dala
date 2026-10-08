@@ -48,7 +48,8 @@ export async function checkInviteAcceptRateLimit(
   token: string,
   clientIp: string,
 ): Promise<{ allowed: boolean; reason?: string }> {
-  const tokenKey = `${config.functionName}:token:${token}`;
+  // Caps: `token` is attacker-supplied; an unbounded key would let anyone bloat the table.
+  const tokenKey = `${config.functionName}:token:${token.slice(0, 128)}`;
   const ipKey = `${config.functionName}:ip:${clientIp}`;
 
   try {
@@ -91,21 +92,78 @@ export async function checkInviteAcceptRateLimit(
 }
 
 /**
- * Best-effort client IP extraction. Supabase's Edge Runtime sits behind a
- * gateway that sets x-forwarded-for (confirmed via docs.supabase.com/
- * guides/functions/architecture's own "request enters an edge gateway...
- * the gateway routes traffic" description of the request path) — takes
- * the first (left-most / original client) address in a possibly-comma-
- * separated list. Falls back to a constant string, not null/empty, so a
- * missing header still produces a STABLE rate-limit key (grouping every
- * such request together, which is the conservative failure mode — better
- * to over-limit a same-bucket edge case than to silently skip IP-scoped
- * limiting for it).
+ * Client IP for rate-limit keys.
+ *
+ * The old version took the LEFT-most X-Forwarded-For entry. That end of the header is written by
+ * the CLIENT (`X-Forwarded-For: 1.2.3.<random>`), so an attacker could mint a fresh IP bucket on
+ * every request and the per-IP limit never tripped. Now:
+ *   1. `cf-connecting-ip` — set (overwritten) by Cloudflare, which Supabase's edge sits behind;
+ *      not client-controllable.
+ *   2. otherwise X-Forwarded-For counted from the RIGHT, skipping TRUSTED_PROXY_HOPS-1 entries
+ *      (default 1 hop = the entry appended by our own gateway).
+ * The value is sanitised and length-capped so it cannot be used to bloat the rate-limit table.
+ * Falls back to a constant so a missing header still yields a STABLE key (over-limiting a shared
+ * bucket is the safe failure mode, not skipping the limit).
  */
 export function extractClientIp(req: Request): string {
-  const forwarded = req.headers.get('x-forwarded-for');
-  if (forwarded) {
-    return forwarded.split(',')[0]!.trim();
+  const clean = (v: string | null | undefined): string | null => {
+    const t = v?.trim().slice(0, 64);
+    return t && /^[0-9a-fA-F:.]+$/.test(t) ? t : null;
+  };
+
+  const cf = clean(req.headers.get('cf-connecting-ip'));
+  if (cf) return cf;
+
+  const parts = (req.headers.get('x-forwarded-for') ?? '')
+    .split(',')
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const configured = Number.parseInt(Deno.env.get('TRUSTED_PROXY_HOPS') ?? '', 10);
+  const hops = Number.isFinite(configured) && configured >= 1 ? configured : 1;
+  const fromRight = clean(parts.length >= hops ? parts[parts.length - hops] : parts[0]);
+  return fromRight ?? 'unknown';
+}
+
+export interface RateLimitCheck {
+  /** Fully composed key, e.g. `mfa-recover:email:a@b.c`. Truncated to 200 chars. */
+  key: string;
+  max: number;
+}
+
+/**
+ * Generic multi-key limiter over the same check_rate_limit() RPC. Every check must pass.
+ * `failOpen` decides what an INFRASTRUCTURE failure (RPC error/throw) means:
+ *   true  (default) — availability first: used where a limiter outage must not block real users
+ *                     (invitation accept, sign-up).
+ *   false           — security first: used for credential-guessing surfaces (MFA recovery), where
+ *                     "the limiter is down" must not become "unlimited guesses".
+ */
+export async function enforceRateLimits(
+  admin: ReturnType<typeof createClient>,
+  checks: RateLimitCheck[],
+  windowSeconds: number,
+  options: { failOpen?: boolean } = {},
+): Promise<{ allowed: boolean; reason?: 'rate_limited' | 'limiter_unavailable' }> {
+  const failOpen = options.failOpen ?? true;
+  try {
+    const results = await Promise.all(
+      checks.map((c) =>
+        admin.rpc('check_rate_limit', {
+          p_key: c.key.slice(0, 200),
+          p_max_requests: c.max,
+          p_window_seconds: windowSeconds,
+        }),
+      ),
+    );
+    if (results.some((r) => r.error || typeof r.data !== 'boolean')) {
+      console.error('[rateLimit] check_rate_limit RPC error', results.find((r) => r.error)?.error);
+      return failOpen ? { allowed: true } : { allowed: false, reason: 'limiter_unavailable' };
+    }
+    return results.every((r) => r.data === true)
+      ? { allowed: true }
+      : { allowed: false, reason: 'rate_limited' };
+  } catch (err) {
+    console.error('[rateLimit] unexpected error', err);
+    return failOpen ? { allowed: true } : { allowed: false, reason: 'limiter_unavailable' };
   }
-  return req.headers.get('cf-connecting-ip') ?? 'unknown';
 }

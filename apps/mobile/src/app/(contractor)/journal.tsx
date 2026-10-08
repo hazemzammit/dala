@@ -356,7 +356,7 @@ export default function JournalScreen() {
           .eq('lead_org_id', org)
           .is('deleted_at', null)
           .order('name'),
-        supabase.from('workers').select('*').eq('org_id', org),
+        supabase.from('worker_directory').select('*').eq('org_id', org),
       ]);
     if (projectsError || workersError) {
       setLoadError(true);
@@ -682,7 +682,7 @@ export default function JournalScreen() {
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={ImageIcon}
-          icon3d="no-data"
+          illustration="organize-photos"
           title="Aucun chantier"
           description="Créez d'abord un chantier pour voir son journal de bord."
         />

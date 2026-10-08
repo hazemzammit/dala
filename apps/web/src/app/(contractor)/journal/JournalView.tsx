@@ -17,13 +17,18 @@ import imageCompression from 'browser-image-compression';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 
-import { createSiteLog } from './actions';
-
 import { SectionCard } from '@/components/contractor/Screen';
 import { createClient } from '@/lib/supabase/client';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
-export type SiteLogWithSignedUrl = SiteLog & { signed_photo_url: string | null };
+import { createSiteLog } from './actions';
+
+export type SiteLogWithSignedUrl = SiteLog & {
+  signed_photo_url: string | null;
+  // Field-coverage pass — resolved alongside signed_photo_url in
+  // journal/page.tsx, same private-storage-path convention.
+  signed_voice_note_url?: string | null;
+};
 export type ProjectOption = Pick<Project, 'id' | 'name' | 'status'>;
 
 interface JournalViewProps {
@@ -42,18 +47,6 @@ function startOfWeek(date: Date) {
   copy.setDate(copy.getDate() + delta);
   copy.setHours(0, 0, 0, 0);
   return copy;
-}
-
-function formatDateInput(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function sameDay(left: Date, right: Date) {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
 }
 
 export function JournalView({ orgId, projects, siteLogs, selectedDate }: JournalViewProps) {
@@ -264,7 +257,7 @@ export function JournalView({ orgId, projects, siteLogs, selectedDate }: Journal
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Journal de chantier"
+        icon={ImageIcon}
         title="Journal quotidien"
         description="Conservez les photos et les notes de chantier par jour ou par semaine, chantier par chantier."
         actions={
@@ -320,9 +313,13 @@ export function JournalView({ orgId, projects, siteLogs, selectedDate }: Journal
         </Card>
 
         {/*
-          Limitation: Pas de colonne pour les notes vocales dans site_logs (schéma Postgres 0008).
-          Le bouton reste désactivé avec mention "Bientôt disponible".
-          Une migration SQL serait nécessaire pour ajouter voice_url.
+          Field-coverage pass — this comment was stale: site_logs.voice_note_url
+          exists (added after migration 0008, confirmed in packages/shared-types),
+          and it's now displayed above when an entry has one. What's still
+          genuinely missing is IN-BROWSER RECORDING — capturing new audio
+          here needs the MediaRecorder API plus an upload flow, a real
+          feature, not a schema gap. Button stays disabled until that's
+          built; the reason just needed correcting.
         */}
         <Card
           className="cursor-not-allowed border-neutral-200 bg-neutral-50 p-5 opacity-65"
@@ -476,6 +473,27 @@ export function JournalView({ orgId, projects, siteLogs, selectedDate }: Journal
                               <MapPinIcon size={14} />
                               {log.location_lat.toFixed(5)}, {log.location_lng.toFixed(5)}
                             </span>
+                          )}
+                          {/* Field-coverage pass — voice_note_url was
+                              fetched by journal/page.tsx but never
+                              rendered anywhere: an entry recorded on
+                              mobile (voice notes have been mobile-only
+                              since the column shipped) would silently
+                              vanish from a web user's view with no
+                              indication it existed. Display-only, same
+                              reasoning as the location fix above — no
+                              in-browser recording added here, that's a
+                              real, separate feature (MediaRecorder capture
+                              + upload flow), not a display gap. */}
+                          {log.signed_voice_note_url && (
+                            <div className="flex items-center gap-2">
+                              <MicrophoneIcon size={14} className="shrink-0 text-neutral-500" />
+                              <audio
+                                controls
+                                src={log.signed_voice_note_url}
+                                className="h-8 max-w-full"
+                              />
+                            </div>
                           )}
                         </div>
                       </Card>

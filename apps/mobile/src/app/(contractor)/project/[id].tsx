@@ -21,6 +21,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { getSignedUrl } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { useCanSeeMoney } from '@/lib/useCanSeeMoney';
 import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
@@ -85,6 +86,9 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * header for why that wasn't assumed.
  */
 export default function ProjectHubScreen() {
+  // Viewers (Observateur) are money-blind since migration 0103: the Dépenses module is hidden.
+  const { loading: roleLoading, canSeeMoney: roleAllowsMoney } = useCanSeeMoney();
+  const canSeeMoney = roleLoading || roleAllowsMoney;
   // Doc 05 §1.7k migration — Phase 19A: replaces the 10 untokenized
   // `#8A8F98` icon colors below with the theme-aware neutral-400 token
   // (Phase 17 audit logged 12 occurrences; recount here found 10 —
@@ -256,7 +260,7 @@ export default function ProjectHubScreen() {
             MODULES
           </Text>
 
-          {isLead && (
+          {isLead && canSeeMoney && (
             <XStack
               backgroundColor="$neutral0"
               borderRadius="$card"

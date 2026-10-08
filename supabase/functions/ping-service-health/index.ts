@@ -57,6 +57,7 @@
 // unset, alerting silently no-ops (logged, not thrown) — a missing
 // webhook URL should never take down the health checks themselves.
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { requireInternalCaller } from '../_shared/internalAuth.ts';
 
 const RETENTION_DAYS = 7;
 const REALTIME_TIMEOUT_MS = 3000;
@@ -155,7 +156,15 @@ async function timed<T>(fn: () => Promise<T>): Promise<{ ms: number; result: T }
   return { ms: Math.round(performance.now() - start), result };
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Internal-only (cron, every 5 minutes): pings third-party services and posts to a Slack
+  // webhook using secrets from Deno.env — the request itself was never inspected (`_req`), so any
+  // signed-in user's JWT (the platform's default verify_jwt gate) could trigger it early or spam
+  // the health-check calls / Slack alerts. Same class already fixed for the other cron functions
+  // in migration 0026; missed here.
+  const denied = await requireInternalCaller(req);
+  if (denied) return denied;
+
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,

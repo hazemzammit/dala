@@ -34,7 +34,7 @@ import { buildTotpUri, generateTotpSecret, verifyTotpCode } from '@/lib/totp';
 const SESSION_DURATION_MS = 2 * 60 * 60 * 1000; // 2h hard cap, Doc 01 §1.3.10
 
 async function requireSetupChallenge() {
-  const token = cookies().get(CHALLENGE_COOKIE)?.value;
+  const token = (await cookies()).get(CHALLENGE_COOKIE)?.value;
   if (!token) return null;
   const payload = await verifyChallengeToken(token);
   if (!payload || payload.purpose !== 'totp_setup') return null;
@@ -65,7 +65,7 @@ export async function GET() {
       purpose: 'totp_setup',
       pendingSecret: secret,
     });
-    cookies().set(CHALLENGE_COOKIE, newToken, {
+    (await cookies()).set(CHALLENGE_COOKIE, newToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
@@ -120,14 +120,14 @@ export async function POST(request: Request) {
     expiresAt,
   );
 
-  cookies().set(SESSION_COOKIE, sessionToken, {
+  (await cookies()).set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
     expires: expiresAt,
   });
-  cookies().delete(CHALLENGE_COOKIE);
+  (await cookies()).delete(CHALLENGE_COOKIE);
 
   return NextResponse.json({ ok: true });
 }

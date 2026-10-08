@@ -13,7 +13,8 @@ import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
-export async function PATCH(request: Request, { params }: { params: { key: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
@@ -57,7 +58,8 @@ export async function PATCH(request: Request, { params }: { params: { key: strin
   return NextResponse.json({ ok: true, flag: updated });
 }
 
-export async function DELETE(_request: Request, { params }: { params: { key: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

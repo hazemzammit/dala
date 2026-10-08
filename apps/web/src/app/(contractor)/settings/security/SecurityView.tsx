@@ -6,11 +6,11 @@ import { changePasswordSchema, totpCodeSchema } from '@dala/validation';
 import { CheckCircleIcon, ShieldCheckIcon } from '@phosphor-icons/react';
 import { useCallback, useEffect, useState } from 'react';
 
-import { ConnectedDevices } from './ConnectedDevices';
-
 import { SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { createClient } from '@/lib/supabase/client';
+
+import { ConnectedDevices } from './ConnectedDevices';
 
 /**
  * apps/web/src/app/(contractor)/settings/security/SecurityView.tsx
@@ -235,7 +235,7 @@ export function SecurityView({ userEmail }: { userEmail: string }) {
   return (
     <>
       <PageHero
-        eyebrow="Mon compte"
+        icon={ShieldCheckIcon}
         title="Sécurité"
         description="Modifiez votre mot de passe et gérez la vérification en deux étapes."
       />

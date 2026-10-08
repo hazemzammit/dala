@@ -25,6 +25,7 @@ type TradeMembership = {
   id: string;
   project_id: string;
   budget_rollup_opt_in: boolean;
+  report_branding_opt_out: boolean;
   projects: { id: string; name: string; client_name: string | null; lead_org_id: string } | null;
 };
 type LeadOrg = { id: string; name: string };
@@ -136,16 +137,32 @@ export function CollaborationView({
                 <p className="mt-0.5 text-sm text-neutral-500">
                   Chantier dirigé par {leadOrgNameById.get(m.projects?.lead_org_id ?? '') ?? '—'}
                 </p>
-                {/* Doc 02 §2.8 — le partage de budget par l'entreprise invitée
-                    n'est pas encore modifiable ici : la policy RLS actuelle
-                    (migration 0006) réserve l'écriture sur project_memberships
-                    au propriétaire/responsable du chantier qui dirige, pas à
-                    l'entreprise invitée elle-même. Affiché en lecture seule ;
-                    une nouvelle policy RLS serait nécessaire pour le rendre
-                    modifiable. */}
-                <div className="mt-3">
+                {/* Doc 02 §2.8 — both flags below are read-only here, and
+                    that's deliberate, not a missing-UI gap: the only write
+                    policy on project_memberships (migration 0006,
+                    "project_memberships_write_lead_owner_manager") grants
+                    INSERT/UPDATE/DELETE to the LEAD org's owner/manager
+                    only — there is no policy letting the invited/trade org
+                    write its own row at all. Field-coverage pass found
+                    that mobile's collaboration.tsx DOES render a live
+                    Toggle for both budget_rollup_opt_in and
+                    report_branding_opt_out that calls this exact same
+                    blocked update path — meaning that control doesn't
+                    actually work today on mobile either, it just doesn't
+                    show an error until someone taps it. Not fixed here:
+                    closing it for real needs a new RLS policy (or a
+                    security-definer RPC, same shape as this file's other
+                    write paths), which is backend work beyond a display
+                    pass — flagging it instead of quietly shipping a second
+                    copy of the same non-functional control on web. */}
+                <div className="mt-3 flex flex-wrap gap-2">
                   <StatusBadge variant={m.budget_rollup_opt_in ? 'success' : 'neutral'}>
                     {m.budget_rollup_opt_in ? 'Vous partagez votre budget' : 'Budget non partagé'}
+                  </StatusBadge>
+                  <StatusBadge variant={m.report_branding_opt_out ? 'neutral' : 'success'}>
+                    {m.report_branding_opt_out
+                      ? 'Masqué des rapports du chantier'
+                      : 'Visible sur les rapports du chantier'}
                   </StatusBadge>
                 </div>
               </Card>

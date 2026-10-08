@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { PortfolioView } from './PortfolioView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/portfolio/page.tsx

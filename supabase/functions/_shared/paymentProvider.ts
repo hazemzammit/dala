@@ -30,6 +30,10 @@
  * shaped the way it is rather than mirroring the Stripe API specifically.
  */
 
+import { verifyStripeSignature, WebhookSignatureError } from './stripeSignature.ts';
+
+export { WebhookSignatureError };
+
 export interface CreatePaymentRequestParams {
   /** billing_cycles.id -- becomes the provider's client reference / metadata, so a webhook can be matched back to the row that requested it. */
   billingCycleId: string;
@@ -81,7 +85,12 @@ export async function createPaymentRequest(
   return createStripeTestPaymentRequest(params);
 }
 
-export async function parseWebhookEvent(req: Request): Promise<WebhookEvent> {
+/**
+ * Verifies and parses a provider webhook. Returns null for events this flow does not act on
+ * (the caller answers 200 so the provider does not retry them). Throws
+ * WebhookSignatureError when the request is not authentic.
+ */
+export async function parseWebhookEvent(req: Request): Promise<WebhookEvent | null> {
   const provider = activeProvider();
   if (provider === 'konnect') {
     throw new Error(
@@ -149,17 +158,11 @@ async function createStripeTestPaymentRequest(
   };
 }
 
-async function parseStripeTestWebhookEvent(req: Request): Promise<WebhookEvent> {
-  // NOTE: this reads the raw event body directly rather than verifying the
-  // Stripe-Signature header via Stripe's SDK (constructEvent), because that
-  // verification needs an HMAC helper this file deliberately avoids pulling
-  // in an SDK for. STRIPE_WEBHOOK_SECRET is still required and checked
-  // below via a simple presence check -- TODO before any non-test use of
-  // this webhook: swap in real signature verification (Stripe's Deno SDK,
-  // `npm:stripe`, exposes `constructEventAsync` for exactly this) rather
-  // than trusting the body's shape alone. Acceptable for exercising the
-  // billing_cycles/subscription_status flow in test mode; not acceptable
-  // once this ever touches a real payment.
+async function parseStripeTestWebhookEvent(req: Request): Promise<WebhookEvent | null> {
+  // The Stripe-Signature header is verified against the RAW body BEFORE the JSON is looked at.
+  // (This used to be a presence check on STRIPE_WEBHOOK_SECRET only, so anyone able to reach the
+  // function — it is behind verify_jwt, but the anon key is public — could POST a forged
+  // "checkout.session.completed" and mark any billing cycle paid / any org past_due.)
   const webhookSecret = Deno.env.get('STRIPE_WEBHOOK_SECRET');
   if (!webhookSecret) {
     throw new Error(
@@ -169,15 +172,43 @@ async function parseStripeTestWebhookEvent(req: Request): Promise<WebhookEvent> 
     );
   }
 
-  const event = await req.json();
-  const session = event?.data?.object;
+  const rawBody = await req.text();
+  await verifyStripeSignature(rawBody, req.headers.get('stripe-signature'), webhookSecret);
+
+  let event: { type?: string; data?: { object?: Record<string, unknown> } };
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    throw new Error('Stripe webhook body is not valid JSON.');
+  }
+
+  // Only the checkout outcomes this billing flow creates are acted on. Everything else Stripe may
+  // send to the endpoint (charge.refunded, payment_intent.*, ...) used to be treated as "failed"
+  // and flip the org to past_due — now it is acknowledged and ignored.
+  let status: WebhookEvent['status'];
+  const session = event.data?.object as
+    | { payment_status?: string; metadata?: { billing_cycle_id?: string } }
+    | undefined;
+  switch (event.type) {
+    case 'checkout.session.completed':
+      // A completed session can still be unpaid (delayed payment methods).
+      if (session?.payment_status !== 'paid') return null;
+      status = 'paid';
+      break;
+    case 'checkout.session.async_payment_succeeded':
+      status = 'paid';
+      break;
+    case 'checkout.session.expired':
+    case 'checkout.session.async_payment_failed':
+      status = 'failed';
+      break;
+    default:
+      return null;
+  }
+
   const billingCycleId = session?.metadata?.billing_cycle_id;
   if (!billingCycleId) {
     throw new Error('Stripe webhook payload missing metadata.billing_cycle_id.');
   }
-
-  const status: WebhookEvent['status'] =
-    event.type === 'checkout.session.completed' ? 'paid' : 'failed';
-
   return { billingCycleId, status };
 }

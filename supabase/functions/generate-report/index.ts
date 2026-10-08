@@ -94,6 +94,7 @@ import { withInvocationLog } from '../_shared/logInvocation.ts';
 // instead (the ReportTable/ChartSpec page-drawing code, still below).
 import { embedLogo, fetchLogoAsset, type LogoAsset } from '../_shared/pdfBranding.ts';
 
+import { canGenerateReport } from '../_shared/reportAccess.ts';
 // Phase 5 — payroll_summary joins the two report types that already
 // supported PDF. .xlsx remains entirely unbuilt for every report type,
 // unchanged from before this phase (see header above).
@@ -200,6 +201,14 @@ Deno.serve(
         .maybeSingle();
       if (!membership)
         return jsonResponse({ error: "Vous n'êtes pas membre de cette organisation." }, 403);
+
+      // Viewers are money-blind (0103): pay/spend reports are owner/manager only.
+      if (!canGenerateReport(membership.role, report_type)) {
+        return jsonResponse(
+          { error: 'Ce rapport est réservé aux propriétaires et aux gestionnaires.' },
+          403,
+        );
+      }
 
       // 0044 — no reports/export on the free tier. Same callerClient (RLS-
       // scoped) used for the membership check just above, kept before the
@@ -841,8 +850,15 @@ function formatMonthLabel(yyyyMm: string): string {
   return date.toLocaleDateString('fr-TN', { month: 'short', year: '2-digit' });
 }
 
+// See export-org-data/index.ts's escapeCsvValue for why: a report row
+// (project names, expense descriptions, ...) whose first character is one of
+// these opens as a live formula in Excel/Sheets, not as text — CSV/"formula"
+// injection (CWE-1236). Same OWASP mitigation, same character set.
+const FORMULA_LEADING_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
 function csvEscape(value: string): string {
-  return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  const safe = value.length > 0 && FORMULA_LEADING_CHARS.has(value[0]!) ? `'${value}` : value;
+  return /[",\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
 function tableToCSV(table: ReportTable): string {

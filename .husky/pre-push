@@ -1,0 +1,10 @@
+# Guards the class of breakage that shipped a working tree with a truncated
+# apps/mobile/src/db/sync/pushChanges.ts: the file still CALLED
+# pushDispatchAssignments/pushAdvances/pushSiteLogs after those definitions
+# had been cut away. That only surfaced at runtime, as a WatermelonDB/Hermes
+# "Property pushDispatchAssignments doesn't exist" inside a background sync
+# — while `tsc` flags it instantly as TS2304. Nothing ran tsc before a push:
+# lint-staged (pre-commit) only runs eslint --fix + prettier --write, and
+# CI's `pnpm typecheck` step only runs once the branch is already pushed.
+# Deliberate bypass when you need one: `git push --no-verify`.
+pnpm typecheck

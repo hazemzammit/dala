@@ -60,7 +60,7 @@ export function DeleteAccountView() {
   return (
     <>
       <PageHero
-        eyebrow="Mon compte"
+        icon={WarningIcon}
         title="Supprimer mon compte"
         description="Cette action est immédiate et irréversible."
       />

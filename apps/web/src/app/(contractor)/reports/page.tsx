@@ -1,13 +1,15 @@
-import { Card } from '@dala/ui-web';
+import { IconStatCard } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
-import { ChartBarIcon } from '@phosphor-icons/react/ssr';
+import { ChartBarIcon, CoinsIcon, ReceiptIcon, TrendDownIcon, TrendUpIcon } from '@phosphor-icons/react/ssr';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 
-import { ReportsActions } from './ReportsActions';
-
-import { FinancialMetric, MiniBarChart, SectionCard } from '@/components/contractor/Screen';
+import { MiniBarChart, SectionCard } from '@/components/contractor/Screen';
+import { MoneyRestricted } from '@/components/MoneyRestricted';
+import { canSeeMoney, getOrgRole } from '@/lib/orgRole';
 import { createClient } from '@/lib/supabase/server';
+
+import { ReportsActions } from './ReportsActions';
 
 function formatTND(value: number): string {
   return `${value.toLocaleString('fr-TN')} TND`;
@@ -37,6 +39,9 @@ export default async function Page() {
   if (!profile?.active_org_id) redirect('/create-organization');
 
   const orgId = profile.active_org_id;
+  if (!canSeeMoney(await getOrgRole(supabase, orgId, user.id))) {
+    return <MoneyRestricted title="Rapports" />;
+  }
 
   // FLAGGED FOR HAZEM — same schema mismatch as projects/getProjectDashboard.ts,
   // client-portal/page.tsx, and dashboard/page.tsx: `invoices` has no
@@ -110,12 +115,11 @@ export default async function Page() {
   // business-meaning read (§1.7j's "may be entirely normal" row), not
   // this same treatment reused by sign alone.
   const profitLabel = isLoss ? 'Perte' : 'Bénéfice';
-  const profitTone: 'positive' | 'negative' | 'neutral' = isLoss ? 'negative' : 'positive';
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Analytique"
+        icon={ChartBarIcon}
         title="Rapports"
         description="Consultez les dépenses, le chiffre d\u2019affaires, le bénéfice et le budget de votre organisation."
         actions={
@@ -137,18 +141,31 @@ export default async function Page() {
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <FinancialMetric label="Chiffre d’affaires" value={formatTND(revenue)} />
-        <FinancialMetric label={profitLabel} value={formatTND(profit)} tone={profitTone} />
-        <FinancialMetric label="Dépenses" value={formatTND(totalExpenses)} />
-        <Card className="p-5" raised>
-          <ChartBarIcon size={22} className="text-accent-700" />
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Budget utilisé
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {budgetUsedPercent}%
-          </p>
-        </Card>
+        <IconStatCard
+          icon={CoinsIcon}
+          tone="neutral"
+          label="Chiffre d’affaires"
+          value={formatTND(revenue)}
+        />
+        <IconStatCard
+          icon={isLoss ? TrendDownIcon : TrendUpIcon}
+          tone={isLoss ? 'danger' : 'success'}
+          valueTone={isLoss ? 'danger' : 'success'}
+          label={profitLabel}
+          value={formatTND(profit)}
+        />
+        <IconStatCard
+          icon={ReceiptIcon}
+          tone="neutral"
+          label="Dépenses"
+          value={formatTND(totalExpenses)}
+        />
+        <IconStatCard
+          icon={ChartBarIcon}
+          tone="accent"
+          label="Budget utilisé"
+          value={`${budgetUsedPercent}%`}
+        />
       </div>
 
       <SectionCard

@@ -19,7 +19,8 @@ import { logAdminAction } from '@/lib/audit-log';
 import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
-export async function GET(request: Request, { params }: { params: { orgId: string } }) {
+export async function GET(request: Request, props: { params: Promise<{ orgId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

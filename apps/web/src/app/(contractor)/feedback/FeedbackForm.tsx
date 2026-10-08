@@ -7,9 +7,10 @@ import { ChatCircleIcon } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
+import { SectionCard } from '@/components/contractor/Screen';
+
 import { submitFeedback } from './actions';
 
-import { SectionCard } from '@/components/contractor/Screen';
 
 const CATEGORIES: { value: SubmitFeedbackInput['category']; label: string }[] = [
   { value: 'bug', label: 'Bug' },
@@ -54,9 +55,9 @@ export function FeedbackForm() {
   }
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Aide"
+        icon={ChatCircleIcon}
         title="Signaler un problème"
         description="Un bug, une suggestion, ou une question sur l'application — votre message nous parvient directement."
       />
@@ -109,6 +110,6 @@ export function FeedbackForm() {
           </div>
         </div>
       </SectionCard>
-    </>
+    </div>
   );
 }

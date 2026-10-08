@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { CollaborationView } from './CollaborationView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function Page() {
   const supabase = await createClient();
@@ -47,7 +48,9 @@ export default async function Page() {
 
   const { data: tradeMemberships } = await supabase
     .from('project_memberships')
-    .select('id, project_id, budget_rollup_opt_in, projects(id, name, client_name, lead_org_id)')
+    .select(
+      'id, project_id, budget_rollup_opt_in, report_branding_opt_out, projects(id, name, client_name, lead_org_id)',
+    )
     .eq('org_id', orgId)
     .eq('role', 'trade');
 

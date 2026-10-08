@@ -116,10 +116,11 @@ jobs:
           done
           exit $fail
 
-      - name: Security regression suite (migrations 0093-0109)
-        # 198 attack/legitimate-use cases + multi-step scenarios (storage path injection,
-        # audit trail, sync tombstones). One transaction, own fixtures, always rolled
-        # back; non-zero exit prints the failing cases. See the file header.
+      - name: Security regression suite (migrations 0093-0111)
+        # 209 attack/legitimate-use cases + multi-step scenarios (storage path injection,
+        # audit trail, sync tombstones, cross-org dispatch/project scoping). One transaction,
+        # own fixtures, always rolled back; non-zero exit prints the failing cases. See the
+        # file header.
         run: psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -v ON_ERROR_STOP=1 -f supabase/tests/security_regression.sql
 
       - name: Export local Supabase connection details

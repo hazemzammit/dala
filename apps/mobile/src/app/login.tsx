@@ -5,6 +5,7 @@ import { Text, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Logo } from '@/components/ui/Logo';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { supabase } from '@/lib/supabase';
@@ -48,6 +49,18 @@ import { supabase } from '@/lib/supabase';
  * this); falls back to showing the raw error message if the marker
  * doesn't survive whatever wrapping is actually applied, so the person
  * always sees SOME error, never silence.
+ *
+ * Logo (2026-09-30) — Doc 03 §3.4 lists the logo as this screen's first
+ * element ("logo, email field, password field with show/hide toggle..."),
+ * and it had never actually been rendered: no screen in apps/mobile imported
+ * a logo asset at all (`src/assets` held only `icons-3d/` and
+ * `illustrations/`), so the large empty area above "Se connecter" was
+ * exactly the space it was supposed to occupy. Now renders the SAME
+ * `logo.png` lockup apps/web's login page uses (apps/web/assets/logo.png,
+ * copied to `src/assets/brand/logo.png`) — web draws it at `h-9` (36px
+ * tall); scaled up slightly to 44px here, where the viewing distance is
+ * shorter, and kept left-aligned above the title so the two surfaces keep
+ * the same relationship between logo, heading and form.
  */
 // Same 5-field completion check organization-settings.tsx's own banner
 // computes (logo, legal_form, workforce_size_bracket, service_area,
@@ -139,6 +152,11 @@ export default function LoginScreen() {
 
   return (
     <YStack flex={1} backgroundColor="$neutral25" justifyContent="center" padding="$4" gap="$4">
+      {/* Doc 03 §3.4 — the logo is the first element on this screen. One
+          shared component (see Logo.tsx) rather than an inline Image, so
+          login and sign-up can't drift apart on the brand mark. */}
+      <Logo />
+
       <Text fontFamily="$display" fontSize={23} fontWeight="600">
         Se connecter
       </Text>

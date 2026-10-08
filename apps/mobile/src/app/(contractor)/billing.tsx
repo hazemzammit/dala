@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Icon3D } from '@/components/ui/Icon3D';
@@ -133,7 +134,7 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(0)} Mo`;
 }
 
-export default function BillingScreen() {
+function BillingScreenContent() {
   const toast = useToast();
   const [org, setOrg] = useState<OrgWithBilling | null>(null);
   const [loading, setLoading] = useState(true);
@@ -167,7 +168,10 @@ export default function BillingScreen() {
     }
     const { data, error } = await supabase
       .from('organizations')
-      .select('*')
+      // Explicit column list — never select('*') here: 0094 revokes column SELECT on
+      // organizations.rib_encrypted from `authenticated`, so a wildcard select would
+      // fail with permission denied. This screen only needs plan/billing state.
+      .select('id, name, plan, subscription_status, seat_price_millimes, billing_cycle_start')
       .eq('id', orgId)
       .maybeSingle();
     if (error) {
@@ -434,5 +438,16 @@ export default function BillingScreen() {
         />
       </ScrollView>
     </YStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function BillingScreen() {
+  return (
+    <MoneyGate title="Facturation">
+      <BillingScreenContent />
+    </MoneyGate>
   );
 }

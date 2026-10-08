@@ -21,7 +21,8 @@ async function canModify(
   return ctx.admin.role === 'super_admin' || ctx.admin.id === authorId;
 }
 
-export async function PATCH(request: Request, { params }: { params: { noteId: string } }) {
+export async function PATCH(request: Request, props: { params: Promise<{ noteId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
@@ -69,7 +70,8 @@ export async function PATCH(request: Request, { params }: { params: { noteId: st
   return NextResponse.json({ ok: true, note: updated });
 }
 
-export async function DELETE(_request: Request, { params }: { params: { noteId: string } }) {
+export async function DELETE(_request: Request, props: { params: Promise<{ noteId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

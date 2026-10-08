@@ -1,4 +1,4 @@
-import { Card, StatusBadge } from '@dala/ui-web';
+import { Card } from '@dala/ui-web';
 import type { ReactNode } from 'react';
 
 interface SectionCardProps {
@@ -26,102 +26,6 @@ export function SectionCard({
         {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
       </div>
       {children}
-    </Card>
-  );
-}
-
-interface MetricCardProps {
-  label: string;
-  value: string;
-  delta?: string;
-  tone?: 'default' | 'success' | 'warning' | 'danger';
-  footnote?: string;
-}
-
-export function MetricCard({ label, value, delta, tone = 'default', footnote }: MetricCardProps) {
-  const toneClasses =
-    tone === 'success'
-      ? 'text-success'
-      : tone === 'warning'
-        ? 'text-warning'
-        : tone === 'danger'
-          ? 'text-danger'
-          : 'text-neutral-500';
-
-  return (
-    <Card className="p-5" raised>
-      <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
-        {label}
-      </p>
-      <div className="mt-2 flex items-end justify-between gap-4">
-        <div className="font-display text-[30px] font-semibold tabular-nums leading-none text-neutral-900">
-          {value}
-        </div>
-        {delta && <span className={`text-sm font-medium ${toneClasses}`}>{delta}</span>}
-      </div>
-      {footnote && <p className="mt-3 text-sm text-neutral-500">{footnote}</p>}
-    </Card>
-  );
-}
-
-/**
- * Doc 05 §1.7i — Status Metric variant: "a count that's really a state"
- * (e.g. how many vehicles are in each status). Inline `StatusBadge`,
- * deliberately NOT wrapped in `Card` — the anti-pattern this fixes is
- * exactly "identical label→number→white-card treatment" (§1.7i), so this
- * variant must not just be StatusBadge-inside-a-card, it must actually
- * look different (flat row, no shadow, no border-radius-card weight).
- */
-interface StatusMetricProps {
-  label: string;
-  count: number;
-  variant: 'success' | 'warning' | 'danger' | 'neutral' | 'info';
-}
-
-export function StatusMetric({ label, count, variant }: StatusMetricProps) {
-  return (
-    <div className="flex items-center justify-between rounded-xl px-4 py-3">
-      <span className="text-sm text-neutral-500">{label}</span>
-      <StatusBadge variant={variant}>{count}</StatusBadge>
-    </div>
-  );
-}
-
-/**
- * Doc 05 §1.7i (Financial Metric) + §1.7j (business meaning, not just
- * sign) — a currency value where color is supplementary, never the only
- * signal, and the label itself communicates the business situation. This
- * does NOT implement a blanket sign-to-color rule; `tone` is something
- * the caller decides per §1.7j's business-situation table (e.g. a
- * profit/loss period result changes to "Perte" — a different LABEL, not
- * just a different color — see reports/page.tsx for that decision).
- */
-interface FinancialMetricProps {
-  label: string;
-  value: string;
-  tone?: 'positive' | 'negative' | 'neutral';
-}
-
-export function FinancialMetric({ label, value, tone = 'neutral' }: FinancialMetricProps) {
-  // Doc 05 §1.7j: `financial-positive`/`financial-negative` (packages/
-  // design-tokens) are pure aliases onto `status.success`/`status.danger`
-  // — same color values, so reusing the already-Tailwind-wired
-  // `text-success`/`text-danger` utilities here is equivalent, without
-  // needing a separate `financial-*` entry in the shared Tailwind preset
-  // for what would be an identical color.
-  const toneClasses =
-    tone === 'positive' ? 'text-success' : tone === 'negative' ? 'text-danger' : 'text-neutral-900';
-
-  return (
-    <Card className="p-5" raised>
-      <p className="text-[12px] font-semibold uppercase tracking-[0.08em] text-neutral-500">
-        {label}
-      </p>
-      <p
-        className={`font-display mt-2 text-[26px] font-semibold tabular-nums leading-none ${toneClasses}`}
-      >
-        {value}
-      </p>
     </Card>
   );
 }
@@ -190,7 +94,7 @@ interface TimelineItem {
 export function TimelineList({ items }: { items: TimelineItem[] }) {
   return (
     <div className="space-y-4">
-      {items.map((item) => {
+      {items.map((item, index) => {
         const toneClass =
           item.tone === 'success'
             ? 'bg-success'
@@ -201,7 +105,12 @@ export function TimelineList({ items }: { items: TimelineItem[] }) {
                 : 'bg-accent-600';
 
         return (
-          <div key={`${item.title}-${item.time}`} className="flex gap-4">
+          // Two feed events can share both a title (e.g. two "Dépense
+          // enregistrée" rows) and a same-minute timestamp, so
+          // title+time alone isn't unique — index breaks the tie. Safe
+          // here because this list is only ever fully replaced, never
+          // reordered in place.
+          <div key={`${item.title}-${item.time}-${index}`} className="flex gap-4">
             <div className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${toneClass}`} />
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -225,7 +134,11 @@ interface CalendarGridProps {
 
 export function CalendarGrid({ days, selectedDay, onDayClick }: CalendarGridProps) {
   return (
-    <div className="grid grid-cols-7 gap-2">
+    // Fixed grid-cols-7 squeezed each cell to ~100px on narrower screens,
+    // wrapping the day name + count and spilling past the card edge.
+    // Stepping the column count down first gives every cell enough width
+    // for its content instead of shrinking the cells themselves.
+    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-7">
       {days.map((day) => {
         const toneClass =
           day.tone === 'success'

@@ -2,8 +2,7 @@ import type { AttendanceStatus } from '@dala/shared-types';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
-import { TeamView } from './TeamView';
-
+import { canSeeMoney, getOrgRole } from '@/lib/orgRole';
 import {
   ATTENDANCE_DAY_VALUE,
   attendancePercent,
@@ -12,6 +11,8 @@ import {
   elapsedCycleDays,
 } from '@/lib/salaryCycle';
 import { createClient } from '@/lib/supabase/server';
+
+import { TeamView } from './TeamView';
 
 /**
  * Doc 04 §4.2.5 — Team roster. Fetches workers + their latest invitation
@@ -40,14 +41,33 @@ export default async function Page() {
     .eq('id', user.id)
     .single();
   if (!profile?.active_org_id) redirect('/create-organization');
+  // Viewers are money-blind (0103). Strip pay figures on the server so they never reach the
+  // browser. NOTE: workers.daily_rate is still readable through the API by viewers until the
+  // compensation split (see migration 0103's header) — this is presentation, not the boundary.
+  const showMoney = canSeeMoney(await getOrgRole(supabase, profile.active_org_id, user.id));
 
   const { data: workers } = await supabase
-    .from('active_workers')
+    .from('active_worker_directory')
     .select(
       'id, org_id, full_name, email, phone, trade, daily_rate, user_id, created_at, deleted_at, photo_url',
     )
     .eq('org_id', profile.active_org_id)
     .order('created_at', { ascending: false });
+
+  // Field-coverage pass — same signed-URL-per-row convention as
+  // safety/projects/[workerId] pages: photo_url is a private storage path,
+  // never a fetchable URL directly. The list's Avatar cells previously
+  // ignored this column entirely (always showed initials) even though it
+  // was already being selected.
+  const workersWithSignedPhotos = await Promise.all(
+    (workers ?? []).map(async (worker) => {
+      if (!worker.photo_url) return { ...worker, signed_photo_url: null };
+      const { data } = await supabase.storage
+        .from('org-files')
+        .createSignedUrl(worker.photo_url, 3600);
+      return { ...worker, signed_photo_url: data?.signedUrl ?? null };
+    }),
+  );
 
   const workerIds = (workers ?? []).map((w) => w.id);
   const { data: invitations } = workerIds.length
@@ -131,24 +151,27 @@ export default async function Page() {
     if (project?.name) currentProjectByWorker[row.worker_id] = project.name;
   }
 
+  // Field-coverage pass — this used to duplicate TeamView's own PageHero:
+  // a plain <h1>Équipe</h1> + description here, immediately followed by
+  // TeamView's real PageHero (icon, title, same description, "Inviter un
+  // ouvrier" button) — two stacked headers on one page, plus doubled
+  // padding (this div's p-8 on top of TeamView's own standard wrapper).
+  // TeamView already renders its own complete header and page container,
+  // so this component now only needs to render it directly.
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="font-display text-xl font-semibold text-neutral-900">Équipe</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Invitez vos ouvriers pour suivre présence, avances et affectations.
-        </p>
-      </div>
-
-      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
-        <TeamView
-          workers={workers ?? []}
-          invitations={invitations ?? []}
-          attendanceByWorker={attendanceByWorker}
-          currentProjectByWorker={currentProjectByWorker}
-          salaryAdvanceByWorker={salaryAdvanceByWorker}
-        />
-      </Suspense>
-    </div>
+    <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+      <TeamView
+        workers={
+          showMoney
+            ? workersWithSignedPhotos
+            : workersWithSignedPhotos.map((w) => ({ ...w, daily_rate: null }))
+        }
+        invitations={invitations ?? []}
+        attendanceByWorker={attendanceByWorker}
+        currentProjectByWorker={currentProjectByWorker}
+        salaryAdvanceByWorker={showMoney ? salaryAdvanceByWorker : {}}
+        showMoney={showMoney}
+      />
+    </Suspense>
   );
 }

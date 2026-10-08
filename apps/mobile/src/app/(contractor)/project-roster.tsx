@@ -164,7 +164,7 @@ export default function ProjectRosterScreen() {
 
     const workerIds = (rosterRows ?? []).map((r) => r.worker_id);
     const { data: workerRows } = workerIds.length
-      ? await supabase.from('workers').select('*').in('id', workerIds)
+      ? await supabase.from('worker_directory').select('*').in('id', workerIds)
       : { data: [] as Worker[] };
 
     const merged: RosterRow[] = (rosterRows ?? []).map((r) => ({
@@ -196,7 +196,7 @@ export default function ProjectRosterScreen() {
     // Scoped to the org's OWN active workers only (active_workers view,
     // filtered by org_id) — never another org's roster, per the brief.
     const { data } = await supabase
-      .from('active_workers')
+      .from('active_worker_directory')
       .select('*')
       .eq('org_id', orgId)
       .order('full_name');

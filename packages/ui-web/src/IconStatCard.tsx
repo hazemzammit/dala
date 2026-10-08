@@ -42,14 +42,44 @@ const toneChipClasses: Record<IconStatTone, string> = {
   neutral: 'bg-neutral-100 text-neutral-500',
 };
 
+// Consolidation pass â€” absorbs the old, separate FinancialMetric
+// component. FinancialMetric colored the VALUE text by sign (the number
+// itself is the primary signal for a currency figure, not just a
+// decorative chip), which plain IconStatCard never did. `valueTone` is
+// additive and optional so every existing call site (admin included,
+// which never sets it) renders byte-identical; only a caller that opts
+// in gets the colored value text.
+const valueToneClasses: Record<'success' | 'danger' | 'neutral', string> = {
+  success: 'text-success',
+  danger: 'text-danger',
+  neutral: 'text-neutral-900',
+};
+
 interface IconStatCardProps {
   label: string;
   value: string | number;
   icon: Icon;
   tone?: IconStatTone;
+  valueTone?: 'success' | 'danger' | 'neutral';
   loading?: boolean;
   empty?: boolean;
   emptyMessage?: string;
+}
+
+/**
+ * Skeleton variant factored out so route-level `loading.tsx` files (which
+ * render before any real data — and so have no icon to show) can use the
+ * exact same placeholder markup as `IconStatCard`'s own `loading` prop,
+ * instead of each `loading.tsx` re-implementing pulse blocks by hand.
+ */
+export function IconStatCardSkeleton() {
+  return (
+    <Card className="p-6">
+      <div className="h-10 w-10 rounded-xl bg-neutral-100 motion-safe:animate-pulse" />
+      <div className="mt-3 h-3 w-24 rounded bg-neutral-100 motion-safe:animate-pulse" />
+      <div className="mt-3 h-9 w-32 rounded bg-neutral-100 motion-safe:animate-pulse" />
+    </Card>
+  );
 }
 
 export function IconStatCard({
@@ -57,18 +87,13 @@ export function IconStatCard({
   value,
   icon: IconComponent,
   tone = 'accent',
+  valueTone,
   loading,
   empty,
   emptyMessage,
 }: IconStatCardProps) {
   if (loading) {
-    return (
-      <Card className="p-6">
-        <div className="h-10 w-10 rounded-xl bg-neutral-100 motion-safe:animate-pulse" />
-        <div className="mt-3 h-3 w-24 rounded bg-neutral-100 motion-safe:animate-pulse" />
-        <div className="mt-3 h-9 w-32 rounded bg-neutral-100 motion-safe:animate-pulse" />
-      </Card>
-    );
+    return <IconStatCardSkeleton />;
   }
 
   if (empty) {
@@ -95,7 +120,11 @@ export function IconStatCard({
       <p className="mt-3 text-[13px] font-semibold tracking-[0.04em] text-neutral-500">{label}</p>
 
       {/* Value */}
-      <p className="font-display mt-1 text-[36px] font-semibold tabular-nums leading-[1.15] text-neutral-900">
+      <p
+        className={`font-display mt-1 text-[36px] font-semibold tabular-nums leading-[1.15] ${
+          valueTone ? valueToneClasses[valueTone] : 'text-neutral-900'
+        }`}
+      >
         {value}
       </p>
     </Card>

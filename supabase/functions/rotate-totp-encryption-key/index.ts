@@ -54,6 +54,7 @@
 import crypto from 'node:crypto';
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { requireInternalCaller } from '../_shared/internalAuth.ts';
 
 const JOB_NAME = 'totp_key_rotation';
 const ALGORITHM = 'aes-256-gcm';
@@ -90,7 +91,11 @@ function decrypt(stored: string, key: Buffer): string {
   ]).toString('utf8');
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Internal-only: reject anyone who is not the platform (cron / service role).
+  const denied = await requireInternalCaller(req);
+  if (denied) return denied;
+
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,

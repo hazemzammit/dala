@@ -1,8 +1,11 @@
 import { redirect } from 'next/navigation';
 
+import { MoneyRestricted } from '@/components/MoneyRestricted';
+import { canSeeMoney, getOrgRole } from '@/lib/orgRole';
+import { createClient } from '@/lib/supabase/server';
+
 import { AdvancesView } from './AdvancesView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function Page() {
   const supabase = await createClient();
@@ -19,6 +22,9 @@ export default async function Page() {
   if (!profile?.active_org_id) redirect('/create-organization');
 
   const orgId = profile.active_org_id;
+  if (!canSeeMoney(await getOrgRole(supabase, orgId, user.id))) {
+    return <MoneyRestricted title="Avances" />;
+  }
 
   const { data: advances } = await supabase
     .from('advances')

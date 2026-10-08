@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { DeleteAccountView } from './DeleteAccountView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/settings/delete-account/page.tsx

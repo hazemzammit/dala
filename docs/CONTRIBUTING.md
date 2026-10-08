@@ -43,6 +43,10 @@ instead of checking it. Before extending or writing code against any of:
 - `packages/shared-types/src/index.ts`
 - `packages/validation/src/*.ts`
 - `packages/design-tokens/src/index.ts`
+- `packages/ui-web/src/index.ts` — its barrel is the whole inventory of shared
+  web/admin components, and **both** `apps/web` and `apps/admin` build against
+  it. Changes here must be additive (new optional props, new exports, new token
+  keys); never rename or remove. See `docs/ARCHITECTURE.md` §"`packages/ui-web`".
 - `apps/web/src/lib/theme.ts` / `apps/mobile/src/lib/tamagui.config.ts`
 - any hook you're extending rather than writing fresh
 
@@ -78,6 +82,11 @@ it's the spec). If you're picking up a module solo, either:
 
 ## Pull requests
 
+- **Read `AGENTS.md` first if you're an AI agent, or working alongside one.** It
+  currently carries the standing scope rules for the admin UI overhaul: which
+  directories may be touched, the additive-only rule for `packages/ui-web` and
+  `packages/design-tokens`, and the accessible-name/test contract. Those are
+  constraints on top of the ones in this file, not instead of them.
 - Use the PR template (auto-populated) — it has a checklist specific to
   this project (RLS pattern, additive migrations, parity, secrets).
   Actually check the boxes; don't merge with unchecked items you didn't
@@ -111,6 +120,30 @@ pnpm lint
 pnpm typecheck
 pnpm test
 ```
+
+The whole matrix, per surface — because "`pnpm test` passed" means something
+different in each of these rows:
+
+| Surface               | Runner                                               | Command                                           | Needs a live backend?                          | Specs today  |
+| --------------------- | ---------------------------------------------------- | ------------------------------------------------- | ---------------------------------------------- | ------------ |
+| `apps/admin`          | Playwright (e2e)                                     | `pnpm --filter admin test`                        | **Yes** — Supabase + TOTP Vault key + fixtures | 22           |
+| `apps/mobile`         | jest (`jest-expo` preset)                            | `pnpm --filter mobile test`                       | No                                             | 2            |
+| `apps/mobile`         | jest, separate config (`jest.integration.config.js`) | `pnpm --filter mobile test:rls`                   | **Yes** — real local Supabase                  | 8, in 6 dirs |
+| `apps/mobile`         | Detox                                                | `pnpm --filter mobile test:e2e`                   | **Yes** — iOS simulator / Android emulator     | 1            |
+| `apps/web`            | Playwright, configured but **empty**                 | `pnpm --filter web test` (`--pass-with-no-tests`) | No                                             | 0            |
+| `packages/validation` | vitest                                               | `pnpm --filter @dala/validation test`             | No                                             | 4            |
+| other `packages/*`    | —                                                    | —                                                 | —                                              | no test task |
+
+Two traps in that table:
+
+- `pnpm --filter mobile test` runs **two** files, not ten. The mobile `jest`
+  block in `package.json` excludes `/src/test/{rls,idempotency,attendance,
+soft-delete,rollup,sync}/` on purpose — those need a real database and live
+  under the separate `test:rls` config. A green `test` run does not mean the
+  DB-integration suites passed.
+- `apps/web`'s Playwright is wired but has **zero** spec files, and the script
+  carries `--pass-with-no-tests` so it exits 0. A green web `test` run means
+  nothing was tested.
 
 `pnpm test` runs every package's own test task via Turborepo. For most
 packages that's a fast, stateless unit-test run. `apps/admin` is the one

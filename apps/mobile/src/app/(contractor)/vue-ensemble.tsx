@@ -153,14 +153,18 @@ export default function VueEnsembleScreen() {
 
               <XStack justifyContent="space-between">
                 <StatBlock label="Chantiers actifs" value={String(r.activeProjects)} />
-                <StatBlock
-                  label="Avances (7 j)"
-                  value={
-                    <NumericText fontSize={17} fontWeight="600">
-                      {r.weekAdvancesTotal.toFixed(0)} TND
-                    </NumericText>
-                  }
-                />
+                {/* Viewers are money-blind (migration 0103): per-org role, since a user can be
+                    owner in one org and viewer in another. */}
+                {r.org.role !== 'viewer' && (
+                  <StatBlock
+                    label="Avances (7 j)"
+                    value={
+                      <NumericText fontSize={17} fontWeight="600">
+                        {r.weekAdvancesTotal.toFixed(0)} TND
+                      </NumericText>
+                    }
+                  />
+                )}
               </XStack>
               <XStack justifyContent="space-between">
                 <StatBlock

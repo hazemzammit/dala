@@ -4,9 +4,10 @@ import { Button, Card, FormField } from '@dala/ui-web';
 import { CheckCircleIcon, XIcon } from '@phosphor-icons/react';
 import { useState, type FormEvent } from 'react';
 
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
 import { createProjectInvitation } from './actions';
 
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type Project = { id: string; name: string };
 

@@ -31,7 +31,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { withInvocationLog } from '../_shared/logInvocation.ts';
-import { sendEmail } from '../_shared/resend.ts';
+import { enforceRateLimits } from '../_shared/rateLimit.ts';
+import { escapeHtml, sendEmail } from '../_shared/resend.ts';
 
 Deno.serve(
   withInvocationLog('send-project-invitation-email', async (req, ctx) => {
@@ -118,6 +119,25 @@ Deno.serve(
         return jsonResponse({ error: 'Réservé au propriétaire ou manager.' }, 403);
       }
 
+      // Throttle RESENDS: nothing here stopped an owner/manager from calling this
+      // in a loop while the invitation stays 'pending', which would relay unlimited
+      // e-mail to an arbitrary invited_email address through Dala's own Resend
+      // account (invite_organization_member/invite_org_to_project set no limit of
+      // their own on invitation creation either). Keyed by invitation (the address
+      // actually receiving mail) and by caller (bounds one member across many
+      // invitations). Fails OPEN: a limiter outage must not block a real invite.
+      const gate = await enforceRateLimits(
+        admin,
+        [
+          { key: `send-project-invitation-email:invitation:${invitation.id}`, max: 5 },
+          { key: `send-project-invitation-email:caller:${user.id}`, max: 30 },
+        ],
+        60 * 60,
+      );
+      if (!gate.allowed) {
+        return jsonResponse({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
+      }
+
       if (invitation.status !== 'pending') {
         // Not fatal to the caller's flow — mirrors
         // send-organization-invitation-email's own not_pending handling.
@@ -129,9 +149,13 @@ Deno.serve(
         admin.from('organizations').select('name').eq('id', invitation.lead_org_id).maybeSingle(),
       ]);
 
-      const projectName = project?.name ?? 'un chantier';
-      const leadOrgName = leadOrg?.name ?? 'une entreprise';
-      const tradeLabel = invitation.trade_type ? ` en tant que ${invitation.trade_type}` : '';
+      // Escaped at interpolation, not at the source: project/org names and
+      // trade_type are free text (see _shared/resend.ts's escapeHtml).
+      const projectName = escapeHtml(project?.name ?? 'un chantier');
+      const leadOrgName = escapeHtml(leadOrg?.name ?? 'une entreprise');
+      const tradeLabel = invitation.trade_type
+        ? ` en tant que ${escapeHtml(invitation.trade_type)}`
+        : '';
 
       // dala:// deep link, mobile-only — same "no web fallback" scope
       // boundary as send-organization-invitation-email, and for the same

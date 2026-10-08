@@ -1,11 +1,13 @@
 'use client';
 
 import { Button, Card, FormField, PageHero } from '@dala/ui-web';
+import { BuildingsIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
+
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 import { updateOrganization } from './actions';
 
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type Organization = {
   name: string;
@@ -58,7 +60,7 @@ export function CompanyForm({ organization }: { organization: Organization }) {
           screen's page.tsx, matching every other settings screen's
           pattern. */}
       <PageHero
-        eyebrow="Entreprise"
+        icon={BuildingsIcon}
         title="Informations de l'entreprise"
         description="Ces informations apparaissent sur vos factures et comptes rendus client."
       />

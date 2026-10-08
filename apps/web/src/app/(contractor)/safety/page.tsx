@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { SafetyView } from './SafetyView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function Page() {
   const supabase = await createClient();

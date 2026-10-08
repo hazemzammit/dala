@@ -148,10 +148,17 @@ export default function WorkerHomeScreen() {
 
       const today = todayISO();
 
+      // 0098 added a second FK from dispatch_assignments to vehicles as well
+      // (dispatch_assignments_vehicle_org_fk, composite (vehicle_id, org_id)),
+      // so the bare `vehicles(name)` embed below is ambiguous to PostgREST in
+      // exactly the same way `workers(...)` is on the contractor screens —
+      // HTTP 300 / PGRST201, surfaced here as the screen's ErrorState. The
+      // `projects(name, address)` embed is unaffected (only one FK to
+      // projects). Single-column FK named explicitly; composite FK untouched.
       const { data: assignment, error: assignmentError } = await supabase
         .from('dispatch_assignments')
         .select(
-          'id, version, actual_departure_time, departure_time, confirmation_channel, project_id, vehicle_id, projects(name, address), vehicles(name)',
+          'id, version, actual_departure_time, departure_time, confirmation_channel, project_id, vehicle_id, projects(name, address), vehicles!dispatch_assignments_vehicle_id_fkey(name)',
         )
         .eq('worker_id', worker.id)
         .eq('assignment_date', today)

@@ -2,7 +2,10 @@
 
 import { Button, Card, FormField } from '@dala/ui-web';
 import { forgotPasswordSchema } from '@dala/validation';
+import Image from 'next/image';
 import { useState } from 'react';
+
+import logo from '../../../../assets/logo.png';
 
 import { createClient } from '@/lib/supabase/client';
 
@@ -45,8 +48,10 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-sm p-8">
+    <main className="bg-neutral-25 relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+      <div className="bg-accent-100/40 pointer-events-none absolute -end-24 -top-24 h-[360px] w-[360px] rounded-full blur-3xl" />
+      <Card className="relative z-10 w-full max-w-sm p-8">
+        <Image src={logo} alt="Dala" className="mb-6 h-10 w-auto" priority />
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Mot de passe oublié
         </h1>
@@ -69,6 +74,10 @@ export default function ForgotPasswordPage() {
           <Button type="submit" fullWidth loading={loading} className="mt-2">
             Envoyer le lien
           </Button>
+
+          <a href="/login" className="hover:text-accent-600 text-center text-sm text-neutral-500">
+            Retour à la connexion
+          </a>
         </form>
       </Card>
     </main>

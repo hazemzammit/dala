@@ -185,15 +185,16 @@ maybeDescribe('RLS permission matrix (Doc 01 §1.5)', () => {
       expect(before.error).toBeNull();
       expect(before.data).not.toBeNull();
 
-      // Demote via the service-role client (mirrors how the app's own
-      // owner-only role-change RPC would do it — the point under test is
-      // the RLS predicate, not the RPC itself).
-      const admin = await asUser(fixtures.ownerA); // owner has write access to organization_members
-      const { error: demoteError } = await admin
-        .from('organization_members')
-        .update({ role: 'viewer' })
-        .eq('org_id', fixtures.orgA)
-        .eq('user_id', fixtures.managerA.userId);
+      // Demote through the app's own owner-only RPC. (Migration 0098 removed the
+      // owner's direct write access to organization_members — role changes are
+      // RPC-only now, so the old `.from('organization_members').update()`
+      // would be rejected. The point under test is still the RLS predicate.)
+      const admin = await asUser(fixtures.ownerA);
+      const { error: demoteError } = await admin.rpc('update_organization_member_role', {
+        p_org_id: fixtures.orgA,
+        p_user_id: fixtures.managerA.userId,
+        p_role: 'viewer',
+      });
       expect(demoteError).toBeNull();
 
       // Immediately after, on the SAME already-authenticated client — no

@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { JournalView, type SiteLogWithSignedUrl } from './JournalView';
 
-import { createClient } from '@/lib/supabase/server';
 
 function startOfWeek(date: Date) {
   const copy = new Date(date);
@@ -18,7 +19,8 @@ function formatDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export default async function Page({ searchParams }: { searchParams?: { date?: string } }) {
+export default async function Page(props: { searchParams?: Promise<{ date?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -68,19 +70,25 @@ export default async function Page({ searchParams }: { searchParams?: { date?: s
   // Génération des URLs signées avec expiration d'une heure (3600 s - Doc
   // 07 §7.4). photo_url is nullable since 0020 (an entry can be voice-note-
   // or text-only) — the original version called createSignedUrl(null) for
-  // those, which throws. Guarded here.
+  // those, which throws. Guarded here. Field-coverage pass — voice_note_url
+  // needs the exact same guard-then-sign treatment; same `site-logs` bucket
+  // as photo_url (both are site-log media, not the `org-files` bucket most
+  // other entities in this pass use).
   const siteLogs: SiteLogWithSignedUrl[] = await Promise.all(
     (rawLogs ?? []).map(async (log) => {
-      if (!log.photo_url) {
-        return { ...log, signed_photo_url: null };
-      }
-      const { data } = await supabase.storage
-        .from('site-logs')
-        .createSignedUrl(log.photo_url, 3600);
+      const signedPhotoUrl = log.photo_url
+        ? (await supabase.storage.from('site-logs').createSignedUrl(log.photo_url, 3600)).data
+            ?.signedUrl ?? null
+        : null;
+      const signedVoiceNoteUrl = log.voice_note_url
+        ? (await supabase.storage.from('site-logs').createSignedUrl(log.voice_note_url, 3600))
+            .data?.signedUrl ?? null
+        : null;
 
       return {
         ...log,
-        signed_photo_url: data?.signedUrl ?? null,
+        signed_photo_url: signedPhotoUrl,
+        signed_voice_note_url: signedVoiceNoteUrl,
       };
     }),
   );

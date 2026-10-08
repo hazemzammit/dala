@@ -12,7 +12,7 @@ import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 export async function POST() {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   const payload = token ? await verifySessionToken(token) : null;
 
   if (payload) {
@@ -39,6 +39,6 @@ export async function POST() {
       .eq('id', payload.sessionId);
   }
 
-  cookies().delete(SESSION_COOKIE);
+  (await cookies()).delete(SESSION_COOKIE);
   return NextResponse.json({ ok: true });
 }

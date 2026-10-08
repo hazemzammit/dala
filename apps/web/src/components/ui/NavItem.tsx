@@ -22,25 +22,28 @@ interface NavItemProps {
   label: string;
   icon: Icon;
   badge?: number;
+  collapsed?: boolean;
 }
 
-export function NavItem({ href, label, icon: IconComponent, badge }: NavItemProps) {
+export function NavItem({ href, label, icon: IconComponent, badge, collapsed }: NavItemProps) {
   const pathname = usePathname();
   const isActive = pathname === href || pathname?.startsWith(`${href}/`);
 
   return (
     <Link
       href={href}
+      title={collapsed ? label : undefined}
       className={[
-        'rounded-control flex items-center gap-3 px-3 py-2 text-[15.5px] transition-colors duration-150',
+        'rounded-control flex items-center transition-colors duration-150',
+        collapsed ? 'h-10 w-10 justify-center' : 'gap-3 px-3 py-2 text-[15.5px]',
         isActive
           ? 'bg-accent-50 text-accent-600 font-medium'
           : 'text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900',
       ].join(' ')}
     >
       <IconComponent size={19} weight={isActive ? 'fill' : 'regular'} />
-      <span className="flex-1">{label}</span>
-      {typeof badge === 'number' && badge > 0 && (
+      <span className={collapsed ? 'sr-only' : 'flex-1'}>{label}</span>
+      {!collapsed && typeof badge === 'number' && badge > 0 && (
         <span className="bg-danger rounded-full px-1.5 py-0.5 text-[11px] font-semibold text-white">
           {badge}
         </span>

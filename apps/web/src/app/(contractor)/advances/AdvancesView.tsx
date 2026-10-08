@@ -12,11 +12,12 @@ import {
 import { PlusIcon, WalletIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
 import { approveAdvance, rejectAdvance } from './actions';
 import { AdvanceFormModal } from './AdvanceFormModal';
 
-import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type Advance = {
   id: string;
@@ -199,11 +200,11 @@ export function AdvancesView({ advances, workers }: { advances: Advance[]; worke
   ];
 
   return (
-    <div className="flex flex-col gap-6 p-8">
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       {/* Phase 20 (§1.7h) — extracted from the ad hoc <h1> + action-button
           row, matching every other list-view screen's pattern. */}
       <PageHero
-        eyebrow="Paie"
+        icon={WalletIcon}
         title="Avances"
         description="Suivez les avances sur salaire de vos ouvriers."
         actions={

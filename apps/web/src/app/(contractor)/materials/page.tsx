@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { createMaterial, setMaterialCost } from './actions';
 import { MaterialsView } from './MaterialsView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function Page() {
   const supabase = await createClient();
@@ -22,7 +23,7 @@ export default async function Page() {
   const orgId = profile.active_org_id;
 
   const { data: materials } = await supabase
-    .from('materials')
+    .from('material_requests_directory')
     .select(
       'id, org_id, project_id, item, quantity, urgency, note, status, rejection_reason, created_by, approved_by, assigned_worker_id, cost, created_at, updated_at',
     )

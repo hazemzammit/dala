@@ -38,7 +38,7 @@ export async function logAdminAction(
 
   let ipAddress: string | null = null;
   try {
-    ipAddress = getClientIp(headers()) || null;
+    ipAddress = getClientIp(await headers()) || null;
   } catch {
     // headers() throws outside a request scope (e.g. a future cron/script
     // caller) — audit logging shouldn't fail the caller's primary action

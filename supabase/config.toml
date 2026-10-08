@@ -26,6 +26,21 @@ port = 54323
 [functions.export-org-data]
 verify_jwt = false
 
+# Stripe (and later Konnect) call this endpoint from their own servers and cannot
+# present a Supabase JWT, so the gateway JWT check would reject every real
+# webhook. Authentication is the provider's signature, verified in
+# _shared/stripeSignature.ts BEFORE the body is trusted (HMAC-SHA256 with
+# STRIPE_WEBHOOK_SECRET, 5-minute replay window). Do not remove that check
+# while this override is in place.
+[functions.payment-webhook]
+verify_jwt = false
+
+# Resend delivers email events (bounces/complaints) from its own servers, also without a
+# Supabase JWT. Authenticated by the Svix signature (svix-id/timestamp/signature, HMAC-SHA256,
+# 5-minute replay window) verified in resend-webhook/index.ts before anything is parsed.
+[functions.resend-webhook]
+verify_jwt = false
+
 [auth]
 enabled = true
 site_url = "http://localhost:3000"

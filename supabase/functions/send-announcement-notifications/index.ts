@@ -38,12 +38,17 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { sendEmail } from '../_shared/resend.ts';
+import { requireInternalCaller } from '../_shared/internalAuth.ts';
 
 const JOB_NAME = 'send_announcement_notifications';
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_BATCH_SIZE = 100; // Expo's own documented per-request cap
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Internal-only: reject anyone who is not the platform (cron / service role).
+  const denied = await requireInternalCaller(req);
+  if (denied) return denied;
+
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,

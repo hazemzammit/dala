@@ -1,8 +1,11 @@
 import { redirect } from 'next/navigation';
 
+import { MoneyRestricted } from '@/components/MoneyRestricted';
+import { canSeeMoney, getOrgRole } from '@/lib/orgRole';
+import { createClient } from '@/lib/supabase/server';
+
 import { AnalyticsView } from './AnalyticsView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/analytics/page.tsx
@@ -27,6 +30,9 @@ export default async function Page() {
     .eq('id', user.id)
     .single();
   if (!profile?.active_org_id) redirect('/create-organization');
+  if (!canSeeMoney(await getOrgRole(supabase, profile.active_org_id, user.id))) {
+    return <MoneyRestricted title="Analyses" />;
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">

@@ -12,7 +12,7 @@ import {
   StatusBadge,
 } from '@dala/ui-web';
 import { BuildingsIcon, UserSwitchIcon } from '@phosphor-icons/react';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { NotesPanel } from '@/components/ui/NotesPanel';
 import { useAdminSession } from '@/lib/use-admin-session';
@@ -70,7 +70,7 @@ export function OrgDetail({ orgId }: { orgId: string }) {
   const [restoring, setRestoring] = useState(false);
   const [verifying, setVerifying] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoadError(false);
     try {
       const res = await fetch(`/api/admin/organizations/${orgId}`);
@@ -84,11 +84,11 @@ export function OrgDetail({ orgId }: { orgId: string }) {
     } catch {
       setLoadError(true);
     }
-  }
+  }, [orgId]);
 
   useEffect(() => {
     load();
-  }, [orgId]);
+  }, [load]);
 
   async function startImpersonation(reason: string) {
     if (!impersonateTarget) return;

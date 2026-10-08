@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
 import { Icon3D } from '@/components/ui/Icon3D';
 import { haptics } from '@/lib/haptics';
+import { signOutAndWipe } from '@/lib/signOut';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -68,8 +69,8 @@ export default function DeleteAccountScreen() {
       return;
     }
 
-    await supabase.auth.signOut();
-    router.replace('/login' as never);
+    // The account is gone: skip the pointless flush and always wipe local data.
+    await signOutAndWipe(() => router.replace('/login' as never), { sessionAlreadyInvalid: true });
   }
 
   return (

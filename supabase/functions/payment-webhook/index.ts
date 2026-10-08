@@ -15,7 +15,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { withInvocationLog } from '../_shared/logInvocation.ts';
-import { parseWebhookEvent } from '../_shared/paymentProvider.ts';
+import { parseWebhookEvent, WebhookSignatureError } from '../_shared/paymentProvider.ts';
 
 Deno.serve(
   withInvocationLog('payment-webhook', async (req, ctx) => {
@@ -24,14 +24,23 @@ Deno.serve(
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
-    let event;
+    let event: Awaited<ReturnType<typeof parseWebhookEvent>>;
     try {
       event = await parseWebhookEvent(req);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error('[payment-webhook] failed to parse event:', message);
-      return new Response(JSON.stringify({ error: message }), {
-        status: 400,
+      // Do not echo verification details back to an unauthenticated caller.
+      const isSignature = err instanceof WebhookSignatureError;
+      return new Response(
+        JSON.stringify({ error: isSignature ? 'invalid signature' : message }),
+        { status: isSignature ? 401 : 400, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (event === null) {
+      // Authentic event this flow does not act on: acknowledge so the provider does not retry.
+      return new Response(JSON.stringify({ received: true, ignored: true }), {
         headers: { 'Content-Type': 'application/json' },
       });
     }

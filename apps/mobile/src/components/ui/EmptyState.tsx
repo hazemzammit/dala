@@ -5,6 +5,7 @@ import { Text, View, YStack } from 'tamagui';
 import { Button } from './Button';
 import { Icon3D } from './Icon3D';
 import type { Icon3DName } from './icons3d';
+import type { Icon3DConstructionName } from './icons3d-construction';
 import { Illustration } from './Illustration';
 import type { IllustrationName } from './illustrations';
 
@@ -24,10 +25,18 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * below that is `icon3d` (IMPROVEMENT-PLAN Part A — new), then `icon` (the
  * original pre-illustration behavior, a filled accent circle) — still
  * works for any spot that hasn't been assigned either.
+ *
+ * `icon3d` accepts names from EITHER 3D registry, not just the generic one:
+ * `Icon3D` resolves both lookups through one component (see Icon3D.tsx's
+ * own header on why the two PNG sets don't need two components), and
+ * projects.tsx has always passed the construction-set `construction-site`.
+ * The prop was typed `Icon3DName` alone, so that call site failed
+ * `tsc --noEmit` (TS2322) while rendering perfectly at runtime — narrowed
+ * type, not a narrowed component. Both registries are now declared here.
  */
 interface EmptyStateProps {
   icon: Icon;
-  icon3d?: Icon3DName;
+  icon3d?: Icon3DName | Icon3DConstructionName;
   illustration?: IllustrationName;
   title: string;
   description?: string;

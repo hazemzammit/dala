@@ -5,9 +5,9 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 
 import { Card } from './Card';
@@ -59,7 +59,7 @@ const MAX_VISIBLE = 3;
 const BASE_DURATION_MS = 5000;
 const WITH_ACTION_DURATION_MS = 8000;
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(0);
 

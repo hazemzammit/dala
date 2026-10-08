@@ -40,6 +40,14 @@ export const createProjectSchema = z.object({
     }, 'La date de début ne peut pas remonter à plus de 2 ans.'),
   budget_total: z.number().min(0, 'Le budget doit être positif.').optional(),
   project_type: z.enum(PROJECT_TYPES, { errorMap: () => ({ message: 'Type de projet requis.' }) }),
+  // Field-coverage pass — `cover_photo_url` (migration 0070) was queried
+  // by apps/web/src/app/(contractor)/projects/page.tsx from day one but
+  // never validated or written anywhere on web (mobile has had full
+  // upload/display support since 0070). Same bare-storage-path shape as
+  // `receipt_photo_url` above (`{org_id}/covers/{uuid}.jpg`, never a
+  // public/signed URL) — `.min(1)`, not `.url()`, for the same reason
+  // documented on that field.
+  cover_photo_url: z.string().min(1).optional(),
 });
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 

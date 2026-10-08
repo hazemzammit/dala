@@ -1,15 +1,33 @@
 'use client';
 
 import { Card } from '@dala/ui-web';
+import Image from 'next/image';
 import { useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 
+import logo from '../../../../assets/logo.png';
+
+// useSearchParams() must sit under a Suspense boundary (a hard build error in
+// Next 15 for statically rendered pages), so the page is a thin shell.
 export default function AuthErrorPage() {
-  const searchParams = useSearchParams();
-  const message = searchParams.get('message');
-
   return (
-    <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-sm p-8 text-center">
+    <Suspense fallback={<AuthErrorShell message={null} />}>
+      <AuthErrorWithMessage />
+    </Suspense>
+  );
+}
+
+function AuthErrorWithMessage() {
+  const searchParams = useSearchParams();
+  return <AuthErrorShell message={searchParams.get('message')} />;
+}
+
+function AuthErrorShell({ message }: { message: string | null }) {
+  return (
+    <main className="bg-neutral-25 relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+      <div className="bg-danger/10 pointer-events-none absolute -end-24 -top-24 h-[360px] w-[360px] rounded-full blur-3xl" />
+      <Card className="relative z-10 w-full max-w-sm p-8 text-center">
+        <Image src={logo} alt="Dala" className="mx-auto mb-6 h-8 w-auto" priority />
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Lien invalide ou expiré
         </h1>

@@ -8,22 +8,33 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterBar,
   FilterSelect,
   IconActionButton,
+  IconStatCard,
   PageHero,
   StatusBadge,
 } from '@dala/ui-web';
-import { HardHatIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
+import {
+  ChartLineUpIcon,
+  CheckCircleIcon,
+  HardHatIcon,
+  EyeIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+  WalletIcon,
+} from '@phosphor-icons/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-
-import { deleteWorker } from './actions';
-import { WorkerFormModal } from './WorkerFormModal';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { deleteWorker } from './actions';
+import { WorkerFormModal } from './WorkerFormModal';
 
 type InvitationSummary = { worker_id: string; status: InvitationStatus };
 type ModalState = { mode: 'closed' } | { mode: 'invite' } | { mode: 'edit'; worker: WorkerRow };
@@ -40,7 +51,11 @@ const STATUS_VARIANT: Record<InvitationStatus, 'success' | 'warning' | 'neutral'
   expired: 'neutral',
 };
 
-type WorkerRow = Worker & {
+// `signed_photo_url` is resolved server-side in team/page.tsx (the DB only stores
+// the storage path).
+type WorkerWithPhoto = Worker & { signed_photo_url?: string | null };
+
+type WorkerRow = WorkerWithPhoto & {
   profession: string;
   attendance: number;
   currentProject: string;
@@ -54,12 +69,15 @@ export function TeamView({
   attendanceByWorker,
   currentProjectByWorker,
   salaryAdvanceByWorker,
+  showMoney = true,
 }: {
-  workers: Worker[];
+  workers: WorkerWithPhoto[];
   invitations: InvitationSummary[];
   attendanceByWorker: Record<string, number>;
   currentProjectByWorker: Record<string, string>;
   salaryAdvanceByWorker: Record<string, number>;
+  /** False for viewers (money-blind, 0103): hides the rate and advance columns/summary. */
+  showMoney?: boolean;
 }) {
   const [rows, setRows] = useState(workers);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
@@ -78,12 +96,15 @@ export function TeamView({
     }
   }, [searchParams]);
 
-  const latestInvitationByWorker = new Map<string, InvitationSummary>();
-  for (const inv of invitations) {
-    if (!latestInvitationByWorker.has(inv.worker_id)) {
-      latestInvitationByWorker.set(inv.worker_id, inv);
+  const latestInvitationByWorker = useMemo(() => {
+    const map = new Map<string, InvitationSummary>();
+    for (const inv of invitations) {
+      if (!map.has(inv.worker_id)) {
+        map.set(inv.worker_id, inv);
+      }
     }
-  }
+    return map;
+  }, [invitations]);
 
   // Real per-worker payroll data (plan Step 12c — resolves the previously
   // index-fabricated values; see team/page.tsx for the queries). Sources,
@@ -179,13 +200,13 @@ export function TeamView({
     });
   }
 
-  const columns: DataTableColumn<WorkerRow>[] = [
+  const allColumns: DataTableColumn<WorkerRow>[] = [
     {
       key: 'name',
       header: 'Ouvrier',
       render: (w) => (
         <div className="flex items-center gap-3">
-          <Avatar name={w.full_name} />
+          <Avatar name={w.full_name} imageUrl={w.signed_photo_url ?? undefined} />
           <div>
             <div className="font-medium text-neutral-900">{w.full_name}</div>
             <div className="text-xs text-neutral-500">{w.profession}</div>
@@ -288,6 +309,8 @@ export function TeamView({
       ),
     },
   ];
+  const MONEY_COLUMN_KEYS = new Set(['daily_rate', 'salaryAdvance']);
+  const columns = showMoney ? allColumns : allColumns.filter((c) => !MONEY_COLUMN_KEYS.has(String(c.key)));
 
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
@@ -298,7 +321,7 @@ export function TeamView({
       )}
 
       <PageHero
-        eyebrow="Équipe"
+        icon={HardHatIcon}
         title="Équipe"
         description="Suivez les ouvriers, la présence, les avances sur salaire et l’affectation aux chantiers."
         actions={
@@ -309,58 +332,61 @@ export function TeamView({
         }
       />
 
-      <SectionCard
-        title="Liste des ouvriers"
-        actions={
-          <>
-            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un ouvrier" />
-            <FilterSelect
-              aria-label="Filtrer par profession"
-              value={tradeFilter}
-              onChange={(e) => setTradeFilter(e.target.value)}
-              options={[
-                { value: 'all', label: 'Toutes les professions' },
-                ...Array.from(new Set(displayRows.map((worker) => worker.profession))).map(
-                  (profession) => ({ value: profession, label: profession }),
-                ),
-              ]}
-            />
-          </>
-        }
-      >
+      <FilterBar>
+        <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un ouvrier" />
+        <FilterSelect
+          aria-label="Filtrer par profession"
+          value={tradeFilter}
+          onChange={(e) => setTradeFilter(e.target.value)}
+          options={[
+            { value: 'all', label: 'Toutes les professions' },
+            ...Array.from(new Set(displayRows.map((worker) => worker.profession))).map(
+              (profession) => ({ value: profession, label: profession }),
+            ),
+          ]}
+        />
+      </FilterBar>
+
+      <SectionCard title="Liste des ouvriers">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Ouvriers
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Actifs
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.filter((worker) => worker.user_id).length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+          <IconStatCard
+            icon={HardHatIcon}
+            tone="accent"
+            label="Ouvriers"
+            value={filteredRows.length}
+          />
+          <IconStatCard
+            icon={CheckCircleIcon}
+            tone="success"
+            label="Actifs"
+            value={filteredRows.filter((worker) => worker.user_id).length}
+          />
+          {/* Doc 05 §1.7i — Compact Metric: this is the canonical
+              reference ("Équipe's presence bar") the audit itself
+              points to. A bare percentage next to identical stat cards
+              was the repetition the audit flagged; the bar makes this
+              one read as a proportion, not just another number. Kept as
+              a plain Card (not IconStatCard) since it carries the
+              progress bar IconStatCard has no slot for — the icon chip
+              below is copied from IconStatCard's own markup so it still
+              matches the rest of the row. */}
+          <Card className="p-6">
+            <div
+              className="bg-[#3E6FD1]/10 text-[#3E6FD1] inline-flex h-10 w-10 items-center justify-center rounded-xl"
+              aria-hidden="true"
+            >
+              <ChartLineUpIcon size={20} weight="duotone" />
+            </div>
+            <p className="mt-3 text-[13px] font-semibold tracking-[0.04em] text-neutral-500">
               Présence
             </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
+            <p className="font-display mt-1 text-[36px] font-semibold tabular-nums leading-[1.15] text-neutral-900">
               {Math.round(
                 filteredRows.reduce((sum, worker) => sum + worker.attendance, 0) /
                   Math.max(1, filteredRows.length),
               )}
               %
             </p>
-            {/* Doc 05 §1.7i — Compact Metric: this is the canonical
-                reference ("Équipe's presence bar") the audit itself
-                points to. A bare percentage next to identical stat cards
-                was the repetition the audit flagged; the bar makes this
-                one read as a proportion, not just another number. */}
             <div className="mt-3">
               <ProgressBar
                 value={Math.round(
@@ -371,17 +397,16 @@ export function TeamView({
               />
             </div>
           </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Avances
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows
+          {showMoney && (
+            <IconStatCard
+              icon={WalletIcon}
+              tone="warning"
+              label="Avances"
+              value={`${filteredRows
                 .reduce((sum, worker) => sum + worker.salaryAdvance, 0)
-                .toLocaleString('fr-TN')}{' '}
-              TND
-            </p>
-          </Card>
+                .toLocaleString('fr-TN')} TND`}
+            />
+          )}
         </div>
 
         <div className="mt-5">

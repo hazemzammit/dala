@@ -2,14 +2,14 @@
 
 import { Button, Card, FormField } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
-import { CheckCircleIcon, DownloadSimpleIcon, PlusIcon } from '@phosphor-icons/react';
+import { CheckCircleIcon, DownloadSimpleIcon, PlusIcon, ReceiptIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
-
-import { createInvoice } from './actions';
 
 import { SectionCard } from '@/components/contractor/Screen';
 import { createClient } from '@/lib/supabase/client';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { createInvoice } from './actions';
 
 type Project = { id: string; name: string; client_name: string | null };
 type Invoice = {
@@ -120,7 +120,7 @@ export function BillingView({ projects, invoices }: { projects: Project[]; invoi
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Facturation"
+        icon={ReceiptIcon}
         title="Factures"
         description="Générez des factures à partir des dépenses enregistrées par chantier et période."
       />

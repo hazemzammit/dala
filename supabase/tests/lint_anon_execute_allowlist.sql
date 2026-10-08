@@ -44,6 +44,11 @@ where p.pronamespace = 'public'::regnamespace
     'is_org_member', 'org_role_of', 'is_project_member', 'is_own_worker',
     'is_org_participant', 'is_project_active', 'is_project_participant',
     'is_worker_assigned_to_project', 'is_org_past_due',
-    'has_active_project_capacity', 'has_active_worker_capacity', 'get_org_seat_count'
+    'has_active_project_capacity', 'has_active_worker_capacity', 'get_org_seat_count',
+    -- 0112: the org-parameterized form of is_project_participant. Same category
+    -- as the line above it — a pure RLS predicate, anon-reachable and returning
+    -- false for anon because auth.uid() is NULL — so it belongs on this list,
+    -- not in the denied set.
+    'is_org_project_participant'
   ])
 order by 1;

@@ -15,14 +15,20 @@ import {
 import { logAdminAction } from '@/lib/audit-log';
 import { decryptTotpSecret } from '@/lib/crypto/totp-secret';
 import { getClientIp } from '@/lib/get-client-ip';
+import {
+  checkLoginAttempt,
+  LOGIN_WINDOW_SECONDS,
+  totpMaxAttempts,
+  totpReplayGuardEnabled,
+} from '@/lib/login-rate-limit';
 import type { AdminSessionContext } from '@/lib/require-admin-session';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
-import { verifyTotpCode } from '@/lib/totp';
+import { verifyTotpCodeStep } from '@/lib/totp';
 
 const SESSION_DURATION_MS = 2 * 60 * 60 * 1000; // 2h hard cap, Doc 01 §1.3.10
 
 export async function POST(request: Request) {
-  const token = cookies().get(CHALLENGE_COOKIE)?.value;
+  const token = (await cookies()).get(CHALLENGE_COOKIE)?.value;
   const challenge = token ? await verifyChallengeToken(token) : null;
 
   if (!challenge || challenge.purpose !== 'totp') {
@@ -43,6 +49,28 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Code invalide.' }, { status: 400 });
   }
 
+  // Throttle BEFORE checking the code: without this a 6-digit code is
+  // brute-forceable (unlimited guesses per challenge cookie, 3 valid codes of
+  // 1,000,000 per attempt). Counts every attempt for this admin; fails closed.
+  const verdict = await checkLoginAttempt(
+    supabase,
+    `admin-totp:${admin.id as string}`,
+    totpMaxAttempts(),
+    LOGIN_WINDOW_SECONDS,
+  );
+  if (verdict === 'limited') {
+    return NextResponse.json(
+      { error: 'Trop de tentatives. Réessayez dans quelques minutes.' },
+      { status: 429 },
+    );
+  }
+  if (verdict === 'unavailable') {
+    return NextResponse.json(
+      { error: 'Service indisponible, réessayez dans un instant.' },
+      { status: 503 },
+    );
+  }
+
   let decryptedSecret: string;
   try {
     decryptedSecret = await decryptTotpSecret(admin.totp_secret as string);
@@ -54,8 +82,28 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!verifyTotpCode(decryptedSecret, code)) {
+  const step = verifyTotpCodeStep(decryptedSecret, code);
+  if (step === null) {
     return NextResponse.json({ error: 'Code invalide.' }, { status: 400 });
+  }
+
+  // Replay guard (migration 0096): a code already accepted for this admin —
+  // or the losing side of two concurrent submissions — is refused.
+  if (totpReplayGuardEnabled()) {
+    const { data: fresh, error: consumeError } = await supabase.rpc('admin_consume_totp_step', {
+      p_admin_id: admin.id,
+      p_step: step,
+    });
+    if (consumeError) {
+      console.error('[login/step2] admin_consume_totp_step failed:', consumeError);
+      return NextResponse.json({ error: 'Service indisponible, réessayez.' }, { status: 503 });
+    }
+    if (fresh !== true) {
+      return NextResponse.json(
+        { error: 'Code déjà utilisé — attendez le prochain code.' },
+        { status: 400 },
+      );
+    }
   }
 
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
@@ -118,14 +166,14 @@ export async function POST(request: Request) {
     expiresAt,
   );
 
-  cookies().set(SESSION_COOKIE, sessionToken, {
+  (await cookies()).set(SESSION_COOKIE, sessionToken, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
     path: '/',
     expires: expiresAt,
   });
-  cookies().delete(CHALLENGE_COOKIE);
+  (await cookies()).delete(CHALLENGE_COOKIE);
 
   return NextResponse.json({ ok: true });
 }

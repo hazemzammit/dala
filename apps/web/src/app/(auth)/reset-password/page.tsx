@@ -2,12 +2,16 @@
 
 import { Button, Card, FormField } from '@dala/ui-web';
 import { passwordSchema } from '@dala/validation';
+import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { z } from 'zod';
 
+
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { createClient } from '@/lib/supabase/client';
+
+import logo from '../../../../assets/logo.png';
 
 /**
  * Doc 01 §1.3.7 steps 4-5 — reached via /auth/confirm?type=recovery, which
@@ -53,8 +57,10 @@ export default function ResetPasswordPage() {
   }
 
   return (
-    <main className="bg-neutral-25 flex min-h-screen items-center justify-center px-6">
-      <Card className="w-full max-w-sm p-8">
+    <main className="bg-neutral-25 relative flex min-h-screen items-center justify-center overflow-hidden px-6">
+      <div className="bg-accent-100/40 pointer-events-none absolute -end-24 -top-24 h-[360px] w-[360px] rounded-full blur-3xl" />
+      <Card className="relative z-10 w-full max-w-sm p-8">
+        <Image src={logo} alt="Dala" className="mb-6 h-8 w-auto" priority />
         <h1 className="font-display text-[23px] font-semibold text-neutral-900">
           Choisir un nouveau mot de passe
         </h1>

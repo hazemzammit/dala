@@ -7,10 +7,10 @@ import { XIcon } from '@phosphor-icons/react';
 import imageCompression from 'browser-image-compression';
 import { useState, type FormEvent } from 'react';
 
-import { createProjectExpense } from './actions';
-
 import { createClient } from '@/lib/supabase/client';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { createProjectExpense } from './actions';
 
 type ProjectOption = Pick<Project, 'id' | 'name' | 'status'>;
 

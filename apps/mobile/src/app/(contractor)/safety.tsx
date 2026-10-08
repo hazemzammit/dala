@@ -173,7 +173,7 @@ export default function SafetyScreen() {
       { data: incidentRows, error: incidentsError },
       { data: insuranceRows, error: insuranceError },
     ] = await Promise.all([
-      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase.from('worker_directory').select('*').eq('org_id', org).order('full_name'),
       supabase
         .from('safety_incidents')
         .select('*')

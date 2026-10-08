@@ -1,31 +1,33 @@
 'use client';
 
 import type { DispatchAssignment, Project, Vehicle, Worker } from '@dala/shared-types';
-import { Button, Card, EmptyState, FormField, StatusBadge } from '@dala/ui-web';
+import { Button, Card, EmptyState, FormField, IconStatCard, StatusBadge } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
 import type { UpdateDispatchAssignmentInput } from '@dala/validation';
 import {
   CaretLeftIcon,
   CaretRightIcon,
+  ClipboardTextIcon,
   PlusIcon,
   CopyIcon,
   CalendarIcon,
+  TruckIcon,
   UsersThreeIcon,
   WarningCircleIcon,
   XIcon,
 } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
+
+import { SectionCard } from '@/components/contractor/Screen';
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 import {
   copyPreviousWeekDispatchAssignments,
   createDispatchAssignments,
   updateDispatchAssignment,
 } from './actions';
-
-import { SectionCard } from '@/components/contractor/Screen';
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type DispatchAssignmentRow = DispatchAssignment;
 
@@ -97,7 +99,7 @@ export function DispatchView({
   const router = useRouter();
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
   const [notice, setNotice] = useState<string | null>(null);
-  const [isPending, startTransition] = useAsyncTransition();
+  const [, startTransition] = useAsyncTransition();
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragOverKey, setDragOverKey] = useState<string | null>(null);
   const [movingId, setMovingId] = useState<string | null>(null);
@@ -148,13 +150,19 @@ export function DispatchView({
     [assignments, vehicles.length],
   );
 
+  const [isWeekPending, startWeekTransition] = useTransition();
+
   function navigateWeek(direction: -1 | 1) {
     const next = addDays(weekStartDate, direction * 7);
-    router.push(`/dispatch?week=${formatDateInput(next)}`);
+    startWeekTransition(() => {
+      router.push(`/dispatch?week=${formatDateInput(next)}`);
+    });
   }
 
   function navigateToday() {
-    router.push(`/dispatch?week=${formatDateInput(startOfWeek(new Date()))}`);
+    startWeekTransition(() => {
+      router.push(`/dispatch?week=${formatDateInput(startOfWeek(new Date()))}`);
+    });
   }
 
   function openCreate(date: string, vehicleId?: string) {
@@ -270,62 +278,31 @@ export function DispatchView({
       )}
 
       <PageHero
-        eyebrow="Dispatch"
+        icon={TruckIcon}
         title="Tableau de dispatch hebdomadaire"
         description="Planifiez les ouvriers, véhicules et chantiers sur 7 jours. Les conflits bloquent l’enregistrement avant toute écriture."
         actions={
-          <>
-            <Button variant="secondary" onClick={navigateToday}>
-              <CalendarIcon size={16} className="me-1 inline" />
-              Aujourd’hui
-            </Button>
-            <Button variant="secondary" onClick={() => navigateWeek(-1)}>
-              <CaretLeftIcon size={16} className="me-1 inline" />
-              Semaine précédente
-            </Button>
-            <Button variant="secondary" onClick={() => navigateWeek(1)}>
-              Semaine suivante
-              <CaretRightIcon size={16} className="ms-1 inline" />
-            </Button>
-            <Button onClick={() => openCreate(formatDateInput(weekStartDate), vehicles[0]?.id)}>
-              <PlusIcon size={16} className="me-1 inline" />
-              Nouvelle assignation
-            </Button>
-            <Link href="/dispatch/week">
-              <Button variant="secondary" fullWidth={false}>
-                <UsersThreeIcon size={16} className="me-1.5 inline" />
-                Vue semaine
-              </Button>
-            </Link>
-          </>
+          <Button onClick={() => openCreate(formatDateInput(weekStartDate), vehicles[0]?.id)}>
+            <PlusIcon size={16} className="me-1 inline" />
+            Nouvelle assignation
+          </Button>
         }
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Véhicules
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {totals.vehicles}
-          </p>
-        </Card>
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Affectations
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {totals.assignments}
-          </p>
-        </Card>
-        <Card className="p-5" raised>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-            Ouvriers planifiés
-          </p>
-          <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-            {totals.workers}
-          </p>
-        </Card>
+        <IconStatCard icon={TruckIcon} tone="accent" label="Véhicules" value={totals.vehicles} />
+        <IconStatCard
+          icon={ClipboardTextIcon}
+          tone="success"
+          label="Affectations"
+          value={totals.assignments}
+        />
+        <IconStatCard
+          icon={UsersThreeIcon}
+          tone="categoricalBlue"
+          label="Ouvriers planifiés"
+          value={totals.workers}
+        />
       </div>
 
       <SectionCard
@@ -342,6 +319,34 @@ export function DispatchView({
           </button>
         }
       >
+        {/* Aujourd’hui / semaine précédente / semaine suivante / vue semaine
+            used to live in the page header, disconnected from the grid they
+            control. Moved here, directly under "Semaine du..." and above
+            the table itself, so the controls sit next to what they affect. */}
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Button variant="secondary" onClick={navigateToday} disabled={isWeekPending}>
+            <CalendarIcon size={16} className="me-1 inline" />
+            Aujourd’hui
+          </Button>
+          <Button variant="secondary" onClick={() => navigateWeek(-1)} disabled={isWeekPending}>
+            <CaretLeftIcon size={16} className="me-1 inline" />
+            Semaine précédente
+          </Button>
+          <Button variant="secondary" onClick={() => navigateWeek(1)} disabled={isWeekPending}>
+            Semaine suivante
+            <CaretRightIcon size={16} className="ms-1 inline" />
+          </Button>
+          <Link href="/dispatch/week">
+            <Button variant="secondary" fullWidth={false}>
+              <UsersThreeIcon size={16} className="me-1.5 inline" />
+              Vue semaine
+            </Button>
+          </Link>
+          {isWeekPending && (
+            <span className="text-xs font-medium text-neutral-400">Mise à jour…</span>
+          )}
+        </div>
+
         {/* §2.1 — drag a chip onto a different vehicle's cell (same day) to
             reassign; the drop runs through the same conflict-checked
             updateDispatchAssignment action the click-based edit modal uses. */}
@@ -354,120 +359,133 @@ export function DispatchView({
             actionHref="/vehicles"
           />
         ) : (
-          <div className="rounded-card overflow-hidden border border-neutral-100">
-            <div className="bg-neutral-25 grid grid-cols-[240px_repeat(7,minmax(170px,1fr))] border-b border-neutral-100 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              <div className="px-4 py-3">Véhicule</div>
-              {weekDays.map((day) => (
-                <div key={day.toISOString()} className="px-4 py-3">
-                  {formatDayLabel(day)}
-                </div>
-              ))}
-            </div>
-
-            <div className="divide-y divide-neutral-100 bg-white">
-              {vehicles.map((vehicle) => (
-                <div
-                  key={vehicle.id}
-                  className="grid grid-cols-[240px_repeat(7,minmax(170px,1fr))]"
-                >
-                  <div className="border-e border-neutral-100 px-4 py-4">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="font-semibold text-neutral-900">{vehicle.name}</p>
-                        <p className="mt-1 text-xs text-neutral-500">
-                          Capacité {vehicle.capacity} · {vehicle.plate ?? 'Sans immatriculation'}
-                        </p>
-                      </div>
-                      <StatusBadge
-                        variant={
-                          vehicle.status === 'available'
-                            ? 'success'
-                            : vehicle.status === 'maintenance'
-                              ? 'warning'
-                              : 'info'
-                        }
-                      >
-                        {vehicle.status === 'available'
-                          ? 'Disponible'
-                          : vehicle.status === 'maintenance'
-                            ? 'Maintenance'
-                            : 'En service'}
-                      </StatusBadge>
-                    </div>
+          <div
+            // router.push (even wrapped in a transition) still means the
+            // new week's data comes from a server round-trip — this dims
+            // the grid the instant a nav button is clicked so the click
+            // registers immediately, rather than the UI sitting frozen
+            // until the response comes back.
+            className={`rounded-card overflow-x-auto border border-neutral-100 transition-opacity ${
+              isWeekPending ? 'pointer-events-none opacity-50' : ''
+            }`}
+          >
+            <div className="min-w-[1450px]">
+              <div className="bg-neutral-25 grid grid-cols-[240px_repeat(7,minmax(170px,1fr))] border-b border-neutral-100 text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
+                <div className="px-4 py-3">Véhicule</div>
+                {weekDays.map((day) => (
+                  <div key={day.toISOString()} className="truncate px-4 py-3">
+                    {formatDayLabel(day)}
                   </div>
+                ))}
+              </div>
 
-                  {weekDays.map((day) => {
-                    const key = `${vehicle.id}:${formatDateInput(day)}`;
-                    const cellAssignments = assignmentsByCell.get(key) ?? [];
-                    const isDragOver = dragOverKey === key;
-
-                    return (
-                      <div
-                        key={key}
-                        onDragOver={(e) => handleCellDragOver(e, key)}
-                        onDragLeave={() =>
-                          setDragOverKey((current) => (current === key ? null : current))
-                        }
-                        onDrop={(e) => handleCellDrop(e, vehicle, day)}
-                        className={`group border-e border-neutral-100 px-3 py-3 last:border-e-0 ${
-                          isDragOver ? 'bg-accent-50' : ''
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openCreate(formatDateInput(day), vehicle.id)}
-                          className="text-accent-700 hover:bg-accent-50 mb-2 inline-flex rounded-full px-2 py-1 text-xs font-medium opacity-0 transition-opacity group-hover:opacity-100"
-                        >
-                          <PlusIcon size={12} className="me-1" />
-                          Ajouter
-                        </button>
-
-                        <div className="space-y-2">
-                          {cellAssignments.length === 0 ? (
-                            <button
-                              type="button"
-                              onClick={() => openCreate(formatDateInput(day), vehicle.id)}
-                              className="bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 min-h-[84px] w-full rounded-2xl border border-dashed border-neutral-200 px-3 py-3 text-left text-sm text-neutral-400 transition-colors"
-                            >
-                              Aucune affectation
-                            </button>
-                          ) : (
-                            cellAssignments.map((assignment) => (
-                              <button
-                                key={assignment.id}
-                                type="button"
-                                draggable
-                                onDragStart={(e) => handleChipDragStart(e, assignment)}
-                                onDragEnd={handleChipDragEnd}
-                                onClick={() => openEdit(assignment)}
-                                className={`bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 w-full cursor-grab rounded-2xl border border-neutral-100 px-3 py-3 text-left shadow-[0_4px_10px_rgba(17,19,24,0.04)] transition-colors active:cursor-grabbing ${
-                                  draggingId === assignment.id || movingId === assignment.id
-                                    ? 'opacity-40'
-                                    : ''
-                                }`}
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div>
-                                    <p className="font-medium text-neutral-900">
-                                      {assignment.workerName}
-                                    </p>
-                                    <p className="mt-1 text-xs text-neutral-500">
-                                      {assignment.projectName}
-                                    </p>
-                                  </div>
-                                  <span className="text-xs font-medium text-neutral-500">
-                                    {formatTime(assignment.departure_time)}
-                                  </span>
-                                </div>
-                              </button>
-                            ))
-                          )}
+              <div className="divide-y divide-neutral-100 bg-white">
+                {vehicles.map((vehicle) => (
+                  <div
+                    key={vehicle.id}
+                    className="grid grid-cols-[240px_repeat(7,minmax(170px,1fr))]"
+                  >
+                    <div className="min-w-0 border-e border-neutral-100 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-neutral-900">
+                            {vehicle.name}
+                          </p>
+                          <p className="mt-1 truncate text-xs text-neutral-500">
+                            Capacité {vehicle.capacity} · {vehicle.plate ?? 'Sans immatriculation'}
+                          </p>
                         </div>
+                        <StatusBadge
+                          variant={
+                            vehicle.status === 'available'
+                              ? 'success'
+                              : vehicle.status === 'maintenance'
+                                ? 'warning'
+                                : 'info'
+                          }
+                        >
+                          {vehicle.status === 'available'
+                            ? 'Disponible'
+                            : vehicle.status === 'maintenance'
+                              ? 'Maintenance'
+                              : 'En service'}
+                        </StatusBadge>
                       </div>
-                    );
-                  })}
-                </div>
-              ))}
+                    </div>
+
+                    {weekDays.map((day) => {
+                      const key = `${vehicle.id}:${formatDateInput(day)}`;
+                      const cellAssignments = assignmentsByCell.get(key) ?? [];
+                      const isDragOver = dragOverKey === key;
+
+                      return (
+                        <div
+                          key={key}
+                          onDragOver={(e) => handleCellDragOver(e, key)}
+                          onDragLeave={() =>
+                            setDragOverKey((current) => (current === key ? null : current))
+                          }
+                          onDrop={(e) => handleCellDrop(e, vehicle, day)}
+                          className={`group min-w-0 border-e border-neutral-100 px-3 py-3 last:border-e-0 ${
+                            isDragOver ? 'bg-accent-50' : ''
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => openCreate(formatDateInput(day), vehicle.id)}
+                            className="text-accent-700 hover:bg-accent-50 mb-2 inline-flex rounded-full px-2 py-1 text-xs font-medium opacity-0 transition-opacity group-hover:opacity-100"
+                          >
+                            <PlusIcon size={12} className="me-1" />
+                            Ajouter
+                          </button>
+
+                          <div className="space-y-2">
+                            {cellAssignments.length === 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => openCreate(formatDateInput(day), vehicle.id)}
+                                className="bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 min-h-[84px] w-full rounded-2xl border border-dashed border-neutral-200 px-3 py-3 text-left text-sm text-neutral-400 transition-colors"
+                              >
+                                Aucune affectation
+                              </button>
+                            ) : (
+                              cellAssignments.map((assignment) => (
+                                <button
+                                  key={assignment.id}
+                                  type="button"
+                                  draggable
+                                  onDragStart={(e) => handleChipDragStart(e, assignment)}
+                                  onDragEnd={handleChipDragEnd}
+                                  onClick={() => openEdit(assignment)}
+                                  className={`bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 w-full cursor-grab rounded-2xl border border-neutral-100 px-3 py-3 text-left shadow-[0_4px_10px_rgba(17,19,24,0.04)] transition-colors active:cursor-grabbing ${
+                                    draggingId === assignment.id || movingId === assignment.id
+                                      ? 'opacity-40'
+                                      : ''
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="truncate font-medium text-neutral-900">
+                                        {assignment.workerName}
+                                      </p>
+                                      <p className="mt-1 truncate text-xs text-neutral-500">
+                                        {assignment.projectName}
+                                      </p>
+                                    </div>
+                                    <span className="shrink-0 text-xs font-medium text-neutral-500">
+                                      {formatTime(assignment.departure_time)}
+                                    </span>
+                                  </div>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
@@ -563,7 +581,10 @@ function DispatchAssignmentModal({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useAsyncTransition();
 
-  const selectedWorkers = isEdit ? [workerId] : workerIds;
+  const selectedWorkers = useMemo(
+    () => (isEdit ? [workerId] : workerIds),
+    [isEdit, workerId, workerIds],
+  );
 
   const activeVehicle = useMemo(
     () => vehicles.find((vehicle) => vehicle.id === vehicleId),

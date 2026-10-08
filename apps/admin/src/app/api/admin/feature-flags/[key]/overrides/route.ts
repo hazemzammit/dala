@@ -16,7 +16,8 @@ import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
-export async function GET(_request: Request, { params }: { params: { key: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
@@ -39,7 +40,8 @@ export async function GET(_request: Request, { params }: { params: { key: string
   return NextResponse.json({ overrides });
 }
 
-export async function POST(request: Request, { params }: { params: { key: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ key: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

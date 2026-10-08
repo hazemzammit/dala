@@ -102,6 +102,11 @@ export const createVehicleSchema = z.object({
   plate: plateSchema,
   capacity: z.number().int().positive().default(1),
   status: z.enum(['available', 'in_use', 'maintenance']).default('available'),
+  // Field-coverage pass — photo_url (migration 0070) was queried by web's
+  // vehicle list/detail pages from day one but never validated or written
+  // anywhere on web. Same bare-storage-path shape used for every other
+  // photo field in this package (`.min(1)`, never `.url()`).
+  photo_url: z.string().min(1).optional(),
 });
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
@@ -122,6 +127,7 @@ export const updateVehicleSchema = z.object({
   plate: plateSchema,
   capacity: z.number().int().positive(),
   status: z.enum(['available', 'in_use', 'maintenance']),
+  photo_url: z.string().min(1).optional(),
   version: z.number().int().nonnegative(),
 });
 export type UpdateVehicleInput = z.infer<typeof updateVehicleSchema>;

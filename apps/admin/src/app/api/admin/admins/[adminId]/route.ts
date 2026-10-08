@@ -15,7 +15,8 @@ import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
 type AdminAction = 'reset_totp';
 
-export async function POST(request: Request, { params }: { params: { adminId: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ adminId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

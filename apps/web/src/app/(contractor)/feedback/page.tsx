@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { FeedbackForm } from './FeedbackForm';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/feedback/page.tsx

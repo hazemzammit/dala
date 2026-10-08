@@ -2,6 +2,7 @@
 
 import type { AttendanceStatus, Project } from '@dala/shared-types';
 import { ErrorState, PageHero } from '@dala/ui-web';
+import { ChartLineUpIcon } from '@phosphor-icons/react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { SectionCard } from '@/components/contractor/Screen';
@@ -187,7 +188,7 @@ export function AnalyticsView({ orgId }: { orgId: string }) {
           { data: vehicles, error: vehiclesErr },
         ] = await Promise.all([
           supabase
-            .from('workers')
+            .from('worker_directory')
             .select('id, full_name, daily_rate')
             .eq('org_id', orgId)
             .is('deleted_at', null),
@@ -553,30 +554,30 @@ export function AnalyticsView({ orgId }: { orgId: string }) {
 
   if (loading) {
     return (
-      <>
-        <PageHero eyebrow="Analyses" title="Analytique" description="Chargement des analyses…" />
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
+        <PageHero icon={ChartLineUpIcon} title="Analytique" description="Chargement des analyses…" />
         <p className="text-sm text-neutral-500">Chargement…</p>
-      </>
+      </div>
     );
   }
 
   if (error) {
     return (
-      <>
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
         <PageHero
-          eyebrow="Analyses"
+          icon={ChartLineUpIcon}
           title="Analytique"
           description="Une erreur est survenue lors du chargement."
         />
         <ErrorState onRetry={() => setReloadKey((k) => k + 1)} />
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Analyses"
+        icon={ChartLineUpIcon}
         title="Analytique"
         description="Tendances financières, main-d'œuvre, chantiers et opérations pour votre organisation."
       />
@@ -738,6 +739,6 @@ export function AnalyticsView({ orgId }: { orgId: string }) {
           )}
         </SectionCard>
       </div>
-    </>
+    </div>
   );
 }

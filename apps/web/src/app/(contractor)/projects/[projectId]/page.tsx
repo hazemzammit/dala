@@ -1,11 +1,12 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { createProject, updateProject } from '../actions';
 import { getProjectDashboard } from '../getProjectDashboard';
 
 import { ProjectDetail } from './ProjectDetail';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * Doc 04 §4.2.2 — Project detail. Server Component: resolves the active org
@@ -17,7 +18,8 @@ import { createClient } from '@/lib/supabase/server';
  * null)` guards the list page uses; anything unreachable redirects back to
  * the list rather than 404ing (org privacy is RLS-enforced regardless).
  */
-export default async function Page({ params }: { params: { projectId: string } }) {
+export default async function Page(props: { params: Promise<{ projectId: string }> }) {
+  const params = await props.params;
   const supabase = await createClient();
   const {
     data: { user },
@@ -62,9 +64,20 @@ export default async function Page({ params }: { params: { projectId: string } }
 
   const dashboard = await getProjectDashboard(project.id, project.budget_total);
 
+  // Field-coverage pass — same signed-URL resolution the list page does
+  // for cover_photo_url (private org-files bucket path, never a fetchable
+  // URL directly), so the detail page can render it too.
+  let signedCoverPhotoUrl: string | null = null;
+  if (project.cover_photo_url) {
+    const { data } = await supabase.storage
+      .from('org-files')
+      .createSignedUrl(project.cover_photo_url, 3600);
+    signedCoverPhotoUrl = data?.signedUrl ?? null;
+  }
+
   return (
     <ProjectDetail
-      project={project}
+      project={{ ...project, signed_cover_photo_url: signedCoverPhotoUrl }}
       expenses={expenses ?? []}
       dashboard={dashboard}
       orgId={profile.active_org_id}

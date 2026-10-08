@@ -8,6 +8,7 @@ import { UserDetail } from './UserDetail';
  * sake — everything else about a user (org membership, suspension state,
  * etc.) is still only on the Users list screen.
  */
-export default function UserDetailPage({ params }: { params: { userId: string } }) {
-  return <UserDetail userId={params.userId} />;
+export default async function UserDetailPage(props: { params: Promise<{ userId: string }> }) {
+ const params = await props.params;
+ return <UserDetail userId={params.userId} />;
 }

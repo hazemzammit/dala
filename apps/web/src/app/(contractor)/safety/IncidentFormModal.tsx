@@ -4,10 +4,10 @@ import { Button, Card, FormField } from '@dala/ui-web';
 import { XIcon } from '@phosphor-icons/react';
 import { useState, type FormEvent } from 'react';
 
-import { createSafetyIncident } from './actions';
-
 import { createClient } from '@/lib/supabase/client';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { createSafetyIncident } from './actions';
 
 const SEVERITY_OPTIONS: { value: 'minor' | 'moderate' | 'severe'; label: string }[] = [
   { value: 'minor', label: 'Mineur' },

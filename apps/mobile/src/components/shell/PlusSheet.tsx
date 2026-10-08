@@ -22,6 +22,7 @@ import {
 import { Modal, Pressable } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
+import { useCanSeeMoney } from '@/lib/useCanSeeMoney';
 import { useTokenColor } from '@/lib/useTokenColor';
 
 /**
@@ -32,6 +33,16 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * component — fewer moving parts to get right for a first pass; swap for
  * Tamagui's Sheet later if the slide-up animation needs to feel nicer.
  */
+/** Money screens — hidden from viewers (Observateur), who are money-blind since migration 0103. */
+const MONEY_HREFS: ReadonlySet<string> = new Set([
+  '/advances',
+  '/expenses',
+  '/reports',
+  '/analytics',
+  '/portfolio',
+  '/billing',
+]);
+
 const ITEMS: { href: string; label: string; icon: Icon }[] = [
   { href: '/vehicles', label: 'Véhicules', icon: CarIcon },
   { href: '/pointage', label: 'Pointage', icon: ClipboardTextIcon },
@@ -73,6 +84,10 @@ interface PlusSheetProps {
 
 export function PlusSheet({ visible, onClose }: PlusSheetProps) {
   const tc = useTokenColor();
+  const { loading, canSeeMoney } = useCanSeeMoney();
+  // Show everything while the role is still resolving (managers must not see the menu flicker);
+  // the screens themselves are gated by MoneyGate either way.
+  const items = loading || canSeeMoney ? ITEMS : ITEMS.filter((i) => !MONEY_HREFS.has(i.href));
   function navigate(href: string) {
     onClose();
     router.push(href as never);
@@ -103,7 +118,7 @@ export function PlusSheet({ visible, onClose }: PlusSheetProps) {
         </XStack>
 
         <YStack gap="$1">
-          {ITEMS.map((item) => {
+          {items.map((item) => {
             const ItemIcon = item.icon;
             return (
               <XStack

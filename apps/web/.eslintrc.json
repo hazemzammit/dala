@@ -1,1 +1,22 @@
-{ "root": false, "extends": ["../../.eslintrc.json", "next/core-web-vitals"] }
+{
+  "root": false,
+  "extends": ["../../.eslintrc.json", "next/core-web-vitals"],
+  "overrides": [
+    {
+      // These files render short-lived signed Supabase URLs (unique per request,
+      // so next/image's optimizer cache never hits) or blob: previews (which the
+      // optimizer can't fetch). Plain <img> is intentional here. Any *new* file
+      // using <img> still gets the @next/next/no-img-element warning.
+      "files": [
+        "**/JournalView.tsx",
+        "**/ProjectExpenseFormModal.tsx",
+        "**/ProjectFormModal.tsx",
+        "**/ProjectsView.tsx",
+        "**/AvatarCropperModal.tsx",
+        "**/VehiclesView.tsx",
+        "src/app/portail/**/page.tsx"
+      ],
+      "rules": { "@next/next/no-img-element": "off" }
+    }
+  ]
+}

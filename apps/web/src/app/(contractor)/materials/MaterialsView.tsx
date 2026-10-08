@@ -3,32 +3,38 @@
 import type { ApprovalStatus, Material, Project } from '@dala/shared-types';
 import {
   Button,
-  Card,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterBar,
+  FilterSelect,
   IconActionButton,
+  IconStatCard,
   StatusBadge,
 } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
 import type { CreateMaterialRequestInput, SetMaterialCostInput } from '@dala/validation';
 import {
+  BuildingsIcon,
   CheckCircleIcon,
+  ClockIcon,
   PackageIcon,
   PencilSimpleIcon,
   PlusIcon,
   TrashIcon,
+  WarningIcon,
   XCircleIcon,
 } from '@phosphor-icons/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-
-import { approveMaterial, deleteMaterial, rejectMaterial } from './actions';
-import { MaterialFormModal } from './MaterialFormModal';
 
 import { SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { approveMaterial, deleteMaterial, rejectMaterial } from './actions';
+import { MaterialFormModal } from './MaterialFormModal';
 
 type CreateMaterialResult =
   { success: true; material: Material } | { success: false; error: string };
@@ -97,6 +103,16 @@ export function MaterialsView({
   } | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Dashboard's "Ajouter un matériau" quick action deep-links here with
+  // ?create=1 — same query-param-opens-modal convention already used by
+  // Projects' and Vehicles' own ?create=1 handling.
+  useEffect(() => {
+    if (searchParams.get('create') === '1') {
+      setModalState({ mode: 'create' });
+    }
+  }, [searchParams]);
 
   // §2.4 — bulk-approve via checkbox multi-select. Same per-row
   // `approve_material_request` RPC the individual approve button already
@@ -119,10 +135,6 @@ export function MaterialsView({
   const projectNameById = useMemo(() => {
     return new Map(projects.map((project) => [project.id, project.name]));
   }, [projects]);
-
-  function upsertMaterial(material: Material) {
-    setRows((current) => [material, ...current.filter((row) => row.id !== material.id)]);
-  }
 
   const displayRows = useMemo<MaterialRow[]>(() => {
     return rows.map((material) => ({
@@ -358,34 +370,16 @@ export function MaterialsView({
   }
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Inventaire"
+        icon={PackageIcon}
         title="Matériaux"
         description="Suivez les stocks, les fournisseurs et les coûts d’achat sur tous les chantiers actifs."
         actions={
-          <>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher un matériau"
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            />
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as MaterialStatus | 'all')}
-              className="bg-neutral-0 focus:border-accent-500 rounded-2xl border border-neutral-200 px-3 py-2 text-sm outline-none"
-            >
-              <option value="all">Tous les statuts</option>
-              <option value="pending">En attente</option>
-              <option value="approved">Approuvé</option>
-              <option value="rejected">Rejeté</option>
-            </select>
-            <Button onClick={() => setModalState({ mode: 'create' })}>
-              <PlusIcon size={16} className="me-1.5 inline" />
-              Ajouter un matériau
-            </Button>
-          </>
+          <Button onClick={() => setModalState({ mode: 'create' })}>
+            <PlusIcon size={16} className="me-1.5 inline" />
+            Ajouter un matériau
+          </Button>
         }
       />
 
@@ -396,48 +390,50 @@ export function MaterialsView({
       )}
 
       <SectionCard
-        title="Inventory health"
-        description="Monitor materials before they hit a shortage."
+        title="État des stocks"
+        description="Suivez les matériaux avant qu'ils ne viennent à manquer."
       >
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Matériaux
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {totalCount}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              En attente
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.filter((row) => row.status === 'pending').length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Urgents
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.filter((row) => row.urgency === 'urgent').length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Chantiers liés
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {new Set(filteredRows.map((row) => row.project_id).filter(Boolean)).size}
-            </p>
-          </Card>
+          <IconStatCard icon={PackageIcon} tone="accent" label="Matériaux" value={totalCount} />
+          <IconStatCard
+            icon={ClockIcon}
+            tone="warning"
+            label="En attente"
+            value={filteredRows.filter((row) => row.status === 'pending').length}
+          />
+          <IconStatCard
+            icon={WarningIcon}
+            tone="danger"
+            label="Urgents"
+            value={filteredRows.filter((row) => row.urgency === 'urgent').length}
+          />
+          <IconStatCard
+            icon={BuildingsIcon}
+            tone="categoricalBlue"
+            label="Chantiers liés"
+            value={new Set(filteredRows.map((row) => row.project_id).filter(Boolean)).size}
+          />
         </div>
       </SectionCard>
 
+      <FilterBar>
+        <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un matériau" />
+        <FilterSelect
+          aria-label="Filtrer par statut"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as MaterialStatus | 'all')}
+          options={[
+            { value: 'all', label: 'Tous les statuts' },
+            { value: 'pending', label: 'En attente' },
+            { value: 'approved', label: 'Approuvé' },
+            { value: 'rejected', label: 'Rejeté' },
+          ]}
+        />
+      </FilterBar>
+
       <SectionCard
-        title="Purchase ledger"
-        description="Searchable material rows with sortable columns."
+        title="Registre des achats"
+        description="Lignes de matériaux, avec recherche et colonnes triables."
       >
         {filteredRows.length === 0 ? (
           <EmptyState
@@ -561,6 +557,6 @@ export function MaterialsView({
           </p>
         )}
       </ConfirmDialog>
-    </>
+    </div>
   );
 }

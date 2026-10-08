@@ -64,6 +64,19 @@ export function AnnouncementBanner() {
   }, []);
 
   const active = announcements.find((a) => !dismissedIds.has(a.id));
+
+  // Auto-dismiss 10s after this particular announcement becomes the
+  // active one — re-armed whenever `active.id` changes, so a second
+  // announcement queued behind it gets its own 10s window rather than
+  // inheriting whatever was left on the first one's timer.
+  useEffect(() => {
+    if (!active) return;
+    const timer = setTimeout(() => {
+      setDismissedIds((prev) => new Set(prev).add(active.id));
+    }, 10_000);
+    return () => clearTimeout(timer);
+  }, [active]);
+
   if (!active) return null;
 
   return (

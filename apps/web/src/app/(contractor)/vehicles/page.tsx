@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { VehiclesView } from './VehiclesView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function Page() {
   const supabase = await createClient();
@@ -26,18 +27,23 @@ export default async function Page() {
     .is('deleted_at', null)
     .order('created_at', { ascending: false });
 
-  return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="font-display text-xl font-semibold text-neutral-900">Véhicules</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Gérez votre parc pour l&apos;inclure dans le dispatch quotidien.
-        </p>
-      </div>
+  // Field-coverage pass — same signed-URL-per-row convention as
+  // projects/team's own list pages.
+  const vehiclesWithSignedPhotos = await Promise.all(
+    (vehicles ?? []).map(async (vehicle) => {
+      if (!vehicle.photo_url) return { ...vehicle, signed_photo_url: null };
+      const { data } = await supabase.storage
+        .from('org-files')
+        .createSignedUrl(vehicle.photo_url, 3600);
+      return { ...vehicle, signed_photo_url: data?.signedUrl ?? null };
+    }),
+  );
 
-      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
-        <VehiclesView vehicles={vehicles ?? []} />
-      </Suspense>
-    </div>
+  // Field-coverage pass — same duplicate-header bug as team/page.tsx: this
+  // plain <h1> duplicated VehiclesView's own PageHero underneath it.
+  return (
+    <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+      <VehiclesView vehicles={vehiclesWithSignedPhotos} />
+    </Suspense>
   );
 }

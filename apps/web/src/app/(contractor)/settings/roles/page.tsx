@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { RolesView } from './RolesView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * Audit fix 1a — `org_members_directory` (the RPC the collaborator's

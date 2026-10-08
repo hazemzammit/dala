@@ -12,7 +12,8 @@ import { getAdminSessionContext } from '@/lib/require-admin-session';
 import { requireRole } from '@/lib/require-role';
 import { getAdminSupabaseClient } from '@/lib/supabase/admin-client';
 
-export async function POST(request: Request, { params }: { params: { requestId: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ requestId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

@@ -5,10 +5,11 @@ import { PageHero } from '@dala/ui-web';
 import { ShieldWarningIcon, XIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { SectionCard } from '@/components/contractor/Screen';
+
 import { IncidentFormModal } from './IncidentFormModal';
 import { InsuranceFormModal } from './InsuranceFormModal';
 
-import { SectionCard } from '@/components/contractor/Screen';
 
 type Incident = {
   id: string;
@@ -74,7 +75,7 @@ export function SafetyView({
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Compliance"
+        icon={ShieldWarningIcon}
         title="Sécurité"
         description="Suivez les incidents et les assurances de l'organisation."
       />

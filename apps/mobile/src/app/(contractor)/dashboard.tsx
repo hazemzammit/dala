@@ -30,6 +30,7 @@ import { getActiveOrgId, setActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { listMyOrganizations, listOwnedOrganizations, type MyOrgSummary } from '@/lib/myOrgs';
 import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
+import { useCanSeeMoney } from '@/lib/useCanSeeMoney';
 import { cycleEndISO, cycleStartISO, todayISO } from '@/lib/salaryCycle';
 import { getSignedUrlMap } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
@@ -170,6 +171,11 @@ const ACTIVITY_TINT: Record<
 };
 
 export default function DashboardScreen() {
+  // Viewers (Observateur) are money-blind since migration 0103: hide the pay, budget and
+  // advances widgets rather than show "0 TND". While the role resolves, show them (managers are
+  // the common case; RLS returns nothing to viewers either way).
+  const { loading: roleLoading, canSeeMoney: roleAllowsMoney } = useCanSeeMoney();
+  const canSeeMoney = roleLoading || roleAllowsMoney;
   const tc = useTokenColor();
 
   // Org-creation-guide addition — create-organization.tsx's wizard routes
@@ -295,9 +301,20 @@ export default function DashboardScreen() {
       { data: assignments, error: assignmentsError },
       { data: attendance, error: attendanceError },
     ] = await Promise.all([
+      // Same 0098 embed ambiguity as dispatch.tsx — two FKs now exist from
+      // dispatch_assignments to workers (0006's single-column
+      // dispatch_assignments_worker_id_fkey plus 0098's composite
+      // dispatch_assignments_worker_org_fk), so PostgREST rejects the bare
+      // `workers(...)` embed with HTTP 300 / PGRST201 and supabase-js
+      // surfaces it as `error` — which is what put this dashboard's dispatch
+      // block into its ErrorState. Relationship pinned explicitly here too;
+      // the composite FK stays untouched. See dispatch.tsx's comment for the
+      // full explanation.
       supabase
         .from('dispatch_assignments')
-        .select('worker_id, actual_departure_time, workers(full_name, photo_url)')
+        .select(
+          'worker_id, actual_departure_time, workers!dispatch_assignments_worker_id_fkey(full_name, photo_url)',
+        )
         .eq('org_id', org)
         .eq('assignment_date', today),
       supabase
@@ -544,7 +561,7 @@ export default function DashboardScreen() {
       { data: advancesThisWeek, error: advancesErr },
       { data: cycles, error: cyclesErr },
     ] = await Promise.all([
-      supabase.from('workers').select('id, daily_rate').eq('org_id', org),
+      supabase.from('worker_directory').select('id, daily_rate').eq('org_id', org),
       supabase
         .from('attendance_effective')
         .select('worker_id, status, record_date')
@@ -736,21 +753,23 @@ export default function DashboardScreen() {
 
         {/* Phase 27 — hero StatCard, the block Doc 05 §2.2 specs first and
             Phase 23 explicitly cut. */}
-        {payrollError && !loading ? (
-          <YStack backgroundColor="$neutral0" borderRadius="$card">
-            <ErrorState onRetry={() => void loadPayrollSummary(activeOrgId)} />
-          </YStack>
-        ) : (
-          <StatCard
-            label="Net à payer cette semaine"
-            value={netThisWeek.toFixed(0)}
-            unit="TND"
-            delta={payrollDeltaPercent ?? undefined}
-            sparklineData={payrollSparkline}
-            sparklineVariant="bars"
-            loading={loading}
-            onPress={() => router.push('/advances')}
-          />
+        {canSeeMoney && (
+          payrollError && !loading ? (
+            <YStack backgroundColor="$neutral0" borderRadius="$card">
+              <ErrorState onRetry={() => void loadPayrollSummary(activeOrgId)} />
+            </YStack>
+          ) : (
+            <StatCard
+              label="Net à payer cette semaine"
+              value={netThisWeek.toFixed(0)}
+              unit="TND"
+              delta={payrollDeltaPercent ?? undefined}
+              sparklineData={payrollSparkline}
+              sparklineVariant="bars"
+              loading={loading}
+              onPress={() => router.push('/advances')}
+            />
+          )
         )}
 
         {/* Dispatch-today — was a single aggregate tile; now a horizontal
@@ -948,23 +967,24 @@ export default function DashboardScreen() {
                         {project.client_name}
                       </Text>
                     )}
-                    {consumedPercent !== null ? (
-                      <YStack gap="$1" marginTop="$1">
-                        <XStack justifyContent="space-between">
-                          <Text fontSize={11.5} color="$neutral500">
-                            Budget consommé
+                    {canSeeMoney &&
+                      (consumedPercent !== null ? (
+                          <YStack gap="$1" marginTop="$1">
+                            <XStack justifyContent="space-between">
+                              <Text fontSize={11.5} color="$neutral500">
+                                Budget consommé
+                              </Text>
+                              <NumericText fontSize={11.5} fontWeight="600">
+                                {consumedPercent}%
+                              </NumericText>
+                            </XStack>
+                            <ProgressBar value={consumedPercent} height={5} />
+                          </YStack>
+                        ) : (
+                          <Text fontSize={11.5} color="$neutral500" marginTop="$1">
+                            Pas de budget défini
                           </Text>
-                          <NumericText fontSize={11.5} fontWeight="600">
-                            {consumedPercent}%
-                          </NumericText>
-                        </XStack>
-                        <ProgressBar value={consumedPercent} height={5} />
-                      </YStack>
-                    ) : (
-                      <Text fontSize={11.5} color="$neutral500" marginTop="$1">
-                        Pas de budget défini
-                      </Text>
-                    )}
+                        ))}
                   </YStack>
                 );
               }}
@@ -1026,32 +1046,34 @@ export default function DashboardScreen() {
             </Text>
           </XStack>
 
-          <XStack
-            flex={1}
-            backgroundColor="$neutral0"
-            borderRadius="$card"
-            paddingVertical="$2.5"
-            paddingHorizontal="$3"
-            gap="$2"
-            alignItems="center"
-            onPress={() => router.push('/advances')}
-            accessibilityRole="button"
-            accessibilityLabel="Voir les avances"
-          >
-            <YStack
-              width={28}
-              height={28}
-              borderRadius={14}
-              backgroundColor={toRgba(tc.success, 0.14)}
+          {canSeeMoney && (
+            <XStack
+              flex={1}
+              backgroundColor="$neutral0"
+              borderRadius="$card"
+              paddingVertical="$2.5"
+              paddingHorizontal="$3"
+              gap="$2"
               alignItems="center"
-              justifyContent="center"
+              onPress={() => router.push('/advances')}
+              accessibilityRole="button"
+              accessibilityLabel="Voir les avances"
             >
-              <HandCoinsIcon size={15} weight="bold" color={tc.success} />
-            </YStack>
-            <Text fontSize={13.5} fontWeight="600">
-              Avances
-            </Text>
-          </XStack>
+              <YStack
+                width={28}
+                height={28}
+                borderRadius={14}
+                backgroundColor={toRgba(tc.success, 0.14)}
+                alignItems="center"
+                justifyContent="center"
+              >
+                <HandCoinsIcon size={15} weight="bold" color={tc.success} />
+              </YStack>
+              <Text fontSize={13.5} fontWeight="600">
+                Avances
+              </Text>
+            </XStack>
+          )}
         </XStack>
 
         {/* Phase 8 §1.7 — activity feed, previously "still deliberately

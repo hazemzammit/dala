@@ -305,9 +305,21 @@ export default function DispatchScreen() {
       return;
     }
 
+    // 0098 added a SECOND foreign key from dispatch_assignments to workers —
+    // dispatch_assignments_worker_org_fk, the composite (worker_id, org_id)
+    // cross-tenant guard — alongside 0006's single-column
+    // dispatch_assignments_worker_id_fkey. With two relationships between the
+    // same pair of tables, PostgREST can no longer auto-pick one, so the bare
+    // `workers(...)` embed this used to be fails EVERY time (even with zero
+    // rows) with HTTP 300 / PGRST201 "Could not embed because more than one
+    // relationship was found for 'dispatch_assignments' and 'workers'". That
+    // 300 comes back as `error` from supabase-js and is what surfaced here as
+    // the generic ErrorState on this board. The single-column FK is named
+    // explicitly instead; the composite FK is left exactly as 0098 shipped it
+    // — it isn't redundant, it's the tenant guard 0112 relies on.
     let assignmentQuery = supabase
       .from('dispatch_assignments')
-      .select('*, workers(full_name, photo_url)')
+      .select('*, workers!dispatch_assignments_worker_id_fkey(full_name, photo_url)')
       .eq('org_id', org)
       .eq('assignment_date', selectedDate);
     if (deepLinkProjectId) {
@@ -322,7 +334,7 @@ export default function DispatchScreen() {
       scopedProjectResult,
     ] = await Promise.all([
       supabase.from('vehicles').select('*').eq('org_id', org).order('name'),
-      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase.from('worker_directory').select('*').eq('org_id', org).order('full_name'),
       supabase.from('projects').select('*').eq('lead_org_id', org).eq('status', 'active'),
       assignmentQuery,
       deepLinkProjectId

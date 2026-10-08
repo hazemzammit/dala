@@ -152,7 +152,7 @@ export default function TeamScreen() {
     }
 
     const { data: workerRows, error: workersError } = await supabase
-      .from('active_workers')
+      .from('active_worker_directory')
       .select('*')
       .eq('org_id', org)
       .order('full_name');
@@ -400,7 +400,7 @@ export default function TeamScreen() {
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={UsersIcon}
-          icon3d="team"
+          illustration="team"
           title="Aucun travailleur"
           description="Invitez votre équipe pour commencer à planifier vos dispatchs. Utilisez le bouton + ci-dessous."
         />

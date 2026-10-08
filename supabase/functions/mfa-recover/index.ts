@@ -24,6 +24,9 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { withInvocationLog } from '../_shared/logInvocation.ts';
+import { enforceRateLimits, extractClientIp } from '../_shared/rateLimit.ts';
+
+const WINDOW_SECONDS = 15 * 60;
 
 Deno.serve(
   withInvocationLog('mfa-recover', async (req) => {
@@ -35,6 +38,37 @@ Deno.serve(
       const { email, password, recovery_code } = await req.json();
       if (!email || !password || !recovery_code) {
         return jsonResponse({ error: 'Champs manquants.' }, 400);
+      }
+
+      const admin = createClient(
+        Deno.env.get('SUPABASE_URL')!,
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      );
+
+      // Throttle BEFORE any credential is checked. This endpoint is a password oracle (Step 1) and
+      // a recovery-code guessing surface (Step 2) with no limit of its own — signInWithPassword
+      // through the anon client is only bounded per IP by Supabase Auth. Per-email + per-IP,
+      // FAIL CLOSED: if the limiter is down, guessing must not become unlimited.
+      const ip = extractClientIp(req);
+      const gate = await enforceRateLimits(
+        admin,
+        [
+          { key: `mfa-recover:email:${String(email).toLowerCase().trim()}`, max: 8 },
+          { key: `mfa-recover:ip:${ip}`, max: 20 },
+        ],
+        WINDOW_SECONDS,
+        { failOpen: false },
+      );
+      if (!gate.allowed) {
+        return jsonResponse(
+          {
+            error:
+              gate.reason === 'rate_limited'
+                ? 'Trop de tentatives. Réessayez dans quelques minutes.'
+                : 'Service momentanément indisponible. Réessayez dans un instant.',
+          },
+          gate.reason === 'rate_limited' ? 429 : 503,
+        );
       }
 
       const anonClient = createClient(
@@ -54,10 +88,25 @@ Deno.serve(
         return jsonResponse({ error: 'E-mail ou mot de passe incorrect.' }, 401);
       }
 
-      const admin = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+      // Step 2 (code guesses are limited per USER as well — tighter than the email/IP gate above,
+      // because a valid password is already in hand at this point).
+      const codeGate = await enforceRateLimits(
+        admin,
+        [{ key: `mfa-recover:user:${signInData.user.id}`, max: 5 }],
+        WINDOW_SECONDS,
+        { failOpen: false },
       );
+      if (!codeGate.allowed) {
+        return jsonResponse(
+          {
+            error:
+              codeGate.reason === 'rate_limited'
+                ? 'Trop de tentatives. Réessayez dans quelques minutes.'
+                : 'Service momentanément indisponible. Réessayez dans un instant.',
+          },
+          codeGate.reason === 'rate_limited' ? 429 : 503,
+        );
+      }
 
       // Step 2 — verify + consume the recovery code (migration 0029's
       // service-role-only RPC; single-use, marked used_at on match).

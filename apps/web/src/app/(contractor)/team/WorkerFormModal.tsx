@@ -5,9 +5,10 @@ import { Button, Card, FormField } from '@dala/ui-web';
 import { CheckCircleIcon, CopyIcon, XIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
 import { inviteWorker, updateWorker } from './actions';
 
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 const CHANNEL_OPTIONS: { value: InvitationChannel; label: string }[] = [
   { value: 'app', label: 'Application (le lien s\u2019affiche ci-dessous)' },
@@ -22,6 +23,8 @@ export function WorkerFormModal({ onClose, worker }: { onClose: () => void; work
   const [phone, setPhone] = useState(worker?.phone ?? '');
   const [trade, setTrade] = useState(worker?.trade ?? '');
   const [dailyRate, setDailyRate] = useState(worker?.daily_rate?.toString() ?? '');
+  const [jobTitle, setJobTitle] = useState(worker?.job_title ?? '');
+  const [hireDate, setHireDate] = useState(worker?.hire_date ?? '');
   const [channel, setChannel] = useState<InvitationChannel>('app');
   const [error, setError] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -49,6 +52,8 @@ export function WorkerFormModal({ onClose, worker }: { onClose: () => void; work
           phone,
           trade: trade || undefined,
           daily_rate: dailyRate ? Number(dailyRate) : undefined,
+          job_title: jobTitle || undefined,
+          hire_date: hireDate || undefined,
         });
 
         if (!result.success) {
@@ -171,6 +176,26 @@ export function WorkerFormModal({ onClose, worker }: { onClose: () => void; work
               onChange={(e) => setDailyRate(e.target.value)}
               placeholder="Ex. 60"
             />
+            {isEdit && (
+              <>
+                {/* Field-coverage pass — job_title/hire_date (migration
+                   0075) are deliberately edit-only here, never shown during
+                   invite (matches inviteWorkerSchema's own comment: set
+                   later from the worker detail screen). */}
+                <FormField
+                  label="Poste"
+                  value={jobTitle}
+                  onChange={(e) => setJobTitle(e.target.value)}
+                  placeholder="Ex. Chef d'équipe"
+                />
+                <FormField
+                  label="Date d'embauche"
+                  type="date"
+                  value={hireDate}
+                  onChange={(e) => setHireDate(e.target.value)}
+                />
+              </>
+            )}
 
             <div className="flex flex-col gap-1.5">
               <label className="text-sm font-medium text-neutral-900">

@@ -7,6 +7,7 @@ import { useCallback, useState } from 'react';
 import { Alert, Share } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { Button } from '@/components/ui/Button';
 import { DatePicker } from '@/components/ui/DatePicker';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -115,7 +116,7 @@ function isoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
-export default function ReportsScreen() {
+function ReportsScreenContent() {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [reportType, setReportType] = useState<ReportType>('progression');
   const [format, setFormat] = useState<'csv' | 'pdf'>('csv');
@@ -416,5 +417,16 @@ export default function ReportsScreen() {
         {`Générer le rapport (${PDF_ONLY_REPORT_TYPES.has(reportType) ? 'PDF' : PDF_ELIGIBLE.has(reportType) ? format.toUpperCase() : 'CSV'})`}
       </Button>
     </YStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function ReportsScreen() {
+  return (
+    <MoneyGate title="Rapports">
+      <ReportsScreenContent />
+    </MoneyGate>
   );
 }

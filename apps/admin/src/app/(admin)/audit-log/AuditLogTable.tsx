@@ -263,6 +263,7 @@ export function AuditLogTable() {
     // Intentionally runs once on mount — `load()` reads the latest filter
     // values via closure each time it's invoked from the Filtrer button,
     // so none of them need to be a dependency here.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function applyFilters() {

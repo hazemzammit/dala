@@ -12,6 +12,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { BarChart, LineChart } from '@/components/ui/Chart';
 import { ChartCard } from '@/components/ui/ChartCard';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -166,7 +167,7 @@ async function fetchAnalyticsData(orgId: string): Promise<AnalyticsData> {
 
   const [{ data: workers }, { data: projects }, { data: vehicles }] = await Promise.all([
     supabase
-      .from('workers')
+      .from('worker_directory')
       .select('id, full_name, daily_rate')
       .eq('org_id', orgId)
       .is('deleted_at', null),
@@ -273,7 +274,7 @@ function LegendDot({ color, label }: { color: string; label: string }) {
   );
 }
 
-export default function AnalyticsScreen() {
+function AnalyticsScreenContent() {
   const tc = useTokenColor();
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgChecked, setOrgChecked] = useState(false);
@@ -856,5 +857,16 @@ function Header() {
         Analyses
       </Text>
     </XStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function AnalyticsScreen() {
+  return (
+    <MoneyGate title="Analyses">
+      <AnalyticsScreenContent />
+    </MoneyGate>
   );
 }

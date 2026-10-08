@@ -2,19 +2,19 @@
 
 import type { Project, ProjectExpense, ProjectStatus } from '@dala/shared-types';
 import { Button, Card, DetailHeader, EmptyState, StatusBadge } from '@dala/ui-web';
-import type { CreateProjectInput } from '@dala/validation';
+import { PROJECT_TYPES, type CreateProjectInput } from '@dala/validation';
 import { BuildingsIcon, PencilSimpleIcon, PlusIcon } from '@phosphor-icons/react';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+
+import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
+import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 
 import type { UpdateProjectInput } from '../actions';
 import type { ProjectDashboardData } from '../getProjectDashboard';
 import { ProjectExpenseFormModal } from '../ProjectExpenseFormModal';
 import { ProjectFormModal } from '../ProjectFormModal';
 import { ProjectRoster } from '../ProjectRoster';
-
-import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
-import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
 
 /**
  * apps/web/src/app/(contractor)/projects/[projectId]/ProjectDetail.tsx
@@ -50,6 +50,19 @@ const BUDGET_ALERT_LABEL: Record<ProjectDashboardData['budgetAlertLevel'], strin
   over100: 'Budget dépassé',
 };
 
+// Field-coverage pass — project_type was captured at creation but never
+// displayed anywhere on the detail page. Same label set ProjectFormModal
+// already defines locally (not shared/exported from @dala/validation), so
+// duplicated here rather than reaching into that file's internals.
+const PROJECT_TYPE_LABEL: Record<(typeof PROJECT_TYPES)[number], string> = {
+  residentiel: 'Résidentiel',
+  commercial: 'Commercial',
+  industriel: 'Industriel',
+  renovation: 'Rénovation',
+  infrastructure: 'Infrastructure',
+  autre: 'Autre',
+};
+
 function formatBudget(value: number | null): string {
   if (value == null) return '—';
   return `${value.toLocaleString('fr-TN')} TND`;
@@ -69,7 +82,7 @@ export function ProjectDetail({
   createProject,
   updateProject,
 }: {
-  project: Project;
+  project: Project & { signed_cover_photo_url: string | null };
   expenses: ProjectExpense[];
   dashboard: ProjectDashboardData;
   orgId: string;
@@ -78,6 +91,10 @@ export function ProjectDetail({
   updateProject: UpdateProjectAction;
 }) {
   const router = useRouter();
+  // owner/manager == the roles that may see money. Viewers (Observateur) are money-blind since
+  // migration 0103: expenses and invoices come back empty for them, so progress, invoiced total
+  // and the expense ledger would read 0 / empty — hidden instead. Presentation only.
+  const showMoney = canWrite;
   const [editOpen, setEditOpen] = useState(false);
   const [expenseModalOpen, setExpenseModalOpen] = useState(false);
 
@@ -98,6 +115,7 @@ export function ProjectDetail({
         backHref="/projects"
         backLabel="Chantiers"
         icon={BuildingsIcon}
+        avatarUrl={project.signed_cover_photo_url}
         title={project.name}
         status={
           <StatusBadge variant={STATUS_VARIANT[project.status]}>
@@ -108,6 +126,18 @@ export function ProjectDetail({
           { label: 'Client', value: project.client_name ?? 'Non renseigné' },
           { label: 'Adresse', value: project.address ?? 'Non renseignée' },
           { label: 'Budget total', value: formatBudget(project.budget_total) },
+          {
+            label: 'Type de projet',
+            value: project.project_type
+              ? PROJECT_TYPE_LABEL[project.project_type]
+              : 'Non renseigné',
+          },
+          {
+            label: 'Date de début',
+            value: project.start_date
+              ? new Date(project.start_date).toLocaleDateString('fr-TN')
+              : 'Non renseignée',
+          },
         ]}
         actions={
           <Button variant="secondary" onClick={() => setEditOpen(true)}>
@@ -118,27 +148,31 @@ export function ProjectDetail({
       />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs text-neutral-500">Progression</p>
-          <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-            {budgetConsumed != null ? `${budgetConsumed.toFixed(0)}%` : '—'}
-          </p>
-          <div className="mt-3">
-            <ProgressBar value={budgetConsumed ?? 0} tone={progressTone} />
-          </div>
-        </Card>
+        {showMoney && (
+          <Card className="p-4">
+            <p className="text-xs text-neutral-500">Progression</p>
+            <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
+              {budgetConsumed != null ? `${budgetConsumed.toFixed(0)}%` : '—'}
+            </p>
+            <div className="mt-3">
+              <ProgressBar value={budgetConsumed ?? 0} tone={progressTone} />
+            </div>
+          </Card>
+        )}
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Budget total</p>
           <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
             {formatBudget(project.budget_total)}
           </p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-neutral-500">Total facturé</p>
-          <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
-            {formatBudget(dashboard.invoicedAmount)}
-          </p>
-        </Card>
+        {showMoney && (
+          <Card className="p-4">
+            <p className="text-xs text-neutral-500">Total facturé</p>
+            <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
+              {formatBudget(dashboard.invoicedAmount)}
+            </p>
+          </Card>
+        )}
         <Card className="p-4">
           <p className="text-xs text-neutral-500">Ouvriers actifs (7 jours)</p>
           <p className="font-display mt-1 text-2xl font-semibold text-neutral-900">
@@ -147,43 +181,45 @@ export function ProjectDetail({
         </Card>
       </div>
 
-      <SectionCard
-        title="Budget du chantier"
-        description="Consommation réelle calculée sur les dépenses enregistrées."
-      >
-        <div>
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-medium text-neutral-900">Budget consommé</span>
-            <span className="text-neutral-500">
-              {budgetConsumed != null ? `${budgetConsumed.toFixed(0)}%` : '—'}
-            </span>
+      {showMoney && (
+        <SectionCard
+          title="Budget du chantier"
+          description="Consommation réelle calculée sur les dépenses enregistrées."
+        >
+          <div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="font-medium text-neutral-900">Budget consommé</span>
+              <span className="text-neutral-500">
+                {budgetConsumed != null ? `${budgetConsumed.toFixed(0)}%` : '—'}
+              </span>
+            </div>
+            <div className="mt-2">
+              <ProgressBar value={budgetConsumed ?? 0} tone={progressTone} />
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <StatusBadge variant={statusTone}>
+                {budgetConsumed != null
+                  ? budgetConsumed < 80
+                    ? 'Sous contrôle'
+                    : budgetConsumed <= 100
+                      ? 'À surveiller'
+                      : 'Dépassement'
+                  : '—'}
+              </StatusBadge>
+              <span className="text-sm text-neutral-500">{formatBudget(expensesTotal)} dépensés</span>
+              <span className="text-xs text-neutral-400">
+                · Alerte budget : {BUDGET_ALERT_LABEL[dashboard.budgetAlertLevel]}
+              </span>
+            </div>
+            {dashboard.lastJournalDate && (
+              <p className="mt-3 text-xs text-neutral-500">
+                Dernière entrée de journal :{' '}
+                {new Date(dashboard.lastJournalDate).toLocaleDateString('fr-TN')}
+              </p>
+            )}
           </div>
-          <div className="mt-2">
-            <ProgressBar value={budgetConsumed ?? 0} tone={progressTone} />
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <StatusBadge variant={statusTone}>
-              {budgetConsumed != null
-                ? budgetConsumed < 80
-                  ? 'Sous contrôle'
-                  : budgetConsumed <= 100
-                    ? 'À surveiller'
-                    : 'Dépassement'
-                : '—'}
-            </StatusBadge>
-            <span className="text-sm text-neutral-500">{formatBudget(expensesTotal)} dépensés</span>
-            <span className="text-xs text-neutral-400">
-              · Alerte budget : {BUDGET_ALERT_LABEL[dashboard.budgetAlertLevel]}
-            </span>
-          </div>
-          {dashboard.lastJournalDate && (
-            <p className="mt-3 text-xs text-neutral-500">
-              Dernière entrée de journal :{' '}
-              {new Date(dashboard.lastJournalDate).toLocaleDateString('fr-TN')}
-            </p>
-          )}
-        </div>
-      </SectionCard>
+        </SectionCard>
+      )}
 
       <SectionCard title="Équipe du chantier" description="Ouvriers affectés à ce chantier.">
         <ProjectRoster
@@ -193,58 +229,60 @@ export function ProjectDetail({
         />
       </SectionCard>
 
-      <SectionCard
-        title="Dépenses du chantier"
-        description="Matériaux, carburant, sous-traitance et autres frais liés au projet."
-        actions={
-          <Button variant="secondary" onClick={() => setExpenseModalOpen(true)}>
-            <PlusIcon size={16} className="me-1.5 inline" />
-            Ajouter une dépense
-          </Button>
-        }
-      >
-        {expenses.length === 0 ? (
-          <EmptyState
-            icon={BuildingsIcon}
-            title="Aucune dépense enregistrée"
-            description="Ajoutez un premier frais pour faire apparaître le budget consommé réel."
-            actionLabel="Ajouter une dépense"
-            onAction={() => setExpenseModalOpen(true)}
-          />
-        ) : (
-          <div className="space-y-3">
-            {expenses.map((expense) => (
-              <Card key={expense.id} className="p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-medium text-neutral-900">
-                      {expense.category === 'materiaux'
-                        ? 'Matériaux'
-                        : expense.category === 'carburant'
-                          ? 'Carburant'
-                          : expense.category === 'sous_traitance'
-                            ? 'Sous-traitance'
-                            : 'Autre'}
-                    </p>
-                    <p className="mt-1 text-sm text-neutral-500">
-                      {expense.description ?? 'Aucune description'}
-                    </p>
-                    <p className="mt-1 text-xs text-neutral-400">{expense.expense_date}</p>
+      {showMoney && (
+        <SectionCard
+          title="Dépenses du chantier"
+          description="Matériaux, carburant, sous-traitance et autres frais liés au projet."
+          actions={
+            <Button variant="secondary" onClick={() => setExpenseModalOpen(true)}>
+              <PlusIcon size={16} className="me-1.5 inline" />
+              Ajouter une dépense
+            </Button>
+          }
+        >
+          {expenses.length === 0 ? (
+            <EmptyState
+              icon={BuildingsIcon}
+              title="Aucune dépense enregistrée"
+              description="Ajoutez un premier frais pour faire apparaître le budget consommé réel."
+              actionLabel="Ajouter une dépense"
+              onAction={() => setExpenseModalOpen(true)}
+            />
+          ) : (
+            <div className="space-y-3">
+              {expenses.map((expense) => (
+                <Card key={expense.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-neutral-900">
+                        {expense.category === 'materiaux'
+                          ? 'Matériaux'
+                          : expense.category === 'carburant'
+                            ? 'Carburant'
+                            : expense.category === 'sous_traitance'
+                              ? 'Sous-traitance'
+                              : 'Autre'}
+                      </p>
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {expense.description ?? 'Aucune description'}
+                      </p>
+                      <p className="mt-1 text-xs text-neutral-400">{expense.expense_date}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-display text-xl font-semibold text-neutral-900">
+                        {formatBudget(Number(expense.amount))}
+                      </p>
+                      {expense.receipt_photo_url && (
+                        <p className="text-success mt-1 text-xs">Justificatif joint</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-display text-xl font-semibold text-neutral-900">
-                      {formatBudget(Number(expense.amount))}
-                    </p>
-                    {expense.receipt_photo_url && (
-                      <p className="text-success mt-1 text-xs">Justificatif joint</p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )}
-      </SectionCard>
+                </Card>
+              ))}
+            </div>
+          )}
+        </SectionCard>
+      )}
 
       {editOpen && (
         <ProjectFormModal
@@ -253,9 +291,10 @@ export function ProjectDetail({
           updateProject={updateProject}
           onSaved={() => router.refresh()}
           onClose={() => setEditOpen(false)}
+          activeOrgId={orgId}
         />
       )}
-      {expenseModalOpen && (
+      {showMoney && expenseModalOpen && (
         <ProjectExpenseFormModal
           orgId={orgId}
           projects={[{ id: project.id, name: project.name, status: project.status }]}

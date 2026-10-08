@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 
 import { CHALLENGE_COOKIE, signChallengeToken } from '@/lib/admin-session';
 import { getClientIp } from '@/lib/get-client-ip';
+import { checkLoginAttempt, LOGIN_WINDOW_SECONDS, passwordMaxAttempts } from '@/lib/login-rate-limit';
 import { getAdminSupabaseClient, getAuthOnlySupabaseClient } from '@/lib/supabase/admin-client';
 import { generateTotpSecret } from '@/lib/totp';
 
@@ -25,6 +26,21 @@ export async function POST(request: Request) {
 
   if (!email || !password) {
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 400 });
+  }
+
+  // Per-email throttle (applied to whatever email is submitted, so it reveals
+  // nothing about which accounts exist). Fails closed — see login-rate-limit.ts.
+  const verdict = await checkLoginAttempt(
+    getAdminSupabaseClient(),
+    `admin-login:${email}`,
+    passwordMaxAttempts(),
+    LOGIN_WINDOW_SECONDS,
+  );
+  if (verdict !== 'allowed') {
+    return NextResponse.json(
+      { error: verdict === 'limited' ? 'Trop de tentatives. Réessayez dans quelques minutes.' : GENERIC_ERROR },
+      { status: verdict === 'limited' ? 429 : 503 },
+    );
   }
 
   const authClient = getAuthOnlySupabaseClient();
@@ -87,7 +103,7 @@ export async function POST(request: Request) {
     pendingSecret,
   });
 
-  cookies().set(CHALLENGE_COOKIE, token, {
+  (await cookies()).set(CHALLENGE_COOKIE, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

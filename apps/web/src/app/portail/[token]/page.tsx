@@ -185,9 +185,9 @@ export default function ClientPortalPage() {
 
   useEffect(() => {
     if (token) void verify(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once
-    // per token, mirroring every other token-driven page in this app
+    // Runs once per token, mirroring every other token-driven page in this app
     // (accept-invite.tsx's mobile equivalent has the same shape).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
   async function handlePinSubmit(e: React.FormEvent) {

@@ -126,22 +126,43 @@ async function pushGenericUpsertTable(
   table: string,
   tableChanges: SyncTableChangeSet,
 ): Promise<void> {
-  const upsertRows = [
-    ...tableChanges.created.map((raw: Record<string, unknown>) => toUpsertRow(raw, true)),
-    ...tableChanges.updated.map((raw: Record<string, unknown>) => toUpsertRow(raw, false)),
-  ];
-
-  if (upsertRows.length > 0) {
-    const { error } = await supabase.from(table).upsert(upsertRows);
+  // CREATES are sent as INSERT ... ON CONFLICT (id) DO NOTHING. A plain
+  // .upsert() is INSERT ... ON CONFLICT DO UPDATE, which also needs an UPDATE
+  // right — and workers (who create attendance_records / materials) have
+  // none. So when a push committed on the server but the ack was lost (app
+  // killed, connection dropped) the automatic retry failed with an RLS error
+  // forever, which threw out of pushChanges and wedged the WHOLE sync queue.
+  // DO NOTHING makes the replay a no-op: the row is already there.
+  if (tableChanges.created.length > 0) {
+    const createdRows = tableChanges.created.map((raw: Record<string, unknown>) =>
+      toUpsertRow(raw, true),
+    );
+    const { error } = await supabase
+      .from(table)
+      .upsert(createdRows, { onConflict: 'id', ignoreDuplicates: true });
     if (error) {
-      throw new Error(`[sync] push upsert failed for table "${table}": ${error.message}`);
+      throw new Error(
+        `[sync] push insert failed for table "${table}" (${createdRows.length} row(s), code ${error.code}): ${error.message}`,
+      );
+    }
+  }
+
+  // UPDATES to rows that already exist server-side (managers editing).
+  if (tableChanges.updated.length > 0) {
+    const updatedRows = tableChanges.updated.map((raw: Record<string, unknown>) =>
+      toUpsertRow(raw, false),
+    );
+    const { error } = await supabase.from(table).upsert(updatedRows);
+    if (error) {
+      throw new Error(
+        `[sync] push update failed for table "${table}" (${updatedRows.length} row(s), code ${error.code}): ${error.message}`,
+      );
     }
   }
 
   if (tableChanges.deleted.length > 0) {
-    // No current write path in this app hard-deletes rows in either of
-    // these 2 tables (confirmed by repo-wide grep — see pullChanges.ts's
-    // matching note) — this branch exists for protocol completeness.
+    // No app write path hard-deletes rows from the device for these 2 tables;
+    // this branch exists for protocol completeness.
     const { error } = await supabase.from(table).delete().in('id', tableChanges.deleted);
     if (error) {
       throw new Error(`[sync] push delete failed for table "${table}": ${error.message}`);

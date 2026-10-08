@@ -1,4 +1,5 @@
 export { Avatar, AvatarStack } from './Avatar';
+export { AuthSplitPanel } from './AuthSplitPanel';
 export { Button } from './Button';
 export { Card } from './Card';
 export { ColumnPicker } from './ColumnPicker';
@@ -15,7 +16,7 @@ export { FilterBar } from './FilterBar';
 export { FilterSelect } from './FilterSelect';
 export { FormField } from './FormField';
 export { IconActionButton } from './IconActionButton';
-export { IconStatCard } from './IconStatCard';
+export { IconStatCard, IconStatCardSkeleton } from './IconStatCard';
 export { NoResultsState } from './NoResultsState';
 export { PageHero } from './PageHero';
 export { Pagination } from './Pagination';

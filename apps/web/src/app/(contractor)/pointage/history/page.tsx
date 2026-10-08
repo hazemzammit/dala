@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { AttendanceHistoryView } from './AttendanceHistoryView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * apps/web/src/app/(contractor)/pointage/history/page.tsx
@@ -53,7 +54,7 @@ export default async function Page() {
 
   const [{ data: workers }, { data: effectiveRows }, { data: rawRows }] = await Promise.all([
     supabase
-      .from('workers')
+      .from('worker_directory')
       .select(
         'id, org_id, full_name, email, phone, trade, daily_rate, user_id, created_at, deleted_at, photo_url',
       )

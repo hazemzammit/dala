@@ -61,7 +61,11 @@ export default function WelcomeScreen() {
   return (
     <YStack flex={1} backgroundColor="$neutral25">
       <XStack justifyContent="flex-end" paddingHorizontal="$4" paddingTop="$6">
-        <Text color="$neutral500" onPress={() => markSeenAndGo('/login')}>
+        <Text
+          color="$neutral500"
+          onPress={() => markSeenAndGo('/login')}
+          testID="welcome-skip"
+        >
           Passer
         </Text>
       </XStack>
@@ -72,6 +76,7 @@ export default function WelcomeScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={onScroll}
+        testID="welcome-pager"
       >
         {SLIDES.map((slide, i) => (
           <YStack
@@ -108,13 +113,21 @@ export default function WelcomeScreen() {
       <YStack paddingHorizontal="$4" paddingBottom="$6" gap="$3">
         {isLast ? (
           <>
-            <Button onPress={() => markSeenAndGo('/sign-up')}>Créer un compte</Button>
-            <Button variant="secondary" onPress={() => markSeenAndGo('/login')}>
+            <Button testID="welcome-cta-signup" onPress={() => markSeenAndGo('/sign-up')}>
+              Créer un compte
+            </Button>
+            <Button
+              testID="welcome-cta-login"
+              variant="secondary"
+              onPress={() => markSeenAndGo('/login')}
+            >
               J&apos;ai déjà un compte
             </Button>
           </>
         ) : (
-          <Button onPress={goNext}>Suivant</Button>
+          <Button testID="welcome-next" onPress={goNext}>
+            Suivant
+          </Button>
         )}
       </YStack>
     </YStack>

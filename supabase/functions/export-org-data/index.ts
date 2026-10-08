@@ -221,9 +221,27 @@ function toCsvSection(tableName: string, rows: unknown[]): string {
   return `== ${tableName} ==\n${header}\n${lines.join('\n')}`;
 }
 
+// A cell whose FIRST character is one of these opens as a live formula in
+// Excel/Sheets/LibreOffice, not as text — e.g. a project or worker NAME of
+// `=HYPERLINK("https://evil","x")` or `=cmd|'/c calc'!A1` would execute the
+// moment the exported file is opened (CSV/"formula" injection, CWE-1236).
+// Every column here comes straight from `admin.from(table).select('*')` with
+// no allowlist of which columns are "safe", so any text field in any
+// exported table (names, notes, descriptions, statuses...) needs the guard,
+// not just fields a person is likely to type a formula into.
+const FORMULA_LEADING_CHARS = new Set(['=', '+', '-', '@', '\t', '\r']);
+
 function escapeCsvValue(value: unknown): string {
   if (value === null || value === undefined) return '';
-  const str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  let str = typeof value === 'object' ? JSON.stringify(value) : String(value);
+  if (str.length > 0 && FORMULA_LEADING_CHARS.has(str[0]!)) {
+    // Prefixing with a single quote is the standard mitigation (OWASP CSV
+    // Injection): Excel/Sheets render the cell as plain text starting with
+    // the quote character rather than evaluating it, and the quote is
+    // visible rather than silently stripped, so the export cannot be used
+    // to smuggle a payload the recipient can't see.
+    str = `'${str}`;
+  }
   if (str.includes(',') || str.includes('"') || str.includes('\n')) {
     return `"${str.replace(/"/g, '""')}"`;
   }

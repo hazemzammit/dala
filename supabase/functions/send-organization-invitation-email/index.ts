@@ -24,7 +24,8 @@ import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
 import { withInvocationLog } from '../_shared/logInvocation.ts';
-import { sendEmail } from '../_shared/resend.ts';
+import { enforceRateLimits } from '../_shared/rateLimit.ts';
+import { escapeHtml, sendEmail } from '../_shared/resend.ts';
 
 Deno.serve(
   withInvocationLog('send-organization-invitation-email', async (req, ctx) => {
@@ -93,6 +94,25 @@ Deno.serve(
         return jsonResponse({ error: 'Réservé au propriétaire.' }, 403);
       }
 
+      // Throttle RESENDS: nothing here stopped an owner/manager from calling this
+      // in a loop while the invitation stays 'pending', which would relay unlimited
+      // e-mail to an arbitrary invited_email address through Dala's own Resend
+      // account (invite_organization_member/invite_org_to_project set no limit of
+      // their own on invitation creation either). Keyed by invitation (the address
+      // actually receiving mail) and by caller (bounds one member across many
+      // invitations). Fails OPEN: a limiter outage must not block a real invite.
+      const gate = await enforceRateLimits(
+        admin,
+        [
+          { key: `send-organization-invitation-email:invitation:${invitation.id}`, max: 5 },
+          { key: `send-organization-invitation-email:caller:${user.id}`, max: 30 },
+        ],
+        60 * 60,
+      );
+      if (!gate.allowed) {
+        return jsonResponse({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
+      }
+
       if (invitation.status !== 'pending') {
         // Not fatal to the caller's flow (the invite row itself is fine) —
         // just nothing to send. Mirrors accept-organization-invitation's
@@ -106,7 +126,9 @@ Deno.serve(
         .eq('id', invitation.org_id)
         .maybeSingle();
 
-      const orgName = org?.name ?? 'votre organisation';
+      // Escaped at interpolation, not at the source: org names are free text an
+      // owner can set to anything (see _shared/resend.ts's escapeHtml).
+      const orgName = escapeHtml(org?.name ?? 'votre organisation');
       const roleLabel = invitation.role === 'manager' ? 'Manager' : 'Observateur';
 
       // Mobile-only deep link (dala:// scheme, app.json) — matches what

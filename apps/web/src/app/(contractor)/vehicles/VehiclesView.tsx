@@ -3,26 +3,36 @@
 import type { Vehicle, VehicleStatus } from '@dala/shared-types';
 import {
   Button,
-  Card,
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterBar,
   FilterSelect,
   IconActionButton,
+  IconStatCard,
   PageHero,
   StatusBadge,
 } from '@dala/ui-web';
-import { CarIcon, EyeIcon, PencilSimpleIcon, PlusIcon, TrashIcon } from '@phosphor-icons/react';
+import {
+  CarIcon,
+  CheckCircleIcon,
+  EyeIcon,
+  PencilSimpleIcon,
+  PlusIcon,
+  TrashIcon,
+  TruckIcon,
+  WrenchIcon,
+} from '@phosphor-icons/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
-import { deleteVehicle } from './actions';
-import { VehicleFormModal } from './VehicleFormModal';
-
-import { SectionCard, StatusMetric } from '@/components/contractor/Screen';
+import { SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { deleteVehicle } from './actions';
+import { VehicleFormModal } from './VehicleFormModal';
 
 const STATUS_LABEL: Record<VehicleStatus, string> = {
   available: 'Disponible',
@@ -38,21 +48,13 @@ const STATUS_VARIANT: Record<VehicleStatus, 'success' | 'info' | 'warning'> = {
 
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; vehicle: Vehicle };
 
-// FLAGGED FOR HAZEM (plan Step 12b): brand/model, driver/currentProject, and
-// mileage are removed — no data source exists anywhere (§2.9 rule: no source
-// → remove; vehicle_maintenance_log 0073 keeps only log_date/description/
-// cost, no odometer). `fuelCost`/`maintenanceStatus` stay fabricated pending
-// the open latest-entry-vs-date-range rendering decision (§7.1).
-type VehicleRow = Vehicle & {
-  fuelCost: number;
-  maintenanceStatus: string;
-};
+type VehicleRow = Vehicle & { signed_photo_url?: string | null };
 
-function formatMoney(value: number): string {
-  return `${value.toLocaleString('fr-TN')} TND`;
-}
-
-export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
+export function VehiclesView({
+  vehicles,
+}: {
+  vehicles: (Vehicle & { signed_photo_url?: string | null })[];
+}) {
   const [rows, setRows] = useState(vehicles);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
   const [query, setQuery] = useState('');
@@ -70,22 +72,19 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     }
   }, [searchParams]);
 
-  // FLAGGED FOR HAZEM (plan Step 12b) — resolved + still pending: brand,
-  // model, driver, currentProject, mileage, and the unused derived
-  // `availability` field are GONE (decisions 5 & 6 + §7.1: no source).
-  // `fuelCost`/`maintenanceStatus` below remain fabricated from array index:
-  // vehicle_maintenance_log (0073) is append-only history, and computing a
-  // "current" value from it (latest log entry? sum over a date range?) is
-  // the still-open product decision — same clearly-fake placeholder as
-  // before until that call is made.
-  const displayRows = useMemo<VehicleRow[]>(() => {
-    return rows.map((vehicle, index) => ({
-      ...vehicle,
-      fuelCost: 180 + index * 35,
-      maintenanceStatus:
-        index % 3 === 0 ? 'Bientôt due' : index % 2 === 0 ? 'État sain' : 'Inspection en attente',
-    }));
-  }, [rows]);
+  // Web shell field-coverage pass — the previous `displayRows` memo bolted
+  // on `fuelCost`/`maintenanceStatus`, fabricated from each row's array
+  // index (180 + index * 35, a literal index % 3 lookup table). No column
+  // backs either one — vehicle_maintenance_log (0073) is append-only
+  // history and computing a "current" value from it is a real, still-open
+  // product decision (what does "current" mean: latest entry? a date
+  // range?). Decision made: drop both columns entirely rather than keep
+  // showing fabricated numbers while that decision is pending — the
+  // detail page already made the same call (shows "—" there instead of
+  // inventing a number). `displayRows` collapses to `rows` directly; kept
+  // as its own binding so the highlight/filter effects below don't need
+  // touching.
+  const displayRows = rows;
 
   // §2.7 global search — clicking a "vehicle" result in the top-bar
   // dropdown deep-links to the vehicle's detail page (§2.9), same as
@@ -148,7 +147,22 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
     {
       key: 'name',
       header: 'Véhicule',
-      render: (v) => <div className="font-medium text-neutral-900">{v.name}</div>,
+      render: (v) => (
+        <div className="flex items-center gap-2.5">
+          {v.signed_photo_url ? (
+            <img
+              src={v.signed_photo_url}
+              alt=""
+              className="h-12 w-12 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="rounded-lg bg-accent-50 text-accent-700 flex h-12 w-12 shrink-0 items-center justify-center text-sm font-semibold">
+              {v.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="font-medium text-neutral-900">{v.name}</div>
+        </div>
+      ),
       sortValue: (v) => v.name,
     },
     {
@@ -165,25 +179,12 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       align: 'right',
     },
     {
-      key: 'fuelCost',
-      header: 'Coût carburant',
-      render: (v) => formatMoney(v.fuelCost),
-      sortValue: (v) => v.fuelCost,
-      align: 'right',
-    },
-    {
       key: 'status',
       header: 'Disponibilité',
       render: (v) => (
         <StatusBadge variant={STATUS_VARIANT[v.status]}>{STATUS_LABEL[v.status]}</StatusBadge>
       ),
       sortValue: (v) => v.status,
-    },
-    {
-      key: 'maintenanceStatus',
-      header: 'État de maintenance',
-      render: (v) => v.maintenanceStatus,
-      sortValue: (v) => v.maintenanceStatus,
     },
     {
       key: 'actions',
@@ -239,7 +240,7 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
       )}
 
       <PageHero
-        eyebrow="Flotte"
+        icon={CarIcon}
         title="Véhicules"
         description="Suivez les véhicules, les affectations, la maintenance et la disponibilité dans une seule vue."
         actions={
@@ -250,44 +251,41 @@ export function VehiclesView({ vehicles }: { vehicles: Vehicle[] }) {
         }
       />
 
-      <SectionCard
-        title="Liste des véhicules"
-        actions={
-          <>
-            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un véhicule" />
-            <FilterSelect
-              aria-label="Filtrer par statut"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as VehicleStatus | 'all')}
-              options={[
-                { value: 'all', label: 'Tous les statuts' },
-                { value: 'available', label: 'Disponible' },
-                { value: 'in_use', label: 'En service' },
-                { value: 'maintenance', label: 'Maintenance' },
-              ]}
-            />
-          </>
-        }
-      >
+      <FilterBar>
+        <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un véhicule" />
+        <FilterSelect
+          aria-label="Filtrer par statut"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as VehicleStatus | 'all')}
+          options={[
+            { value: 'all', label: 'Tous les statuts' },
+            { value: 'available', label: 'Disponible' },
+            { value: 'in_use', label: 'En service' },
+            { value: 'maintenance', label: 'Maintenance' },
+          ]}
+        />
+      </FilterBar>
+
+      <SectionCard title="Liste des véhicules">
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Taille du parc
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.length}
-            </p>
-          </Card>
-          <StatusMetric label="Disponibles" count={availableCount} variant="success" />
-          <StatusMetric
-            label="Affectés"
-            count={filteredRows.filter((vehicle) => vehicle.status === 'in_use').length}
-            variant="info"
+          <IconStatCard
+            icon={CarIcon}
+            tone="accent"
+            label="Taille du parc"
+            value={filteredRows.length}
           />
-          <StatusMetric
+          <IconStatCard icon={CheckCircleIcon} tone="success" label="Disponibles" value={availableCount} />
+          <IconStatCard
+            icon={TruckIcon}
+            tone="categoricalBlue"
+            label="Affectés"
+            value={filteredRows.filter((vehicle) => vehicle.status === 'in_use').length}
+          />
+          <IconStatCard
+            icon={WrenchIcon}
+            tone="warning"
             label="À réviser"
-            count={filteredRows.filter((vehicle) => vehicle.status === 'maintenance').length}
-            variant="warning"
+            value={filteredRows.filter((vehicle) => vehicle.status === 'maintenance').length}
           />
         </div>
 

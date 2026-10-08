@@ -3,10 +3,10 @@ import { PageHero } from '@dala/ui-web';
 import { DownloadSimpleIcon } from '@phosphor-icons/react/ssr';
 import { redirect } from 'next/navigation';
 
-import { DataExportForm } from './DataExportForm';
-
 import { SectionCard } from '@/components/contractor/Screen';
 import { createClient } from '@/lib/supabase/server';
+
+import { DataExportForm } from './DataExportForm';
 
 /**
  * apps/web/src/app/(contractor)/settings/data-export/page.tsx
@@ -49,7 +49,7 @@ export default async function Page() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Mon compte"
+        icon={DownloadSimpleIcon}
         title="Exporter mes données"
         description="Téléchargez l'ensemble des données de votre entreprise au format de votre choix."
       />

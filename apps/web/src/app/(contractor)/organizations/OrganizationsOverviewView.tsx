@@ -164,9 +164,9 @@ export function OrganizationsOverviewView({ userId }: { userId: string }) {
   }
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Multi-organisation"
+        icon={GlobeHemisphereWestIcon}
         title="Vue d'ensemble"
         description="Entreprises que vous possédez — chiffres calculés indépendamment pour chacune, jamais combinés entre organisations."
       />
@@ -210,7 +210,7 @@ export function OrganizationsOverviewView({ userId }: { userId: string }) {
           </div>
         )}
       </SectionCard>
-    </>
+    </div>
   );
 }
 

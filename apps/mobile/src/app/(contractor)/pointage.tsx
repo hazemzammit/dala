@@ -171,7 +171,7 @@ function todayISO(): string {
 
 async function fetchWorkers(orgId: string): Promise<Worker[]> {
   const { data, error } = await supabase
-    .from('workers')
+    .from('worker_directory')
     .select('*')
     .eq('org_id', orgId)
     .order('full_name');

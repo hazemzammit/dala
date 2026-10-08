@@ -6,6 +6,7 @@ import { ScrollView, Text, XStack, YStack } from 'tamagui';
 
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
+import { Logo } from '@/components/ui/Logo';
 import { PasswordStrengthMeter } from '@/components/ui/PasswordStrengthMeter';
 import { Toggle } from '@/components/ui/Toggle';
 import { haptics } from '@/lib/haptics';
@@ -30,6 +31,13 @@ import { supabase } from '@/lib/supabase';
  * bypassing the app entirely could still hit `sign-up` without ever
  * having agreed — closing that fully is server-side schema work, not
  * done here.
+ *
+ * Logo (2026-09-30) — Doc 03 §3.3 specifies "single scrollable form, `Dala`
+ * logo at top, form fields..." and the logo had never been rendered (no
+ * screen in apps/mobile imported a logo asset before this — `src/assets`
+ * held only `icons-3d/` and `illustrations/`). Rendered through the shared
+ * `components/ui/Logo.tsx`, the same component login.tsx now uses, so the
+ * two screens can't drift apart on the brand mark.
  */
 const PRIVACY_POLICY_URL = 'https://dala.tn/confidentialite';
 
@@ -116,6 +124,11 @@ export default function SignUpScreen() {
   return (
     <ScrollView backgroundColor="$neutral25">
       <YStack padding="$4" gap="$4">
+        {/* Doc 03 §3.3 — "`Dala` logo at top". Shared Logo component, same
+            sizing as login.tsx (see Logo.tsx / login.tsx's header for the
+            web-parity reasoning). */}
+        <Logo />
+
         <Text fontFamily="$display" fontSize={23} fontWeight="600">
           Créer votre compte
         </Text>

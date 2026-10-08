@@ -18,7 +18,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
 
 import { corsHeaders } from '../_shared/cors.ts';
-import { sendEmail } from '../_shared/resend.ts';
+import { enforceRateLimits, extractClientIp } from '../_shared/rateLimit.ts';
+import { escapeHtml, sendEmail } from '../_shared/resend.ts';
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -53,6 +54,23 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
     );
 
+    // Throttle sign-ups per IP and per e-mail. The comment further down assumed Supabase's own
+    // rate limiting covers this endpoint — it does not: generateLink() below goes through the
+    // ADMIN API with the service role, which bypasses Auth's platform limits, so this function
+    // could be used to mass-create accounts + organisations and to send unlimited confirmation
+    // e-mails to any address. Fails OPEN (a limiter outage must not block real sign-ups).
+    const gate = await enforceRateLimits(
+      admin,
+      [
+        { key: `sign-up:ip:${extractClientIp(req)}`, max: 5 },
+        { key: `sign-up:email:${String(email).toLowerCase().trim()}`, max: 3 },
+      ],
+      60 * 60,
+    );
+    if (!gate.allowed) {
+      return jsonResponse({ error: 'Trop de tentatives. Réessayez plus tard.' }, 429);
+    }
+
     // Doc 01 §1.3.3 step 2+4: creates the (unconfirmed) auth.users row and
     // returns a signed, time-limited confirmation link in one call — the
     // handle_new_auth_user trigger (migration 0002) creates the matching
@@ -65,8 +83,8 @@ Deno.serve(async (req) => {
     });
 
     if (linkError || !linkData?.user) {
-      // Doc 01 §1.3.8: 3 sign-up attempts/hour/IP is enforced by Supabase's
-      // own rate limiting on this endpoint; a duplicate-email error surfaces
+      // (Rate limiting: enforced above via check_rate_limit — NOT by Supabase Auth, see the
+      // comment there.) A duplicate-email error surfaces
       // here as a normal validation message (sign-up, unlike forgot-password,
       // isn't required to hide whether an email is already registered).
       const message = linkError?.message?.includes('already registered')
@@ -195,9 +213,3 @@ function jsonResponse(body: unknown, status: number) {
   });
 }
 
-function escapeHtml(input: string): string {
-  return input.replace(
-    /[&<>"']/g,
-    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!,
-  );
-}

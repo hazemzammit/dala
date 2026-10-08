@@ -6,17 +6,21 @@ it. Full detail always lives in the spec — this is a map, not a duplicate.
 
 ## Monorepo shape
 
-pnpm workspaces + Turborepo. Three deployable apps, four shared packages:
+pnpm workspaces + Turborepo. Three deployable apps, five shared packages:
 
 ```
-apps/mobile   → Expo/React Native, contractor + worker
-apps/web      → Next.js 14, full contractor parity (Doc 00 §0.4)
-apps/admin    → Next.js 14, separate deployment, Platform Admin only
+apps/mobile   → Expo/React Native ~54, contractor + worker (Tamagui)
+apps/web      → Next.js 15.5.25 / React 19.1.0, full contractor parity (Doc 00 §0.4)
+apps/admin    → Next.js 15.5.25 / React 19.1.0, separate deployment, Platform Admin only
 packages/shared-types   → TS interfaces mirroring the DB schema
 packages/validation     → Zod schemas — single source of truth for valid input
 packages/design-tokens  → colors/type/spacing/motion — single source of truth for visuals
+packages/ui-web         → shared React components — consumed by web + admin ONLY
 packages/config         → shared Tailwind preset, lint/tsconfig bases
 ```
+
+Re-derive rather than trust: `Get-ChildItem packages`, and the `next`/`react`
+versions in `apps/web/package.json` and `apps/admin/package.json`.
 
 **Why `admin` is a separate app, not a route group inside `web`**: Doc 01
 §1.1 requires it to be a different deployment, different domain, different
@@ -31,6 +35,141 @@ instead is everything _behind_ the UI — the design tokens both consume, the
 validation both run, the types both use, and the RLS-enforced backend both
 call. Doc 00's whole "one product, two surfaces" claim rests on that shared
 layer, not on shared JSX.
+
+## `packages/ui-web` — the one shared UI kit (web + admin only)
+
+Both Next.js apps import their primitives from `@dala/ui-web`. **`apps/mobile`
+does not** — its `package.json` has no `@dala/ui-web` entry, because Tamagui is
+a different rendering target and sharing JSX across the two isn't possible.
+That's a deliberate call, not an omission (see the section above).
+
+`packages/ui-web/src/index.ts` is the barrel and the inventory:
+**34 named runtime exports plus 6 exported types**, and the package depends only
+on `@dala/design-tokens`, with React / `react-dom` / `next` /
+`@phosphor-icons/react` as peers (`packages/ui-web/package.json`). Count it
+yourself rather than trusting that number:
+`Get-Content packages/ui-web/src/index.ts`.
+
+**Every change here is additive. No exceptions.** `apps/web` and `apps/admin`
+both build against this package, so renaming a prop or removing an export breaks
+the _other_ app's build — including `apps/web`, whose own page code the admin
+overhaul is forbidden to touch. New optional props, new exported components, new
+token keys; never a rename or a removal. That rule is hard-coded in `AGENTS.md`,
+and it is what lets the admin overhaul refresh the shared components while
+`apps/web` keeps compiling untouched.
+
+**Local components that are deliberately NOT in the shared kit** — don't
+"helpfully" fold these in without checking first:
+
+- `apps/admin/src/components/ui/SearchInput.tsx` and `NotesPanel.tsx` — genuinely
+  admin-only.
+- `apps/web/src/components/ui/ConfirmDialog.tsx`, `LinkButton.tsx`, `Switch.tsx`,
+  `NavItem.tsx`, `Chart.tsx`, `PasswordStrengthMeter.tsx` — web has its **own**
+  `ConfirmDialog` even though `@dala/ui-web` exports one. That duplication is
+  the subject of `docs/audits/web-app-consistency-audit-and-plan.md`.
+- **Neither app has a shared `SearchInput`.** Admin and web each own a local
+  file. A future pass could fold both into `packages/ui-web`, additively.
+
+## `apps/web`: Server Actions, not API routes
+
+`apps/web/src/app/api/` **does not exist**. There is no REST layer in the
+contractor web app at all. Its server-side writes go through **18**
+`actions.ts` files, each a Next.js Server Action (`'use server'` at the top),
+one per feature area — `projects/actions.ts`, `dispatch/actions.ts`,
+`settings/roles/actions.ts`, and so on.
+
+That's the opposite of `apps/admin`, which is 36 REST route handlers under
+`src/app/api/admin/`. The split is intentional rather than drift:
+
+- **Web** is the contractor's own surface. Every write is scoped by the caller's
+  own Supabase session, so a Server Action constructs the server client
+  (`lib/supabase/server.ts`), calls Supabase, and revalidates the page. RLS does
+  the authorization — there's no cross-tenant privileged operation to gate.
+- **Admin** is a cross-tenant operator surface. Its writes need a _platform_
+  identity no contractor session has, so it needs an explicit route with an
+  explicit role check (`requireRole`, below) and a service-role client. A Server
+  Action would hide that privilege escalation behind a form post instead of
+  making it a visible, auditable endpoint.
+
+**If you're adding a write to `apps/web`, write a Server Action in the feature's
+own `actions.ts`. Don't introduce a route handler to match admin** — the two apps
+having different shapes here is the design, not an inconsistency to fix.
+
+## `apps/admin`: a separate surface with its own auth model
+
+Admin deliberately does **not** use Supabase Auth's session cookie — that's the
+regular 30-day contractor/worker model. `apps/admin/src/lib/admin-session/index.ts`
+issues two short-lived signed JWTs (`jose`, HS256, keyed by
+`ADMIN_SESSION_SECRET` — a dedicated secret, never the Supabase service-role key):
+
+| Cookie            | Issued when                      | Lifetime               | Verified                           |
+| ----------------- | -------------------------------- | ---------------------- | ---------------------------------- |
+| `admin_challenge` | step 1 (email + password) passes | 5 minutes              | locally, by step 2 (TOTP)          |
+| `admin_session`   | step 2 (TOTP) passes             | 2 hours, never renewed | JWT locally; DB row for revocation |
+
+That two-layer split matters: the **JWT's `exp` is checked locally** in the Edge
+middleware (`src/middleware.ts`) so the gate stays fast and doesn't depend on the
+DB being up, while the **`admin_sessions` row is the authority** for anything
+that must be revocable mid-session (logout, forced revocation, impersonation
+state). That check lives in `src/lib/require-admin-session.ts`, used by every
+route handler and every `(admin)` server component. **Middleware alone is never
+sufficient for an authorization decision here.**
+
+**The IP allowlist is also two layers, and they are not the same list.**
+`ADMIN_IP_ALLOWLIST` (env, comma-separated) is a platform-wide gate in the Edge
+middleware — and **an empty value disables it entirely**, which logs a loud
+production error rather than failing quietly. The per-admin
+`platform_admins.allowed_ips` column is a second, narrower layer enforced inside
+`login/step1` (Node runtime, where a DB read is possible).
+
+**Roles**: exactly three, and every mutating route gates on them via
+`requireRole(ctx, [...])` from `src/lib/require-role.ts`.
+
+| Role          | May do                                                               |
+| ------------- | -------------------------------------------------------------------- |
+| `super_admin` | Everything, incl. managing other admins, raw SQL, deleting orgs      |
+| `admin`       | Everything except managing admins, raw SQL, deleting orgs            |
+| `support`     | Read-only + impersonation + password resets. No data/billing changes |
+
+`requireRole` returns a 403 `NextResponse` (message in French, matching the UI
+language) rather than throwing — the caller decides whether to return it — so it
+composes exactly the way every route already composes the session check:
+`const ctx = await getAdminSessionContext(); if (!ctx) return 401;`.
+
+**Login rate limiting fails closed, unlike everywhere else in this product.**
+`src/lib/login-rate-limit.ts` wraps the shared `check_rate_limit()` RPC and
+returns `'unavailable'` when the limiter itself errors — and the admin login
+routes treat `'unavailable'` as **refusal**. The customer-facing Edge Function
+limiter deliberately fails _open_ (a limiter outage must not take the product
+down); the admin console is the highest-privilege surface, so the trade-off is
+reversed there. Defaults: 10 password attempts and 5 TOTP attempts per 15-minute
+window.
+
+**The Database Explorer's read path does not trust its own SQL classifier.**
+`src/lib/db-explorer/classify-sql.ts` is a first-word/keyword heuristic, and it
+was demonstrated to label `with d as (delete ...) select ...`,
+`explain analyze delete ...`, and write-capable function calls as "read".
+`src/lib/db-explorer/read-only-query.ts` therefore makes **Postgres** enforce
+read-only instead:
+
+1. `BEGIN READ ONLY` — any write, including one hidden in a CTE or a volatile
+   function, fails with `25006`.
+2. A throw-away `SELECT 1` first, so a snapshot exists and the statement can no
+   longer flip the transaction to read-write.
+3. The statement is sent as a **named prepared statement**: the extended protocol
+   rejects multi-statement strings, so `select 1; commit; delete ...` cannot
+   escape the transaction. (Passing `values: []` does _not_ force this —
+   verified.)
+4. Server-side statement/lock/idle timeouts **plus** a watchdog that
+   `pg_terminate_backend()`s the session, because a statement can raise its own
+   `statement_timeout` with `set_config()`.
+5. `release(true)` afterwards, so no session state — prepared statements, GUCs,
+   roles — survives to the next admin.
+6. A row cap, so `select * from big_table` can't exhaust server memory.
+
+Backed by migration `0104`'s dedicated read-only Postgres role. The helper takes
+the `Pool` as a parameter rather than importing `server-only`, specifically so it
+can be unit-tested against a real Postgres.
 
 ## The one authorization pattern
 
@@ -106,7 +245,18 @@ layer. Concretely:
 
 ## UI component inventory: what exists before writing a new one
 
-Before building a one-off picker, sheet, or input component, check
+**Two component kits exist, and which one you check depends on the surface.**
+
+- **`apps/web` and `apps/admin`** → `packages/ui-web/src/index.ts`. That barrel
+  _is_ the inventory; see §"`packages/ui-web`" above for the additive-only rule
+  and for the list of local components deliberately kept out of the kit.
+  Genuinely surface-specific files live in `apps/web/src/components/ui/` and
+  `apps/admin/src/components/ui/`.
+- **`apps/mobile`** → `apps/mobile/src/components/ui/`, inventoried below.
+  Nothing in this list is available to the two web apps, and nothing in
+  `@dala/ui-web` is available to mobile.
+
+Before building a one-off picker, sheet, or input component on mobile, check
 `apps/mobile/src/components/ui/` for an existing one:
 
 - **DatePicker.tsx** — date-only bottom-sheet picker (backward-only variant
@@ -335,8 +485,8 @@ in this list.
 
 ## Mobile data-fetching: React Query, adopted incrementally
 
-`@tanstack/react-query` was an installed, unused dependency until
-`docs/PHASE_1_BRIEF.md` (improvement-plan Phase 1). One `QueryClient`
+`@tanstack/react-query` was an installed, unused dependency until the
+improvement-plan's Phase 1. One `QueryClient`
 (`apps/mobile/src/lib/queryClient.ts`), provided once in `app/_layout.tsx`.
 Two RN-specific wiring calls that have no browser equivalent — `onlineManager`
 reading NetInfo, `focusManager` reading `AppState` — are required for React
@@ -479,13 +629,14 @@ mounted once at the root, above `<Stack>` in z-order. Precedent for any future
 device-local-only preference: SecureStore, not a new `organizations`/`profiles` column,
 unless the preference is genuinely meant to follow the account across devices.
 
-| Question                                                             | Look here                                                                                                                                                                                                |
-| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "What should this screen do?"                                        | `docs/spec/03-*.md` (mobile) or `04-*.md` (web/admin)                                                                                                                                                    |
-| "What does the data model look like?"                                | `docs/spec/01-*.md` §1.2, then the actual migration files                                                                                                                                                |
-| "What color/spacing/font do I use?"                                  | `packages/design-tokens/src/index.ts`                                                                                                                                                                    |
-| "How do I validate this form?"                                       | `packages/validation/src/*.ts`                                                                                                                                                                           |
-| "What TS type does this row have?"                                   | `packages/shared-types/src/index.ts`                                                                                                                                                                     |
-| "Is this feature mobile-only, web-only, or both?"                    | `docs/spec/00-*.md` §0.4's platform scope matrix — the single authoritative source                                                                                                                       |
-| "What phase does this belong to?"                                    | `docs/spec/02-*.md` §2.10 (original build phases) or `docs/PHASE_1_BRIEF.md`/`docs/PHASE_2_BRIEF.md` onward (post-launch gap-fix phases — see `PHASE_1_BRIEF.md`'s own note on the two numbering tracks) |
-| "Does this screen fetch data with React Query or the older pattern?" | `docs/PHASE_1_BRIEF.md`'s migration-status list, until a later phase brief supersedes it                                                                                                                 |
+| Question                                                             | Look here                                                                                                                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| "Where do I start / which docs can I trust?"                         | `docs/README.md` — the index, with a status per document (LIVING / SPEC / PLAN / AUDIT / HISTORICAL / POLICY)                                                                                                                                                                                                                                |
+| "What should this screen do?"                                        | `docs/spec/03-*.md` (mobile) or `04-*.md` (web/admin)                                                                                                                                                                                                                                                                                        |
+| "What does the data model look like?"                                | `docs/spec/01-*.md` §1.2, then the actual migration files                                                                                                                                                                                                                                                                                    |
+| "What color/spacing/font do I use?"                                  | `packages/design-tokens/src/index.ts`                                                                                                                                                                                                                                                                                                        |
+| "How do I validate this form?"                                       | `packages/validation/src/*.ts`                                                                                                                                                                                                                                                                                                               |
+| "What TS type does this row have?"                                   | `packages/shared-types/src/index.ts`                                                                                                                                                                                                                                                                                                         |
+| "Is this feature mobile-only, web-only, or both?"                    | `docs/spec/00-*.md` §0.4's platform scope matrix — the single authoritative source                                                                                                                                                                                                                                                           |
+| "What phase does this belong to?"                                    | `docs/spec/02-*.md` §2.10 (the original build phases) or `docs/MOBILE_IMPLEMENTATION_STATUS.md` §"Gap-Fix Roadmap Track" (the post-launch gap-fix phases — that section's own header explains why the two numbering tracks were deliberately never merged; the twelve former `PHASE_*_BRIEF.md` files were consolidated into it and deleted) |
+| "Does this screen fetch data with React Query or the older pattern?" | `docs/ARCHITECTURE.md` §"Mobile data-fetching" for the pattern, plus `git log --oneline -- apps/mobile/src/app` to see which screens have actually been migrated                                                                                                                                                                             |

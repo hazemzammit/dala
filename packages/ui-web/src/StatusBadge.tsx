@@ -9,6 +9,8 @@
  * for row-level status." Doc 05 §3.5 — "Status as colored pill-badges
  * (Payé/En attente/Refusé), never colored table-row backgrounds."
  */
+import type { ReactNode } from 'react';
+
 type StatusVariant =
   'success' | 'warning' | 'warningStrong' | 'danger' | 'neutral' | 'info' | 'violet';
 
@@ -44,7 +46,7 @@ const dotClasses: Record<StatusVariant, string> = {
 
 interface StatusBadgeProps {
   variant: StatusVariant;
-  children: React.ReactNode;
+  children: ReactNode;
 }
 
 export function StatusBadge({ variant, children }: StatusBadgeProps) {

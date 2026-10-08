@@ -1,11 +1,13 @@
 'use client';
 
 import { Avatar, DataTable, type DataTableColumn, PageHero, StatusBadge } from '@dala/ui-web';
+import { UsersThreeIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
+
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 import { updateMemberRole } from './actions';
 
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 type Member = {
   user_id: string;
@@ -102,7 +104,7 @@ export function RolesView({
           pattern (PageHero lives in the client view, not the server
           page.tsx). */}
       <PageHero
-        eyebrow="Équipe"
+        icon={UsersThreeIcon}
         title="Rôles & permissions"
         description="Gérez les rôles des membres de votre organisation."
       />

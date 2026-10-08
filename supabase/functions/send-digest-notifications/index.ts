@@ -21,10 +21,15 @@
 // "run once now" logic; wiring the actual cron trigger is a dashboard/CLI
 // config step outside this codebase, not something to fake here.
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
+import { requireInternalCaller } from '../_shared/internalAuth.ts';
 
 const JOB_NAME = 'send_digest_notifications';
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  // Internal-only: reject anyone who is not the platform (cron / service role).
+  const denied = await requireInternalCaller(req);
+  if (denied) return denied;
+
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
@@ -53,8 +58,13 @@ Deno.serve(async (_req) => {
       if (frequency === 'weekly' && !isMonday) continue;
       if (!profile.active_org_id) continue;
 
+      // digest_summary_for (0103), not get_digest_summary: the latter keys off
+      // auth.uid(), which is NULL for this service-role client, so it matched no
+      // membership and returned nothing — no digest push was ever sent. This
+      // variant takes the recipient explicitly and returns NULL advance figures
+      // for viewers, so the message below simply omits them.
       const { data: summary } = await admin
-        .rpc('get_digest_summary', { p_org_id: profile.active_org_id })
+        .rpc('digest_summary_for', { p_org_id: profile.active_org_id, p_user_id: profile.id })
         .maybeSingle();
       if (!summary) continue;
 

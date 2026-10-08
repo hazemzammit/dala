@@ -15,6 +15,13 @@ const updateWorkerSchema = z.object({
   phone: z.string().min(8),
   trade: z.string().optional(),
   daily_rate: z.number().positive().optional(),
+  // Field-coverage pass — job_title/hire_date (migration 0075) are real
+  // columns on `workers` with no web write path at all before this. Kept
+  // out of inviteWorkerSchema deliberately (matches that schema's own
+  // comment: set later from the worker detail screen, same as mobile),
+  // added here since this schema is specifically the edit path.
+  job_title: z.string().optional(),
+  hire_date: z.string().optional(),
 });
 
 type UpdateWorkerInput = z.infer<typeof updateWorkerSchema>;
@@ -123,6 +130,8 @@ export async function updateWorker(input: UpdateWorkerInput): Promise<ActionResu
       phone: parsed.data.phone,
       trade: parsed.data.trade ?? null,
       daily_rate: parsed.data.daily_rate ?? null,
+      job_title: parsed.data.job_title ?? null,
+      hire_date: parsed.data.hire_date ?? null,
     })
     .eq('id', parsed.data.id)
     .eq('org_id', profile.active_org_id);
@@ -132,6 +141,46 @@ export async function updateWorker(input: UpdateWorkerInput): Promise<ActionResu
   }
 
   revalidatePath('/team');
+  revalidatePath(`/team/${parsed.data.id}`);
+  return { success: true };
+}
+
+/**
+ * Field-coverage pass — `workers.photo_url` had no write path anywhere on
+ * web (mobile's worker/[id].tsx has had this exact direct-update shape
+ * since migration 0070). Deliberately a separate action from `updateWorker`
+ * above rather than folded into updateWorkerSchema: the photo is uploaded
+ * and confirmed before the rest of the edit form is ever opened (same
+ * "own control, own action" shape settings/account's updateAvatarPath
+ * uses), not a field inside that form.
+ */
+export async function updateWorkerPhoto(workerId: string, path: string): Promise<ActionResult> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { success: false, error: 'Session expirée, reconnectez-vous.' };
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('active_org_id')
+    .eq('id', user.id)
+    .single();
+  if (!profile?.active_org_id) {
+    return { success: false, error: 'Aucune organisation active.' };
+  }
+
+  const { error } = await supabase
+    .from('workers')
+    .update({ photo_url: path })
+    .eq('id', workerId)
+    .eq('org_id', profile.active_org_id);
+
+  if (error) {
+    return { success: false, error: "Impossible de mettre à jour la photo." };
+  }
+
+  revalidatePath(`/team/${workerId}`);
   return { success: true };
 }
 

@@ -119,9 +119,9 @@ export function AttendanceHistoryView({
   }, [visibleEntries]);
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Pointage"
+        icon={ClockCounterClockwiseIcon}
         title="Historique de pointage"
         description={`Chaque pointage des ${windowDays} derniers jours, y compris les corrections. Un jour "Corrigé" affiche chaque ligne enregistrée, pas seulement le résultat final.`}
       />
@@ -252,6 +252,6 @@ export function AttendanceHistoryView({
           </Card>
         </div>
       )}
-    </>
+    </div>
   );
 }

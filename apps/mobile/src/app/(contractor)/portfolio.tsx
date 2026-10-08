@@ -6,6 +6,7 @@ import { useCallback, useState } from 'react';
 import { RefreshControl, ScrollView } from 'react-native';
 import { Text, View, XStack, YStack } from 'tamagui';
 
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { Icon3D } from '@/components/ui/Icon3D';
@@ -91,7 +92,7 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function PortfolioScreen() {
+function PortfolioScreenContent() {
   const tc = useTokenColor();
   const [rollups, setRollups] = useState<ProjectRollup[]>([]);
   const [loading, setLoading] = useState(true);
@@ -337,5 +338,16 @@ export default function PortfolioScreen() {
         </YStack>
       </ScrollView>
     </YStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function PortfolioScreen() {
+  return (
+    <MoneyGate title="Portefeuille">
+      <PortfolioScreenContent />
+    </MoneyGate>
   );
 }

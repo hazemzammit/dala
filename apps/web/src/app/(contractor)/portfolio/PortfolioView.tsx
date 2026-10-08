@@ -134,9 +134,9 @@ export function PortfolioView({ orgId }: { orgId: string }) {
   }, [orgId, reloadKey]);
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Analyses"
+        icon={BuildingsIcon}
         title="Portefeuille"
         description="Budget et activité de tous vos chantiers actifs et terminés."
       />
@@ -160,7 +160,7 @@ export function PortfolioView({ orgId }: { orgId: string }) {
           </div>
         )}
       </SectionCard>
-    </>
+    </div>
   );
 }
 

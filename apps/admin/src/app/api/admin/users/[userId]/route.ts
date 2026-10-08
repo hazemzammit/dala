@@ -20,7 +20,8 @@ import { setUserSuspended } from '@/lib/users/actions';
  * item; a fuller detail view (org membership, etc.) stays out of scope
  * here.
  */
-export async function GET(_request: Request, { params }: { params: { userId: string } }) {
+export async function GET(_request: Request, props: { params: Promise<{ userId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 
@@ -42,7 +43,8 @@ export async function GET(_request: Request, { params }: { params: { userId: str
 type UserAction =
   'reset_password' | 'suspend' | 'unsuspend' | 'delete' | 'move_org' | 'revoke_sessions';
 
-export async function POST(request: Request, { params }: { params: { userId: string } }) {
+export async function POST(request: Request, props: { params: Promise<{ userId: string }> }) {
+  const params = await props.params;
   const ctx = await getAdminSessionContext();
   if (!ctx) return NextResponse.json({ error: 'unauthenticated' }, { status: 401 });
 

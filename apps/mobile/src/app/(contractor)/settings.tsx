@@ -17,7 +17,7 @@ import { Alert } from 'react-native';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { Icon3D } from '@/components/ui/Icon3D';
-import { supabase } from '@/lib/supabase';
+import { signOutAndWipe } from '@/lib/signOut';
 
 /**
  * apps/mobile/src/app/(contractor)/settings.tsx
@@ -73,7 +73,7 @@ export default function SettingsScreen() {
         text: 'Déconnexion',
         style: 'destructive',
         onPress: () => {
-          void supabase.auth.signOut().then(() => router.replace('/login' as never));
+          void signOutAndWipe(() => router.replace('/login' as never));
         },
       },
     ]);

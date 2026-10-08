@@ -243,7 +243,7 @@ export default function TrashScreen() {
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={TrashIcon}
-          icon3d="archive-box"
+          illustration="clean-up"
           title="La corbeille est vide"
           description="Les chantiers, travailleurs, véhicules et entrées de journal supprimés apparaissent ici pendant 30 jours avant suppression définitive."
         />

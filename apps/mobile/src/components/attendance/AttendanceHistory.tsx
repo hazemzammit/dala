@@ -170,8 +170,8 @@ export function AttendanceHistory({ workerId, lockToWorker = false }: Attendance
         const [{ data: workerRows }, { data: effectiveRows }, { data: rawRows }] =
           await Promise.all([
             workerId
-              ? supabase.from('workers').select('*').eq('id', workerId).limit(1)
-              : supabase.from('workers').select('*').eq('org_id', orgId).order('full_name'),
+              ? supabase.from('worker_directory').select('*').eq('id', workerId).limit(1)
+              : supabase.from('worker_directory').select('*').eq('org_id', orgId).order('full_name'),
             effectiveQuery,
             rawQuery,
           ]);
@@ -296,6 +296,7 @@ export function AttendanceHistory({ workerId, lockToWorker = false }: Attendance
       {groupedByDate.length === 0 ? (
         <EmptyState
           icon={ClockCounterClockwiseIcon}
+          illustration="to-do-app"
           title="Aucun historique"
           description={`Aucune donnée de pointage sur les ${WINDOW_DAYS} derniers jours.`}
         />

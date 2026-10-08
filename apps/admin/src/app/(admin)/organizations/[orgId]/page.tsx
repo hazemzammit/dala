@@ -1,5 +1,6 @@
 import { OrgDetail } from './OrgDetail';
 
-export default function OrganizationDetailPage({ params }: { params: { orgId: string } }) {
+export default async function OrganizationDetailPage(props: { params: Promise<{ orgId: string }> }) {
+  const params = await props.params;
   return <OrgDetail orgId={params.orgId} />;
 }

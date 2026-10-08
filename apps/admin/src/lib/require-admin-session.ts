@@ -34,7 +34,7 @@ export interface AdminSessionContext {
 /** Returns null (never throws) when there's no valid session — callers
  * decide whether that means a 401 JSON response or a redirect. */
 export async function getAdminSessionContext(): Promise<AdminSessionContext | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value;
+  const token = (await cookies()).get(SESSION_COOKIE)?.value;
   if (!token) return null;
 
   const payload = await verifySessionToken(token);

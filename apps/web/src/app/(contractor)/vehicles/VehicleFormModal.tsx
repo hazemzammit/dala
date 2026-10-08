@@ -5,9 +5,10 @@ import { Button, Card, FormField } from '@dala/ui-web';
 import { XIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
 import { createVehicle, updateVehicle } from './actions';
 
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 const STATUS_OPTIONS: { value: VehicleStatus; label: string }[] = [
   { value: 'available', label: 'Disponible' },

@@ -47,6 +47,7 @@ import { processPhoto } from '@/lib/photoPipeline';
 import { getProjectTypeMeta } from '@/lib/projectTypeMeta';
 import { getSignedUrl, getSignedUrlMap, uploadOrgFile } from '@/lib/storage';
 import { supabase } from '@/lib/supabase';
+import { useCanSeeMoney } from '@/lib/useCanSeeMoney';
 import { toRgba, useTokenColor } from '@/lib/useTokenColor';
 
 /**
@@ -137,6 +138,11 @@ const EMPTY_FORM: ProjectFormState = {
 };
 
 export default function ProjectsScreen() {
+  // Viewers (Observateur) are money-blind since migration 0103: expenses come back empty for
+  // them, so "budget consumed" would read 0% — hide the bar and its filter instead. Shown while
+  // the role resolves (RLS decides either way).
+  const { loading: roleLoading, canSeeMoney: roleAllowsMoney } = useCanSeeMoney();
+  const canSeeMoney = roleLoading || roleAllowsMoney;
   const toast = useToast();
   const tc = useTokenColor();
   const [loading, setLoading] = useState(true);
@@ -384,7 +390,7 @@ export default function ProjectsScreen() {
   // would add a prop only this screen uses).
   function renderProjectCard(project: ProjectRow) {
     const consumedPercent =
-      project.budget_total && project.budget_total > 0
+      canSeeMoney && project.budget_total && project.budget_total > 0
         ? Math.min(100, Math.round((project.consumedTotal / project.budget_total) * 100))
         : null;
 
@@ -676,16 +682,20 @@ export default function ProjectsScreen() {
           verticalOffset={56}
         >
           <YStack padding="$2" gap="$3">
-            <Text fontSize={13} fontWeight="600" color="$neutral900">
-              Budget consommé minimum
-            </Text>
-            <Slider value={minConsumedFilter} onChange={setMinConsumedFilter} />
-            {minConsumedFilter > 0 && (
-              <XStack justifyContent="center">
-                <Button variant="chip" fullWidth={false} onPress={() => setMinConsumedFilter(0)}>
-                  Réinitialiser
-                </Button>
-              </XStack>
+            {canSeeMoney && (
+              <>
+                <Text fontSize={13} fontWeight="600" color="$neutral900">
+                  Budget consommé minimum
+                </Text>
+                <Slider value={minConsumedFilter} onChange={setMinConsumedFilter} />
+                {minConsumedFilter > 0 && (
+                  <XStack justifyContent="center">
+                    <Button variant="chip" fullWidth={false} onPress={() => setMinConsumedFilter(0)}>
+                      Réinitialiser
+                    </Button>
+                  </XStack>
+                )}
+              </>
             )}
           </YStack>
         </Popover>
@@ -764,7 +774,7 @@ export default function ProjectsScreen() {
       {filtered.length === 0 ? (
         <EmptyState
           icon={BuildingsIcon}
-          icon3d="construction-site"
+          illustration="under-construction"
           title={
             projects.length === 0 ? 'Aucun chantier pour le moment' : 'Aucun chantier ne correspond'
           }

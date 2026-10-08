@@ -7,6 +7,7 @@ import { Text, XStack, YStack } from 'tamagui';
 import { Avatar } from '@/components/ui/Avatar';
 import { Icon3D } from '@/components/ui/Icon3D';
 import { getSignedUrl } from '@/lib/storage';
+import { signOutAndWipe } from '@/lib/signOut';
 import { supabase } from '@/lib/supabase';
 
 /**
@@ -65,8 +66,7 @@ export default function WorkerSettingsScreen() {
   }
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.replace('/login');
+    await signOutAndWipe(() => router.replace('/login'));
   }
 
   return (

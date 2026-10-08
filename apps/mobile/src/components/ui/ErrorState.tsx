@@ -4,6 +4,7 @@ import { Text, View, YStack } from 'tamagui';
 import { Button } from './Button';
 import { Icon3D } from './Icon3D';
 import type { Icon3DName } from './icons3d';
+import type { Icon3DConstructionName } from './icons3d-construction';
 import { Illustration } from './Illustration';
 import type { IllustrationName } from './illustrations';
 
@@ -47,16 +48,38 @@ import { useTokenColor } from '@/lib/useTokenColor';
  * x-circle default without dropping to the old Phosphor `icon` escape
  * hatch — used at analytics.tsx for `warning-circle`, the one guide-named
  * target screen that actually had zero customization before this.
+ *
+ * REVISED (2026-09-30, from a real offline run) — the generic default above
+ * is now `connection-lost`, an unDraw ILLUSTRATION, not Icon3D's x-circle.
+ * Reason, stated plainly: error states are what a person actually sees when
+ * the backend is unreachable, and with Icon3D as the default EVERY screen
+ * of a fully-offline app rendered a 3D PNG icon while the illustration set
+ * was only reachable from empty states (which need data to be empty, i.e.
+ * a working backend). The default copy below ("Impossible de charger ces
+ * données. Vérifiez votre connexion et réessayez.") is literally about a
+ * failed load, which is exactly what `connection-lost` depicts — so the
+ * art and the wording now agree, and all 25+ bare call sites get it for
+ * free. `icon3d` is still honoured when a screen passes one, and
+ * `illustration` still wins over everything; nothing that opted into a
+ * specific icon changed behavior.
  */
 interface ErrorStateProps {
   icon?: Icon;
-  icon3d?: Icon3DName;
+  // Same widened union as EmptyState's `icon3d` (see that file's comment):
+  // Icon3D itself accepts either registry, so this prop must not be the
+  // narrower generic-only name.
+  icon3d?: Icon3DName | Icon3DConstructionName;
   illustration?: IllustrationName;
   title?: string;
   description?: string;
   retryLabel?: string;
   onRetry: () => void;
 }
+
+/** The generic-failure art used when a call site passes neither
+ *  `illustration`, `icon` nor `icon3d` — see this file's REVISED header
+ *  note for why it's an illustration rather than a 3D icon. */
+const DEFAULT_ERROR_ILLUSTRATION: IllustrationName = 'connection-lost';
 
 export function ErrorState({
   icon: IconComponent,
@@ -73,8 +96,10 @@ export function ErrorState({
         <Illustration name={illustration} size={168} />
       ) : IconComponent ? (
         <PhosphorBadge Icon={IconComponent} />
+      ) : icon3d ? (
+        <Icon3D name={icon3d} />
       ) : (
-        <Icon3D name={icon3d ?? 'x-circle'} />
+        <Illustration name={DEFAULT_ERROR_ILLUSTRATION} size={168} />
       )}
 
       <Text fontFamily="$display" fontSize={18} fontWeight="600" marginTop="$3" textAlign="center">

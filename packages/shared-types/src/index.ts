@@ -189,6 +189,15 @@ export interface Worker {
   created_at: string;
   deleted_at: string | null; // migration 0025 — Doc 02 §2.10, 30-day recoverable soft-delete (same pattern as Project.deleted_at)
   photo_url: string | null; // migration 0070 — Phase 3 §1.5, storage path (never a direct URL — Doc 01 §1.3.11)
+  // Field-coverage pass — job_title/hire_date (migration 0075, §4.3) were
+  // real DB columns with no entry in this interface at all; mobile's
+  // worker/[id].tsx has read/written both via a local inline type since
+  // that migration shipped. Added here, as optional, so web can type
+  // against them without requiring every existing `Worker`-typed select
+  // elsewhere in this codebase (mobile included) to add both columns just
+  // to keep typechecking — optional keeps this additive, not breaking.
+  job_title?: string | null;
+  hire_date?: string | null;
 }
 
 export interface WorkerInvitation {

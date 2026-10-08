@@ -33,7 +33,7 @@ export default function Page() {
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Administration"
+        icon={GearIcon}
         title="Paramètres"
         description="Gérez les informations de l’entreprise, l’équipe, les rôles, les permissions, les notifications, la sécurité, la langue et l’apparence."
       />

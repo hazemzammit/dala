@@ -1,19 +1,22 @@
 'use client';
 
-import { Button } from '@dala/ui-web';
+import { Button, IconStatCard } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
+import {
+  BuildingsIcon,
+  CoinsIcon,
+  GaugeIcon,
+  HardHatIcon,
+  ReceiptIcon,
+  TruckIcon,
+} from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useState } from 'react';
 
 import { quickActions } from '@/components/contractor/mock-data';
-import {
-  CalendarGrid,
-  MetricCard,
-  ProgressBar,
-  SectionCard,
-  TimelineList,
-} from '@/components/contractor/Screen';
+import { CalendarGrid, ProgressBar, SectionCard, TimelineList } from '@/components/contractor/Screen';
 import { LinkButton } from '@/components/ui/LinkButton';
+import type { Icon } from '@phosphor-icons/react';
 
 type DashboardStats = {
   activeProjectsCount: number;
@@ -115,8 +118,11 @@ export function DashboardView({
   feedProjectNameById,
   feedWorkerNameById,
   calendarDays,
+  showMoney,
 }: {
   stats: DashboardStats;
+  /** False for viewers: hides the expense / invoiced / budget figures. */
+  showMoney: boolean;
   activityFeed: ActivityEvent[];
   actorNameById: Record<string, string>;
   feedProjectNameById: Record<string, string>;
@@ -126,42 +132,52 @@ export function DashboardView({
   const [quickMenuOpen, setQuickMenuOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
-  const dashboardStats = [
+  const dashboardStats: { label: string; value: string; tone: string; icon: Icon }[] = [
     {
       label: 'Chantiers actifs',
       value: stats.activeProjectsCount.toString(),
-      tone: 'success' as const,
+      tone: 'success',
+      icon: BuildingsIcon,
     },
     {
       label: 'Ouvriers présents aujourd’hui',
       value: stats.workersPresentToday.toString(),
-      tone: 'success' as const,
+      tone: 'success',
+      icon: HardHatIcon,
     },
     {
       label: 'Véhicules disponibles',
       value: stats.availableVehiclesCount.toString(),
-      tone: 'success' as const,
+      tone: 'success',
+      icon: TruckIcon,
     },
-    {
-      label: 'Dépenses du jour',
-      value: formatTND(stats.todayExpensesTotal),
-      tone: 'warning' as const,
-    },
-    {
-      label: 'Facturé ce mois',
-      value: formatTND(stats.monthlyInvoicedTotal),
-      tone: 'success' as const,
-    },
-    {
-      label: 'Budget consommé',
-      value: stats.budgetConsumedPercent + '%',
-      tone:
-        stats.budgetConsumedPercent >= 100
-          ? ('danger' as const)
-          : stats.budgetConsumedPercent >= 80
-            ? ('warning' as const)
-            : ('success' as const),
-    },
+    ...(showMoney
+      ? [
+          {
+            label: 'Dépenses du jour',
+            value: formatTND(stats.todayExpensesTotal),
+            tone: 'warning' as const,
+            icon: ReceiptIcon,
+          },
+          {
+            label: 'Facturé ce mois',
+            value: formatTND(stats.monthlyInvoicedTotal),
+            tone: 'success' as const,
+            icon: CoinsIcon,
+          },
+          {
+            label: 'Budget consommé',
+            value: stats.budgetConsumedPercent + '%',
+            tone:
+              stats.budgetConsumedPercent >= 100
+                ? 'danger'
+                : stats.budgetConsumedPercent >= 80
+                  ? 'warning'
+                  : 'success',
+            icon: GaugeIcon,
+          },
+        ]
+      : []),
   ];
 
   // Audit fix 6a — activityFeed is now the real org_activity_feed rows
@@ -182,8 +198,8 @@ export function DashboardView({
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Centre de commande"
-        title="Tunisia Construction OS"
+        icon={GaugeIcon}
+        title="Tableau de bord"
         description="Gérez les chantiers, le dispatch, l'équipe, les véhicules, les matériaux, la facturation et le reporting client depuis un seul tableau de bord."
         actions={
           <>
@@ -199,8 +215,9 @@ export function DashboardView({
                       key={action.href}
                       href={action.href}
                       onClick={() => setQuickMenuOpen(false)}
-                      className="hover:bg-neutral-25 block w-full rounded-2xl px-3 py-2.5 text-left text-sm font-medium text-neutral-900 transition-colors"
+                      className="hover:bg-neutral-25 flex w-full items-center gap-2.5 rounded-2xl px-3 py-2.5 text-left text-sm font-medium text-neutral-900 transition-colors"
                     >
+                      <action.icon size={16} className="text-accent-600 shrink-0" />
                       {action.label}
                     </Link>
                   ))}
@@ -213,34 +230,52 @@ export function DashboardView({
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         {dashboardStats.map((stat) => (
-          <MetricCard key={stat.label} label={stat.label} value={stat.value} tone={stat.tone} />
+          <IconStatCard
+            key={stat.label}
+            icon={stat.icon}
+            label={stat.label}
+            value={stat.value}
+            tone={
+              stat.tone as
+                | 'accent'
+                | 'success'
+                | 'warning'
+                | 'danger'
+                | 'categoricalBlue'
+                | 'categoricalViolet'
+                | 'categoricalAmber'
+                | 'neutral'
+            }
+          />
         ))}
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.6fr_1fr]">
-        <SectionCard
-          title="Budget des chantiers actifs"
-          description="Pourcentage du budget total déjà consommé sur les chantiers en cours."
-        >
-          <div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="font-medium text-neutral-900">Budget consommé</span>
-              <span className="text-neutral-500">{stats.budgetConsumedPercent}%</span>
+        {showMoney && (
+          <SectionCard
+            title="Budget des chantiers actifs"
+            description="Pourcentage du budget total déjà consommé sur les chantiers en cours."
+          >
+            <div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium text-neutral-900">Budget consommé</span>
+                <span className="text-neutral-500">{stats.budgetConsumedPercent}%</span>
+              </div>
+              <div className="mt-2">
+                <ProgressBar
+                  value={stats.budgetConsumedPercent}
+                  tone={
+                    stats.budgetConsumedPercent >= 100
+                      ? 'danger'
+                      : stats.budgetConsumedPercent >= 80
+                        ? 'warning'
+                        : 'success'
+                  }
+                />
+              </div>
             </div>
-            <div className="mt-2">
-              <ProgressBar
-                value={stats.budgetConsumedPercent}
-                tone={
-                  stats.budgetConsumedPercent >= 100
-                    ? 'danger'
-                    : stats.budgetConsumedPercent >= 80
-                      ? 'warning'
-                      : 'success'
-                }
-              />
-            </div>
-          </div>
-        </SectionCard>
+          </SectionCard>
+        )}
 
         <SectionCard
           title="Actions rapides"
@@ -251,8 +286,12 @@ export function DashboardView({
               <Link
                 key={action.href}
                 href={action.href}
-                className="bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 rounded-2xl border border-neutral-100 px-4 py-4 text-left text-sm font-medium text-neutral-900 transition-colors"
+                className="bg-neutral-25 hover:border-accent-200 hover:bg-accent-50 hover:text-accent-700 group flex flex-col gap-2 rounded-2xl border border-neutral-100 px-4 py-4 text-left text-sm font-medium text-neutral-900 transition-colors"
               >
+                <action.icon
+                  size={18}
+                  className="text-accent-600 group-hover:text-accent-700 shrink-0"
+                />
                 {action.label}
               </Link>
             ))}
@@ -260,42 +299,45 @@ export function DashboardView({
         </SectionCard>
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <SectionCard
-          title="Activités récentes"
-          description="Les dernières entrées de journal, dépenses, incidents et affectations de votre organisation."
-        >
-          {activities.length === 0 ? (
-            <p className="text-sm text-neutral-500">Aucune activité récente pour le moment.</p>
-          ) : (
-            <TimelineList items={activities} />
-          )}
-        </SectionCard>
+      <SectionCard
+        title="Activités récentes"
+        description="Les dernières entrées de journal, dépenses, incidents et affectations de votre organisation."
+      >
+        {activities.length === 0 ? (
+          <p className="text-sm text-neutral-500">Aucune activité récente pour le moment.</p>
+        ) : (
+          <TimelineList items={activities} />
+        )}
+      </SectionCard>
 
-        <SectionCard
-          title="Calendrier de dispatch"
-          description="Nombre d'affectations planifiées cette semaine, par jour."
-        >
-          <CalendarGrid
-            days={calendarDays}
-            selectedDay={selectedDay}
-            onDayClick={(day) => setSelectedDay(day === selectedDay ? null : day)}
-          />
-          {selectedCalendarDay && (
-            <p className="mt-3 text-sm text-neutral-500">
-              <span className="font-medium text-neutral-900">
-                {new Date(selectedCalendarDay.date).toLocaleDateString('fr-TN', {
-                  weekday: 'long',
-                  day: '2-digit',
-                  month: 'long',
-                })}
-              </span>
-              {' - '}
-              {selectedCalendarDay.label}
-            </p>
-          )}
-        </SectionCard>
-      </div>
+      {/* Own full-width row — at 1.2fr/0.8fr next to Activités récentes the
+          7 day cells had barely 100px each, so day-name + count wrapped and
+          spilled out of the card. Full width gives each cell enough room,
+          and the grid itself now steps down its column count on narrower
+          screens instead of staying fixed at 7. */}
+      <SectionCard
+        title="Calendrier de dispatch"
+        description="Nombre d'affectations planifiées cette semaine, par jour."
+      >
+        <CalendarGrid
+          days={calendarDays}
+          selectedDay={selectedDay}
+          onDayClick={(day) => setSelectedDay(day === selectedDay ? null : day)}
+        />
+        {selectedCalendarDay && (
+          <p className="mt-3 text-sm text-neutral-500">
+            <span className="font-medium text-neutral-900">
+              {new Date(selectedCalendarDay.date).toLocaleDateString('fr-TN', {
+                weekday: 'long',
+                day: '2-digit',
+                month: 'long',
+              })}
+            </span>
+            {' - '}
+            {selectedCalendarDay.label}
+          </p>
+        )}
+      </SectionCard>
     </div>
   );
 }

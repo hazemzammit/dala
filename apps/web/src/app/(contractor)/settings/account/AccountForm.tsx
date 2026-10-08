@@ -4,9 +4,13 @@ import type { OrgRole } from '@dala/shared-types';
 import { Avatar, Button, Card, FormField, StatusBadge } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
 import { changePhoneSchema, requestEmailChangeSchema } from '@dala/validation';
-import { CameraIcon, XIcon } from '@phosphor-icons/react';
+import { CameraIcon, UserIcon, XIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useRef, useState } from 'react';
+
+import { SectionCard } from '@/components/contractor/Screen';
+import { createClient } from '@/lib/supabase/client';
+import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 import {
   confirmPhoneChange,
@@ -17,10 +21,6 @@ import {
   updateProfileName,
 } from './actions';
 import { AvatarCropperModal } from './AvatarCropperModal';
-
-import { SectionCard } from '@/components/contractor/Screen';
-import { createClient } from '@/lib/supabase/client';
-import { useAsyncTransition } from '@/lib/useAsyncTransition';
 
 const ROLE_LABEL: Record<OrgRole, string> = {
   owner: 'Propriétaire',
@@ -261,7 +261,7 @@ export function AccountForm({
   return (
     <>
       <PageHero
-        eyebrow="Mon compte"
+        icon={UserIcon}
         title="Profil"
         description="Vos informations personnelles, votre rôle dans l'organisation, et votre contact d'urgence."
       />

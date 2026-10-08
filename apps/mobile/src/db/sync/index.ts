@@ -6,9 +6,12 @@ import { database } from '../index';
 import DispatchAssignmentConflict from '../models/DispatchAssignmentConflict';
 
 import { createDispatchConflictResolver, type PendingDispatchConflict } from './conflictResolver';
+import { ensureLocalDatabaseOwner, setSyncCursorOrgId } from './localData';
 import { pullChanges } from './pullChanges';
 import { createPushChanges } from './pushChanges';
 
+import { getActiveOrgId } from '@/lib/activeOrg';
+import { supabase } from '@/lib/supabase';
 import { markSyncFinished, markSyncStarted } from '@/lib/syncStatus';
 
 /**
@@ -127,6 +130,17 @@ export async function runSync(): Promise<SyncResult> {
     const pushChanges = createPushChanges(pendingConflicts);
 
     try {
+      // Never mix users' data on one device (see localData.ts): a different
+      // user signing in wipes the previous user's local copy first.
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session) await ensureLocalDatabaseOwner(session.user.id);
+
+      // The org this sync pulls for; committed as the cursor's org only after
+      // the WHOLE sync (pull + push) succeeded, together with lastPulledAt.
+      const syncedOrgId = await getActiveOrgId();
+
       await synchronize({
         database,
         pullChanges,
@@ -135,6 +149,7 @@ export async function runSync(): Promise<SyncResult> {
         sendCreatedAsUpdated: true,
       });
 
+      if (syncedOrgId) await setSyncCursorOrgId(syncedOrgId);
       await flushPendingConflicts(pendingConflicts);
 
       const result: SyncResult = { ok: true, conflictCount: pendingConflicts.length };

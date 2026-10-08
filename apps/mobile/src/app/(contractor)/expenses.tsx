@@ -20,6 +20,7 @@ import { RefreshControl, ScrollView } from 'react-native';
 import { Image, Text, View, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { Button } from '@/components/ui/Button';
 import { DonutChart } from '@/components/ui/Chart';
 import { DatePicker } from '@/components/ui/DatePicker';
@@ -130,7 +131,7 @@ function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-export default function ExpensesScreen() {
+function ExpensesScreenContent() {
   const toast = useToast();
   const tc = useTokenColor();
   const categoryTint: Record<ExpenseCategory, string> = {
@@ -844,5 +845,16 @@ export default function ExpensesScreen() {
         onExpire={handleDeleteExpenseExpired}
       />
     </YStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function ExpensesScreen() {
+  return (
+    <MoneyGate title="Dépenses">
+      <ExpensesScreenContent />
+    </MoneyGate>
   );
 }

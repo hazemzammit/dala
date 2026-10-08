@@ -9,6 +9,7 @@ import Animated from 'react-native-reanimated';
 import { Text, XStack, YStack } from 'tamagui';
 
 import { FAB } from '@/components/shell/FAB';
+import { MoneyGate } from '@/components/ui/MoneyGate';
 import { Avatar } from '@/components/ui/Avatar';
 import { Button } from '@/components/ui/Button';
 import { ConfirmTypingDialog } from '@/components/ui/ConfirmTypingDialog';
@@ -86,7 +87,7 @@ interface WorkerPayroll {
   cycle: SalaryCycle | null;
 }
 
-export default function AdvancesScreen() {
+function AdvancesScreenContent() {
   // Doc 05 §1.7l (Phase 19A) — fixes the confirmed live FAB-overlap defect:
   // was a hardcoded `paddingBottom: 140`, less than the FAB's own
   // footprint even before adding the device's safe-area inset. See
@@ -141,7 +142,7 @@ export default function AdvancesScreen() {
       { data: advances, error: advancesError },
       { data: cycles, error: cyclesError },
     ] = await Promise.all([
-      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase.from('worker_directory').select('*').eq('org_id', org).order('full_name'),
       supabase
         .from('attendance_effective')
         .select('worker_id, status')
@@ -795,5 +796,16 @@ export default function AdvancesScreen() {
         onCancel={() => setPendingTier3Action(null)}
       />
     </YStack>
+  );
+}
+
+/**
+ * Viewers (Observateur) are money-blind since migration 0103 — see MoneyGate.
+ */
+export default function AdvancesScreen() {
+  return (
+    <MoneyGate title="Avances & paie">
+      <AdvancesScreenContent />
+    </MoneyGate>
   );
 }

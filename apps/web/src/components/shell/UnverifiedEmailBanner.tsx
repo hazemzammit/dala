@@ -1,7 +1,7 @@
 'use client';
 
 import { WarningIcon, XIcon } from '@phosphor-icons/react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 /**
  * apps/web/src/components/shell/UnverifiedEmailBanner.tsx
@@ -20,8 +20,16 @@ import { useState } from 'react';
  * after a refresh is a mild nag, by design, for an account that genuinely
  * still can't do most things.
  */
+const AUTO_DISMISS_MS = 10_000;
+
 export function UnverifiedEmailBanner() {
   const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDismissed(true), AUTO_DISMISS_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (dismissed) return null;
 
   return (

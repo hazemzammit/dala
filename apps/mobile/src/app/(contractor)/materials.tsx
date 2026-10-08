@@ -194,11 +194,11 @@ export default function MaterialsScreen() {
       { data: projectRows, error: projectsError },
     ] = await Promise.all([
       supabase
-        .from('materials')
+        .from('material_requests_directory')
         .select('*')
         .eq('org_id', org)
         .order('created_at', { ascending: false }),
-      supabase.from('workers').select('*').eq('org_id', org).order('full_name'),
+      supabase.from('worker_directory').select('*').eq('org_id', org).order('full_name'),
       // Phase 8 §1.9 item 1 — project picker for the contractor-create
       // sheet and the detail sheet's project-linking editor.
       supabase
@@ -499,7 +499,7 @@ export default function MaterialsScreen() {
       <YStack flex={1} backgroundColor="$neutral25">
         <EmptyState
           icon={PackageIcon}
-          icon3d="to-do-list"
+          illustration="to-do-app"
           title="Aucune demande de matériaux"
           description="Les demandes de matériaux de vos chantiers apparaîtront ici."
         />

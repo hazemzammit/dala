@@ -6,10 +6,10 @@ import { PageHero } from '@dala/ui-web';
 import { BuildingsIcon, CarIcon, HardHatIcon, NoteIcon, TrashIcon } from '@phosphor-icons/react';
 import { useState } from 'react';
 
-import { restoreItem } from './actions';
-
 import { SectionCard } from '@/components/contractor/Screen';
 import { useAsyncTransition } from '@/lib/useAsyncTransition';
+
+import { restoreItem } from './actions';
 
 const ENTITY_ICON: Record<TrashItem['entity_type'], typeof BuildingsIcon> = {
   project: BuildingsIcon,
@@ -49,9 +49,9 @@ export function TrashView({ items: initialItems }: { items: TrashItem[] }) {
   }
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Administration"
+        icon={TrashIcon}
         title="Corbeille"
         description="Restaurable pendant 30 jours après suppression. Chantiers, travailleurs, véhicules et entrées de journal supprimés apparaissent ici."
       />
@@ -112,6 +112,6 @@ export function TrashView({ items: initialItems }: { items: TrashItem[] }) {
           </div>
         )}
       </SectionCard>
-    </>
+    </div>
   );
 }

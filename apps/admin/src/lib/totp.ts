@@ -29,13 +29,16 @@ export function buildTotpUri(secret: string, adminEmail: string): string {
 }
 
 /**
- * Verifies a 6-digit code against a base32 secret.
+ * Verifies a 6-digit code against a base32 secret and returns the ABSOLUTE
+ * 30-second time step the code belongs to (unix seconds / 30, adjusted by the
+ * matched drift), or null if the code is invalid/malformed.
  * `window: 1` = ±1 time-step (±30s) drift tolerance per §4.3.1.
- * Returns true/false — never throws on a malformed code, since a mistyped
- * code is a normal user error, not an exceptional one.
+ * The step is what login step 2 persists to reject replays of a code that was
+ * already accepted (see migration 0096). Never throws on a malformed code —
+ * a mistyped code is a normal user error, not an exceptional one.
  */
-export function verifyTotpCode(secret: string, code: string): boolean {
-  if (!/^\d{6}$/.test(code)) return false;
+export function verifyTotpCodeStep(secret: string, code: string, nowMs: number = Date.now()): number | null {
+  if (!/^\d{6}$/.test(code)) return null;
   try {
     const totp = new OTPAuth.TOTP({
       issuer: ISSUER,
@@ -44,9 +47,15 @@ export function verifyTotpCode(secret: string, code: string): boolean {
       period: 30,
       secret: OTPAuth.Secret.fromBase32(secret),
     });
-    const delta = totp.validate({ token: code, window: 1 });
-    return delta !== null;
+    const delta = totp.validate({ token: code, window: 1, timestamp: nowMs });
+    if (delta === null) return null;
+    return Math.floor(nowMs / 1000 / 30) + delta;
   } catch {
-    return false;
+    return null;
   }
+}
+
+/** Boolean form, for callers that don't need replay protection (enrollment). */
+export function verifyTotpCode(secret: string, code: string): boolean {
+  return verifyTotpCodeStep(secret, code) !== null;
 }

@@ -3,7 +3,7 @@
 import type { Project } from '@dala/shared-types';
 import { EmptyState, ErrorState } from '@dala/ui-web';
 import { PageHero } from '@dala/ui-web';
-import { CaretLeftIcon, CaretRightIcon, UsersThreeIcon } from '@phosphor-icons/react';
+import { CaretLeftIcon, CaretRightIcon, TruckIcon, UsersThreeIcon } from '@phosphor-icons/react';
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 
@@ -129,9 +129,9 @@ export function DispatchWeekView({ orgId }: { orgId: string }) {
   }, [weekStart, weekEnd]);
 
   return (
-    <>
+    <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Dispatch"
+        icon={TruckIcon}
         title="Vue semaine"
         description="Nombre d'ouvriers affectés par chantier, jour par jour — repérez un chantier sous-staffé sans ouvrir chaque jour individuellement."
         actions={
@@ -212,6 +212,6 @@ export function DispatchWeekView({ orgId }: { orgId: string }) {
           />
         )}
       </SectionCard>
-    </>
+    </div>
   );
 }

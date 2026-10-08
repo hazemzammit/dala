@@ -36,6 +36,7 @@ import { SkeletonList } from '@/components/ui/Skeleton';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { useToast } from '@/components/ui/Toast';
 import { WorkerHubTabs } from '@/components/worker/WorkerHubTabs';
+import { useCanSeeMoney } from '@/lib/useCanSeeMoney';
 import { getActiveOrgId } from '@/lib/activeOrg';
 import { haptics } from '@/lib/haptics';
 import { processAvatarPhoto } from '@/lib/photoPipeline';
@@ -136,6 +137,10 @@ import { tradeIcon } from '@/lib/tradeIcon';
 const DAY_LABELS = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
 
 export default function WorkerDetailScreen() {
+  // While the role resolves, show money (managers are the common case); RLS returns nothing to
+  // viewers regardless, and the tab/badge disappear as soon as the role is known.
+  const { loading: roleLoading, canSeeMoney: roleAllowsMoney } = useCanSeeMoney();
+  const canSeeMoney = roleLoading || roleAllowsMoney;
   const toast = useToast();
   const { id } = useLocalSearchParams<{ id: string }>();
   const [worker, setWorker] = useState<Worker | null>(null);
@@ -206,7 +211,7 @@ export default function WorkerDetailScreen() {
       { data: advanceRows, error: advancesError },
       { data: assignmentRows, error: assignmentsError },
     ] = await Promise.all([
-      supabase.from('active_workers').select('*').eq('id', id).eq('org_id', org).maybeSingle(),
+      supabase.from('active_worker_directory').select('*').eq('id', id).eq('org_id', org).maybeSingle(),
       supabase.rpc('get_worker_lateness_pattern', { p_worker_id: id }),
       // Phase 6 §1.6 — Avances tab: same `advances` shape advances.tsx
       // itself queries, filtered to this worker, read-only.
@@ -413,7 +418,8 @@ export default function WorkerDetailScreen() {
           tabs={[
             { value: 'infos', label: 'Infos' },
             { value: 'pointage', label: 'Pointage' },
-            { value: 'avances', label: 'Avances' },
+            // Viewers are money-blind (migration 0103): no Avances tab, no rate.
+            ...(canSeeMoney ? [{ value: 'avances', label: 'Avances' }] : []),
             { value: 'dispatch', label: 'Dispatch' },
           ]}
         />
@@ -459,7 +465,7 @@ export default function WorkerDetailScreen() {
             </XStack>
             <XStack gap="$2">
               {worker.phone && <StatusBadge variant="neutral">{worker.phone}</StatusBadge>}
-              {worker.daily_rate != null && (
+              {canSeeMoney && worker.daily_rate != null && (
                 <StatusBadge variant="info">{`${worker.daily_rate} TND/jour`}</StatusBadge>
               )}
             </XStack>

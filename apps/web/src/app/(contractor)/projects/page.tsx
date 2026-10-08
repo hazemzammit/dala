@@ -1,10 +1,11 @@
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { createProject, deleteProject, updateProject } from './actions';
 import { ProjectsView } from './ProjectsView';
 
-import { createClient } from '@/lib/supabase/server';
 
 /**
  * Doc 04 §4.2.2 — Projects list. Server Component: résout l'org active
@@ -35,6 +36,21 @@ export default async function Page() {
     .order('created_at', { ascending: false });
 
   const projectIds = (projects ?? []).map((project) => project.id);
+
+  // Field-coverage pass — cover_photo_url is a private-bucket storage path
+  // (org-files, same bucket AppShell/roles/safety already sign against),
+  // never a fetchable URL directly. Same "one Promise.all pass over the
+  // whole list" convention safety/page.tsx and journal/page.tsx already
+  // use for their own photo fields.
+  const projectsWithSignedCovers = await Promise.all(
+    (projects ?? []).map(async (project) => {
+      if (!project.cover_photo_url) return { ...project, signed_cover_photo_url: null };
+      const { data } = await supabase.storage
+        .from('org-files')
+        .createSignedUrl(project.cover_photo_url, 3600);
+      return { ...project, signed_cover_photo_url: data?.signedUrl ?? null };
+    }),
+  );
   const { data: expenses } = projectIds.length
     ? await supabase
         .from('project_expenses')
@@ -59,25 +75,20 @@ export default async function Page() {
     teamSizeByProject[row.project_id] = (teamSizeByProject[row.project_id] ?? 0) + 1;
   }
 
+  // Field-coverage pass — same duplicate-header bug as team/page.tsx and
+  // vehicles/page.tsx: this plain <h1> duplicated ProjectsView's own
+  // PageHero underneath it.
   return (
-    <div className="p-8">
-      <div className="mb-6">
-        <h1 className="font-display text-xl font-semibold text-neutral-900">Chantiers</h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Suivez budget, avancement et équipe pour chaque chantier.
-        </p>
-      </div>
-
-      <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
-        <ProjectsView
-          projects={projects ?? []}
-          expenses={expenses ?? []}
-          teamSizeByProject={teamSizeByProject}
-          createProject={createProject}
-          updateProject={updateProject}
-          deleteProject={deleteProject}
-        />
-      </Suspense>
-    </div>
+    <Suspense fallback={<div className="p-8 text-sm text-neutral-500">Chargement...</div>}>
+      <ProjectsView
+        projects={projectsWithSignedCovers}
+        expenses={expenses ?? []}
+        teamSizeByProject={teamSizeByProject}
+        createProject={createProject}
+        updateProject={updateProject}
+        deleteProject={deleteProject}
+        activeOrgId={profile.active_org_id}
+      />
+    </Suspense>
   );
 }

@@ -1,8 +1,9 @@
 import { redirect } from 'next/navigation';
 
+import { createClient } from '@/lib/supabase/server';
+
 import { DispatchView } from './DispatchView';
 
-import { createClient } from '@/lib/supabase/server';
 
 function startOfWeek(date: Date) {
   const copy = new Date(date);
@@ -17,7 +18,8 @@ function formatDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
-export default async function Page({ searchParams }: { searchParams?: { week?: string } }) {
+export default async function Page(props: { searchParams?: Promise<{ week?: string }> }) {
+  const searchParams = await props.searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -55,7 +57,7 @@ export default async function Page({ searchParams }: { searchParams?: { week?: s
       .is('deleted_at', null)
       .order('name', { ascending: true }),
     supabase
-      .from('active_workers')
+      .from('active_worker_directory')
       .select(
         'id, org_id, full_name, email, phone, trade, daily_rate, user_id, created_at, deleted_at, photo_url',
       )

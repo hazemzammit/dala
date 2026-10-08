@@ -1,7 +1,7 @@
 ﻿'use client';
 
 import { CaretDownIcon, CaretUpIcon } from '@phosphor-icons/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import { Card } from './Card';
 import { Pagination } from './Pagination';
@@ -61,7 +61,7 @@ import { Pagination } from './Pagination';
 export interface DataTableColumn<T> {
   key: string;
   header: string;
-  render: (row: T) => React.ReactNode;
+  render: (row: T) => ReactNode;
   sortValue?: (row: T) => string | number;
   align?: 'left' | 'right';
   width?: string;
@@ -90,9 +90,9 @@ interface DataTableProps<T> {
   rows: T[];
   getRowId: (row: T) => string;
   selectable?: boolean;
-  bulkActions?: (selectedIds: string[]) => React.ReactNode;
+  bulkActions?: (selectedIds: string[]) => ReactNode;
   onRowClick?: (row: T) => void;
-  emptyState?: React.ReactNode;
+  emptyState?: ReactNode;
   // When provided, renders prev/next + a page indicator below the table.
   // `rows` is still just the CURRENT page's rows â€” pagination here is
   // server-driven (the caller's fetch already applied .range()), this
@@ -255,6 +255,15 @@ export function DataTable<T>({
     </table>
   );
 
+  // Every DataTable column render function assumes it can lay out
+  // freely (badges, avatars, right-aligned numbers, action buttons) —
+  // on a narrow viewport that's wider than the card, and neither `Card`
+  // nor the bare `<table>` had a scroll container, so content either
+  // got clipped by Card's `overflow-hidden` or squeezed illegibly.
+  // Wrapping the table itself in overflow-x-auto lets it scroll
+  // horizontally instead, for every DataTable call site in both apps.
+  const scrollableTable = <div className="overflow-x-auto">{table}</div>;
+
   return (
     <div>
       {selectable && selected.size > 0 && bulkActions && (
@@ -264,7 +273,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      {bare ? table : <Card className="overflow-hidden">{table}</Card>}
+      {bare ? scrollableTable : <Card className="overflow-hidden">{scrollableTable}</Card>}
 
       {pagination && <Pagination {...pagination} />}
     </div>

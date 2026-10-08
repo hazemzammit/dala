@@ -1,93 +1,33 @@
-export const dashboardStats = [
-  {
-    label: 'Active Projects',
-    value: '24',
-    delta: '+3 this week',
-    tone: 'success' as const,
-    footnote: '5 projects are ahead of schedule.',
-  },
-  {
-    label: 'Workers Present Today',
-    value: '86',
-    delta: '94% check-in rate',
-    tone: 'success' as const,
-    footnote: 'Attendance captured by dispatch.',
-  },
-  {
-    label: 'Vehicles Available',
-    value: '12',
-    delta: '2 in maintenance',
-    tone: 'warning' as const,
-    footnote: 'No capacity risk for today.',
-  },
-  {
-    label: "Today's Expenses",
-    value: '18,450 TND',
-    delta: '+8%',
-    tone: 'danger' as const,
-    footnote: 'Fuel and materials drove spend.',
-  },
-  {
-    label: 'Monthly Revenue',
-    value: '246,800 TND',
-    delta: '+14%',
-    tone: 'success' as const,
-    footnote: 'Four invoices marked paid.',
-  },
-  {
-    label: 'Budget Consumption',
-    value: '68%',
-    delta: 'On track',
-    tone: 'warning' as const,
-    footnote: 'Three projects need review.',
-  },
-];
-
-export const weeklyCashflow = [38, 52, 46, 68, 58, 74, 62];
-export const weeklyCashflowLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-export const recentActivities = [
-  {
-    title: 'Dispatch assigned to Site 4',
-    description: '3 workers and 1 pickup were scheduled for the morning shift.',
-    time: '08:15',
-    tone: 'accent' as const,
-  },
-  {
-    title: 'Invoice paid by client',
-    description: 'El Baraka Residence settled the latest progress invoice.',
-    time: '10:05',
-    tone: 'success' as const,
-  },
-  {
-    title: 'Maintenance warning',
-    description: 'Vehicle TN 1432 requires service within the next 300 km.',
-    time: '11:20',
-    tone: 'warning' as const,
-  },
-  {
-    title: 'Safety observation logged',
-    description: 'New PPE reminder added for concrete pouring zone.',
-    time: '13:40',
-    tone: 'danger' as const,
-  },
-];
-
-export const weeklyCalendar = [
-  { day: 'Mon', label: 'Project handover at 9:00', tone: 'accent' as const },
-  { day: 'Tue', label: 'Team briefing and toolbox talk', tone: 'success' as const },
-  { day: 'Wed', label: 'Material delivery window', tone: 'warning' as const },
-  { day: 'Thu', label: 'Client walkthrough', tone: 'accent' as const },
-  { day: 'Fri', label: 'Billing review', tone: 'success' as const },
-  { day: 'Sat', label: 'Site inspection', tone: 'warning' as const },
-  { day: 'Sun', label: 'Light crew shift', tone: 'accent' as const },
-];
+/**
+ * apps/web/src/components/contractor/mock-data.ts
+ *
+ * Loose-end cleanup (found during the web shell consistency pass, Phase
+ * 17 audit had already flagged this file) — this used to hold six
+ * exports of fabricated English placeholder data (fake stat numbers, a
+ * fake cashflow chart, fake activity feed, fake weekly calendar).
+ * DashboardView.tsx now computes its real stats itself and never
+ * imported the other five; they were dead code left over from an early
+ * scaffold. Only `quickActions` was both real (a genuine set of
+ * dashboard shortcuts, not fabricated data) and actually imported —
+ * kept, translated to French, and its "Log expense -> /billing" entry
+ * replaced with "Ajouter un matériau -> /materials?create=1" (a real
+ * deep link, same ?create=1-opens-modal convention Projects/Vehicles/Team
+ * already use — MaterialsView.tsx gained the same handling in this pass).
+ */
+import {
+  BuildingsIcon,
+  ChartBarIcon,
+  HardHatIcon,
+  PackageIcon,
+  TruckIcon,
+  CarIcon,
+} from '@phosphor-icons/react';
 
 export const quickActions = [
-  { label: 'Create project', href: '/projects?create=1' },
-  { label: 'Assign dispatch', href: '/dispatch' },
-  { label: 'Add vehicle', href: '/vehicles?create=1' },
-  { label: 'Invite worker', href: '/team?invite=1' },
-  { label: 'Log expense', href: '/billing' },
-  { label: 'Generate report', href: '/reports' },
+  { label: 'Nouveau chantier', href: '/projects?create=1', icon: BuildingsIcon },
+  { label: 'Affecter un dispatch', href: '/dispatch', icon: TruckIcon },
+  { label: 'Ajouter un véhicule', href: '/vehicles?create=1', icon: CarIcon },
+  { label: 'Inviter un ouvrier', href: '/team?invite=1', icon: HardHatIcon },
+  { label: 'Ajouter un matériau', href: '/materials?create=1', icon: PackageIcon },
+  { label: 'Voir les rapports', href: '/reports', icon: ChartBarIcon },
 ] as const;

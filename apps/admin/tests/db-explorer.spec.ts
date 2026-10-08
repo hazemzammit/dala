@@ -35,6 +35,39 @@ test.describe('Database Explorer', () => {
       data: { sql: 'select 1 as ok' },
     });
     expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.rows).toEqual([{ ok: 1 }]);
+  });
+
+  // Regression (audit): the first-word classifier used to label all of these
+  // "read", so a support-role admin could write or read secrets through /query.
+  test('/query refuses data-modifying CTEs and EXPLAIN ANALYZE writes', async ({ page }) => {
+    const fixtures = loadFixtures();
+    await loginAsAdmin(page, fixtures.adminSupport);
+
+    for (const sql of [
+      'with d as (delete from feature_flags returning *) select * from d',
+      'explain analyze delete from feature_flags',
+    ]) {
+      const res = await page.request.post('/api/admin/db-explorer/query', { data: { sql } });
+      expect(res.status(), sql).toBe(400);
+    }
+  });
+
+  test('/query refuses secret-bearing schemas and dynamic-SQL functions', async ({ page }) => {
+    const fixtures = loadFixtures();
+    await loginAsAdmin(page, fixtures.adminSupport);
+
+    for (const [sql, status] of [
+      ['select * from vault.decrypted_secrets', 403],
+      ['select id, encrypted_password from auth.users', 403],
+      ['select * from platform_admins', 403],
+      ["select query_to_xml('select 1', true, true, '')", 400],
+      ['select pg_sleep(30)', 400],
+    ] as const) {
+      const res = await page.request.post('/api/admin/db-explorer/query', { data: { sql } });
+      expect(res.status(), sql).toBe(status);
+    }
   });
 
   test('/execute rejects a read-only statement', async ({ page }) => {

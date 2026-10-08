@@ -7,6 +7,8 @@ import { redirect } from 'next/navigation';
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
 import { createClient } from '@/lib/supabase/server';
 
+import { ClientPortalManager } from './ClientPortalManager';
+
 /**
  * Doc 06 §6.8 — "vue client filtrée". Aucun système d'authentification
  * client externe n'est en place (project_memberships.role='client' sert
@@ -15,6 +17,14 @@ import { createClient } from '@/lib/supabase/server';
  * factures, paiements) plutôt qu'un vrai portail accessible par le client
  * lui-même — "Rapports partagés" reste "Bientôt disponible" (aucune table
  * pour ça). Flagged for Hazem pour le vrai accès externe.
+ *
+ * Field-coverage pass — separate from the paragraph above: the actual
+ * external client-facing route (apps/web/src/app/portail/[token]/page.tsx,
+ * public, no login) has existed the whole time, and mobile's
+ * client-portal.tsx has managed it (generate/copy link, PIN toggle/reset)
+ * since migration 0020. This contractor-facing page just never had the
+ * matching management controls — added below as "Gérer les portails
+ * clients", same three RPCs mobile already calls.
  */
 export default async function Page() {
   const supabase = await createClient();
@@ -80,10 +90,20 @@ export default async function Page() {
     return { ...p, progress };
   });
 
+  // Field-coverage pass — existing portal rows for the active projects
+  // above, keyed by project_id, so ClientPortalManager can show current
+  // state (link generated? PIN on?) instead of assuming none exists.
+  const { data: portalRows } = projectIds.length
+    ? await supabase.from('client_portals').select('*').in('project_id', projectIds)
+    : { data: [] };
+  const portalByProjectId = Object.fromEntries(
+    (portalRows ?? []).map((portal) => [portal.project_id, portal]),
+  );
+
   return (
     <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8 lg:py-8">
       <PageHero
-        eyebrow="Accès client"
+        icon={HandshakeIcon}
         title="Portail client"
         description="Récapitulatif de vos chantiers actifs, à partager avec vos clients."
       />
@@ -161,6 +181,16 @@ export default async function Page() {
             ))}
           </div>
         )}
+      </SectionCard>
+
+      <SectionCard
+        title="Gérer les portails clients"
+        description="Générez un lien à partager, protégez-le par un code PIN, ou réinitialisez-le."
+      >
+        <ClientPortalManager
+          projects={projectsWithProgress.map((p) => ({ id: p.id, name: p.name }))}
+          portalByProjectId={portalByProjectId}
+        />
       </SectionCard>
 
       <SectionCard

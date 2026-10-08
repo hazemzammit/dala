@@ -7,32 +7,37 @@ import {
   DataTable,
   type DataTableColumn,
   EmptyState,
+  FilterBar,
   FilterSelect,
   IconActionButton,
+  IconStatCard,
   PageHero,
   Pagination,
   StatusBadge,
+  ViewToggle,
 } from '@dala/ui-web';
 import type { CreateProjectInput } from '@dala/validation';
 import {
   BuildingsIcon,
+  ChartLineUpIcon,
+  CheckCircleIcon,
   EyeIcon,
+  HardHatIcon,
   PencilSimpleIcon,
   PlusIcon,
-  SquaresFourIcon,
   TrashIcon,
-  ListIcon,
+  WalletIcon,
 } from '@phosphor-icons/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-
-import type { UpdateProjectInput } from './actions';
-import { ProjectFormModal } from './ProjectFormModal';
 
 import { ProgressBar, SectionCard } from '@/components/contractor/Screen';
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { calculateConsumedPercent, calculateConsumedTotal } from '@/lib/budget';
+
+import type { UpdateProjectInput } from './actions';
+import { ProjectFormModal } from './ProjectFormModal';
 
 type ProjectMutationResult =
   { success: true; project: Project } | { success: false; error: string };
@@ -58,9 +63,14 @@ const STATUS_VARIANT: Record<ProjectStatus, 'success' | 'neutral' | 'info'> = {
   archived: 'neutral',
 };
 
+// `signed_cover_photo_url` is resolved server-side in projects/page.tsx (the DB only
+// stores the storage path); optional because rows created/edited client-side
+// (upsertProject) don't carry it until the next server refresh.
+type ProjectWithCover = Project & { signed_cover_photo_url?: string | null };
+
 type ModalState = { mode: 'closed' } | { mode: 'create' } | { mode: 'edit'; project: Project };
 
-type ProjectRow = Project & {
+type ProjectRow = ProjectWithCover & {
   progress: number | null; // alias of budgetConsumed (plan §12a decision 2)
   startDate: string | null; // real project.start_date (ISO), null when unset
   teamSize: number;
@@ -88,13 +98,15 @@ export function ProjectsView({
   createProject,
   updateProject,
   deleteProject,
+  activeOrgId,
 }: {
-  projects: Project[];
+  projects: ProjectWithCover[];
   expenses: ProjectExpense[];
   teamSizeByProject: Record<string, number>;
   createProject: CreateProjectAction;
   updateProject: UpdateProjectAction;
   deleteProject: DeleteProjectAction;
+  activeOrgId: string;
 }) {
   const [rows, setRows] = useState(projects);
   const [modalState, setModalState] = useState<ModalState>({ mode: 'closed' });
@@ -105,7 +117,7 @@ export function ProjectsView({
   // used (matches this codebase's no-client-storage convention elsewhere) —
   // this resets to 'table' on reload, a minor cosmetic trade-off, same
   // shape as AnnouncementBanner's dismiss-in-memory-only choice.
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  const [viewMode, setViewMode] = useState<'table' | 'card'>('table');
   const [notice, setNotice] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -212,7 +224,22 @@ export function ProjectsView({
     {
       key: 'name',
       header: 'Chantier',
-      render: (p) => <div className="font-medium text-neutral-900">{p.name}</div>,
+      render: (p) => (
+        <div className="flex items-center gap-2.5">
+          {p.signed_cover_photo_url ? (
+            <img
+              src={p.signed_cover_photo_url}
+              alt=""
+              className="h-8 w-8 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="rounded-lg bg-accent-50 text-accent-700 flex h-8 w-8 shrink-0 items-center justify-center text-xs font-semibold">
+              {p.name.charAt(0).toUpperCase()}
+            </div>
+          )}
+          <div className="font-medium text-neutral-900">{p.name}</div>
+        </div>
+      ),
       sortValue: (p) => p.name,
     },
     {
@@ -332,7 +359,7 @@ export function ProjectsView({
       )}
 
       <PageHero
-        eyebrow="Chantiers"
+        icon={BuildingsIcon}
         title="Chantiers"
         description="Recherchez, filtrez, consultez, modifiez et suivez les chantiers actifs avec leur budget consommé réel."
         actions={
@@ -343,90 +370,51 @@ export function ProjectsView({
         }
       />
 
-      <SectionCard
-        title="Liste des chantiers"
-        actions={
-          <>
-            <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un chantier" />
-            <FilterSelect
-              aria-label="Filtrer par statut"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
-              options={[
-                { value: 'all', label: 'Tous les statuts' },
-                { value: 'active', label: 'Actif' },
-                { value: 'completed', label: 'Terminé' },
-                { value: 'archived', label: 'Archivé' },
-              ]}
-            />
-            <div className="flex overflow-hidden rounded-2xl border border-neutral-200">
-              <button
-                type="button"
-                onClick={() => setViewMode('table')}
-                aria-label="Vue tableau"
-                aria-pressed={viewMode === 'table'}
-                className={`p-2 ${viewMode === 'table' ? 'bg-accent-600 text-white' : 'text-neutral-500 hover:bg-neutral-100'}`}
-              >
-                <ListIcon size={16} />
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('grid')}
-                aria-label="Vue grille"
-                aria-pressed={viewMode === 'grid'}
-                className={`p-2 ${viewMode === 'grid' ? 'bg-accent-600 text-white' : 'text-neutral-500 hover:bg-neutral-100'}`}
-              >
-                <SquaresFourIcon size={16} />
-              </button>
-            </div>
-          </>
-        }
-      >
+      <FilterBar trailing={<ViewToggle value={viewMode} onChange={setViewMode} />}>
+        <SearchInput value={query} onChange={setQuery} placeholder="Rechercher un chantier" />
+        <FilterSelect
+          aria-label="Filtrer par statut"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as ProjectStatus | 'all')}
+          options={[
+            { value: 'all', label: 'Tous les statuts' },
+            { value: 'active', label: 'Actif' },
+            { value: 'completed', label: 'Terminé' },
+            { value: 'archived', label: 'Archivé' },
+          ]}
+        />
+      </FilterBar>
+
+      <SectionCard title="Liste des chantiers">
         <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Chantiers
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {visibleCount}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Actifs
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.filter((row) => row.status === 'active').length}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Progression moyenne
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {Math.round(
-                filteredRows.reduce((sum, row) => sum + (row.progress ?? 0), 0) /
-                  Math.max(1, visibleCount),
-              )}
-              %
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Dépenses totales
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {formatBudget(filteredRows.reduce((sum, row) => sum + row.expensesTotal, 0))}
-            </p>
-          </Card>
-          <Card className="p-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-neutral-500">
-              Ouvriers planifiés
-            </p>
-            <p className="font-display mt-2 text-2xl font-semibold text-neutral-900">
-              {filteredRows.reduce((sum, row) => sum + row.teamSize, 0)}
-            </p>
-          </Card>
+          <IconStatCard icon={BuildingsIcon} tone="accent" label="Chantiers" value={visibleCount} />
+          <IconStatCard
+            icon={CheckCircleIcon}
+            tone="success"
+            label="Actifs"
+            value={filteredRows.filter((row) => row.status === 'active').length}
+          />
+          <IconStatCard
+            icon={ChartLineUpIcon}
+            tone="categoricalBlue"
+            label="Progression moyenne"
+            value={`${Math.round(
+              filteredRows.reduce((sum, row) => sum + (row.progress ?? 0), 0) /
+                Math.max(1, visibleCount),
+            )}%`}
+          />
+          <IconStatCard
+            icon={WalletIcon}
+            tone="warning"
+            label="Dépenses totales"
+            value={formatBudget(filteredRows.reduce((sum, row) => sum + row.expensesTotal, 0))}
+          />
+          <IconStatCard
+            icon={HardHatIcon}
+            tone="categoricalAmber"
+            label="Ouvriers planifiés"
+            value={filteredRows.reduce((sum, row) => sum + row.teamSize, 0)}
+          />
         </div>
 
         <div className="mt-5">
@@ -461,39 +449,52 @@ export function ProjectsView({
                   <Card
                     key={p.id}
                     raised
-                    className="cursor-pointer p-4"
+                    className="cursor-pointer overflow-hidden p-0"
                     onClick={() => router.push(`/projects/${p.id}`)}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <p className="font-medium text-neutral-900">{p.name}</p>
-                        <p className="text-xs text-neutral-500">{p.client_name ?? '—'}</p>
-                      </div>
-                      <StatusBadge variant={STATUS_VARIANT[p.status]}>
-                        {STATUS_LABEL[p.status]}
-                      </StatusBadge>
-                    </div>
-                    <div className="mt-4">
-                      <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
-                        <span>Budget consommé</span>
-                        <span>
-                          {p.budgetConsumed != null ? `${p.budgetConsumed.toFixed(0)}%` : '—'}
-                        </span>
-                      </div>
-                      <ProgressBar
-                        value={p.budgetConsumed ?? 0}
-                        tone={
-                          p.budgetConsumed != null && p.budgetConsumed > 100
-                            ? 'danger'
-                            : p.budgetConsumed != null && p.budgetConsumed >= 80
-                              ? 'warning'
-                              : 'success'
-                        }
+                    {p.signed_cover_photo_url ? (
+                      <img
+                        src={p.signed_cover_photo_url}
+                        alt=""
+                        className="h-28 w-full object-cover"
                       />
-                    </div>
-                    <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
-                      <span>{formatBudget(p.budget_total)}</span>
-                      <span>{p.teamSize} ouvrier(s)</span>
+                    ) : (
+                      <div className="bg-accent-50 text-accent-700 flex h-28 w-full items-center justify-center text-2xl font-semibold">
+                        {p.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-neutral-900">{p.name}</p>
+                          <p className="text-xs text-neutral-500">{p.client_name ?? '—'}</p>
+                        </div>
+                        <StatusBadge variant={STATUS_VARIANT[p.status]}>
+                          {STATUS_LABEL[p.status]}
+                        </StatusBadge>
+                      </div>
+                      <div className="mt-4">
+                        <div className="mb-1 flex items-center justify-between gap-2 text-xs text-neutral-500">
+                          <span>Budget consommé</span>
+                          <span>
+                            {p.budgetConsumed != null ? `${p.budgetConsumed.toFixed(0)}%` : '—'}
+                          </span>
+                        </div>
+                        <ProgressBar
+                          value={p.budgetConsumed ?? 0}
+                          tone={
+                            p.budgetConsumed != null && p.budgetConsumed > 100
+                              ? 'danger'
+                              : p.budgetConsumed != null && p.budgetConsumed >= 80
+                                ? 'warning'
+                                : 'success'
+                          }
+                        />
+                      </div>
+                      <div className="mt-3 flex items-center justify-between text-xs text-neutral-500">
+                        <span>{formatBudget(p.budget_total)}</span>
+                        <span>{p.teamSize} ouvrier(s)</span>
+                      </div>
                     </div>
                   </Card>
                 ))}
@@ -541,6 +542,7 @@ export function ProjectsView({
           updateProject={updateProject}
           onSaved={upsertProject}
           onClose={() => setModalState({ mode: 'closed' })}
+          activeOrgId={activeOrgId}
         />
       )}
     </div>

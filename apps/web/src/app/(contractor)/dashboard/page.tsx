@@ -1,8 +1,10 @@
 import { redirect } from 'next/navigation';
 
+import { canSeeMoney, getOrgRole } from '@/lib/orgRole';
+import { createClient } from '@/lib/supabase/server';
+
 import { DashboardView } from './DashboardView';
 
-import { createClient } from '@/lib/supabase/server';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -19,6 +21,9 @@ export default async function DashboardPage() {
   if (!profile?.active_org_id) redirect('/create-organization');
 
   const orgId = profile.active_org_id;
+  // Viewers are money-blind (0103): expenses/invoices come back empty for them, so
+  // the money KPIs are hidden rather than shown as a misleading "0 TND".
+  const showMoney = canSeeMoney(await getOrgRole(supabase, orgId, user.id));
   const today = new Date().toISOString().slice(0, 10);
   const monthStart = new Date();
   monthStart.setDate(1);
@@ -202,6 +207,7 @@ export default async function DashboardPage() {
         monthlyInvoicedTotal,
         budgetConsumedPercent,
       }}
+      showMoney={showMoney}
       activityFeed={feed}
       actorNameById={actorNameById}
       feedProjectNameById={feedProjectNameById}
