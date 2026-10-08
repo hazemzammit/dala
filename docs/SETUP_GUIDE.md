@@ -122,9 +122,7 @@ walk them through picking extensions manually.
 ## 2. Create the GitHub repo
 
 1. Go to github.com → **New repository**.
-2. Name: `dala`. Visibility: **Private** (this is a commercial product, not
-   an open-source project — keep it private at least until you decide
-   otherwise).
+2. Name: `dala`. Visibility: **Public** (this is an open-source project).
 3. **Do not** initialize with a README/.gitignore/license — you already have
    all of that in the scaffold you're about to push; letting GitHub create
    its own would just create a merge conflict on the first push.
